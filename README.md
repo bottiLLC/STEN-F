@@ -85,7 +85,7 @@ DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 以下のコマンドでアプリケーションを起動します。
 
 ```bash
-streamlit run v2/app/main.py
+streamlit run app/main.py
 ```
 
 ブラウザが自動的に開き、アプリケーションが表示されます。
