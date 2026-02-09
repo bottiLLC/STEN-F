@@ -8,6 +8,7 @@ openai
 google-genai
 reportlab
 pymupdf
+structlog
 # Test dependencies
 pytest
 pytest-asyncio
