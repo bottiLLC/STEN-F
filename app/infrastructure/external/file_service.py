@@ -1,0 +1,41 @@
+import os
+from datetime import date
+from pathlib import Path
+
+# Helper to find storage dir relative to V2 app
+# Or we can share the same storage as V1?
+# Let's share for now or put in v2/storage
+# User wants "seamless", so maybe sharing is better? 
+# But V2 is "Zero-Based". Let's use a v2 storage for cleanliness unless specified.
+# Actually, V1 used config.BASE_DIR.
+# Let's define V2 BASE_DIR.
+
+V2_BASE_DIR = Path(__file__).parent.parent.parent.parent
+
+class LocalFileService:
+    def __init__(self, base_dir: Path = V2_BASE_DIR):
+        self.storage_dir = base_dir / "storage"
+        self.storage_dir.mkdir(exist_ok=True)
+
+    def save_evidence(self, file_bytes: bytes, original_filename: str, date_obj: date, description: str, amount: int) -> str:
+        """
+        Saves the evidence file with a standardized name.
+        Format: YYYY-MM-DD_Store_Amount.pdf
+        Returns the absolute path of the saved file.
+        """
+        
+        # Sanitize description for filename
+        safe_desc = "".join(c for c in description if c.isalnum() or c in (' ', '_', '-')).strip()
+        
+        # Get extension
+        ext = os.path.splitext(original_filename)[1]
+        if not ext:
+            ext = ".pdf" # default fallback
+            
+        new_filename = f"{date_obj}_{safe_desc}_{amount}{ext}"
+        save_path = self.storage_dir / new_filename
+        
+        with open(save_path, "wb") as f:
+            f.write(file_bytes)
+            
+        return str(save_path)

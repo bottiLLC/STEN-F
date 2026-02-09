@@ -1,0 +1,3 @@
+"""
+Reports components package.
+"""

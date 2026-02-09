@@ -1,0 +1,53 @@
+🚀 Starting Comprehensive System Verification...
+
+[1] Initializing Services...
+✅ Services initialized successfully.
+
+[2] Checking Master Data...
+✅ Found 2 Fiscal Years.
+✅ Found 17 Accounts.
+✅ Corporation: 合同会社ぼっち
+
+[2b] Creating Test Fiscal Year (2026-01-01 - 2026-12-31)...
+2026-02-09 20:05:28 [info     ] Saving Fiscal Year             name=VERIFICATION_FY period=999 service=MasterService
+2026-02-09 20:05:28 [info     ] Fiscal Year saved              service=MasterService
+✅ Created/Found Test FY. ID: 11
+ℹ️ Testing with Fiscal Year: VERIFICATION_FY (ID: 11)
+
+[3] Testing Journal Entry Creation...
+2026-02-09 20:05:28 [info     ] Adding new journal entry       date=2026-02-09 description=SYSTEM_VERIFICATION_TEST_TRANSACTION line_count=2 service=JournalService
+2026-02-09 20:05:28 [info     ] Journal entry added successfully date=2026-02-09 description=SYSTEM_VERIFICATION_TEST_TRANSACTION line_count=2 service=JournalService transaction_id=8
+✅ Transaction created with ID: 8
+
+[4] Checking Ledger Integrity...
+2026-02-09 20:05:28 [info     ] Generating General Ledger      account_id=1 fy_id=11 service=LedgerService
+2026-02-09 20:05:28 [info     ] General Ledger generated       account_id=1 fy_id=11 row_count=4 service=LedgerService
+✅ Transaction found in General Ledger for 現金.
+   Debits: 12345
+2026-02-09 20:05:28 [info     ] Generating Trial Balance       fy_id=11 service=LedgerService
+2026-02-09 20:05:28 [info     ] Trial Balance generated        account_count=17 fy_id=11 service=LedgerService
+✅ Trial Balance Row for 現金 exists.
+   Debit Total: 37035, Credit Total: 800
+✅ Debit Total reflects new transaction.
+
+[5] Generating Financial Report...
+2026-02-09 20:05:28 [info     ] Generating Financial Report    fy_id=11 service=LedgerService
+2026-02-09 20:05:28 [info     ] Generating Trial Balance       fy_id=11 service=LedgerService
+2026-02-09 20:05:28 [info     ] Trial Balance generated        account_count=17 fy_id=11 service=LedgerService
+2026-02-09 20:05:28 [info     ] Financial Report generated     fy_id=11 service=LedgerService
+✅ Financial Report object generated.
+   Total Assets: 36235
+   Net Income: 36235
+
+[6] Testing PDF Generation...
+✅ PDF generated successfully (36436 bytes).
+
+[7] Cleaning up Test Data...
+2026-02-09 20:05:28 [info     ] Deleting journal entry         service=JournalService transaction_id=8
+2026-02-09 20:05:28 [info     ] Journal entry deleted successfully service=JournalService transaction_id=8
+✅ Test Transaction 8 deleted.
+2026-02-09 20:05:28 [info     ] Deleting Fiscal Year           fy_id=11 service=MasterService
+2026-02-09 20:05:28 [info     ] Fiscal Year deleted            service=MasterService
+✅ Test FY 11 deleted.
+
+🎉 Comprehensive Verification Completed.
