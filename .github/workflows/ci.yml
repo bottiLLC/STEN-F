@@ -27,7 +27,7 @@ jobs:
       env:
         PYTHONPATH: app
         # If tests require environment variables, add them here or as secrets
-        DATABASE_URL: sqlite+aiosqlite:///:memory: 
+        DATABASE_URL: "sqlite+aiosqlite:///:memory:" 
         # Using in-memory DB for tests to avoid file permission issues or need for physical DB
       run: |
         pytest
