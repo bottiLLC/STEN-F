@@ -29,7 +29,7 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
     *   財務諸表（貸借対照表、損益計算書）
     *   総勘定元帳（ドリルダウン可能）
 *   **決算報告書出力**: 監査にも対応可能な形式のPDF決算報告書をワンクリックで生成。
-*   **AI拡張性 (Coming Soon)**: OpenAI API / Local LLM を用いたOCRと自動仕訳に対応予定。
+*   **AI OCR (Beta)**: Google Gemini (Flash Lite) を用いたレシートOCRと勘定科目提案機能。（要 API Key）
 *   **完全日本語対応**: UIおよび出力帳票は全て日本語にローカライズ済み。
 
 ## 技術スタック
@@ -37,6 +37,7 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 *   **言語**: Python 3.13+
 *   **フレームワーク**: Streamlit (Web UI)
 *   **データベース**: SQLite (via SQLAlchemy 2.0 Async + aiosqlite)
+*   **AI/LLM**: Google GenAI SDK (Gemini 2.5 Flash Lite)
 *   **データ検証**: Pydantic V2
 *   **PDF生成**: ReportLab
 *   **アーキテクチャ**: Clean Architecture (Layered Architecture) with Dependency Injection
@@ -45,18 +46,17 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 
 ```text
 STEN-F/
-├── v2/
-│   └── app/
-│       ├── application/        # アプリケーションロジック（Service層）
-│       ├── domain/             # ドメインモデル・インターフェース
-│       ├── infrastructure/     # DB接続、外部API（PDF等）、リポジトリ実装
-│       ├── presentation/       # UI層 (Page, Component)
-│       ├── config.py           # 設定ファイル
-│       ├── container.py        # DIコンテナ
-│       └── main.py             # アプリケーションエントリーポイント
-├── bookeeping.db               # データベースファイル（初回起動時に自動生成）
-├── requirements.txt            # 依存ライブラリ
-└── README.md                   # 本ファイル
+├── app/
+│   ├── application/        # アプリケーションロジック（Service層）
+│   ├── domain/             # ドメインモデル・インターフェース
+│   ├── infrastructure/     # DB接続、外部API（PDF, Gemini等）、リポジトリ実装
+│   ├── presentation/       # UI層 (Page, Component)
+│   ├── config.py           # 設定ファイル
+│   ├── container.py        # DIコンテナ
+│   └── main.py             # アプリケーションエントリーポイント
+├── bookeeping.db           # データベースファイル（初回起動時に自動生成）
+├── requirements.txt        # 依存ライブラリ
+└── README.md               # 本ファイル
 ```
 
 ## セットアップ手順
@@ -69,18 +69,20 @@ STEN-F/
 リポジトリをクローンし、依存ライブラリをインストールします。
 
 ```bash
-git clone https://github.com/your-username/STEN-F.git
+git clone https://github.com/bottiLLC/STEN-F.git
 cd STEN-F
 pip install -r requirements.txt
 ```
 
 ### 3. 環境設定 (.env)
-ルートディレクトリに `.env` ファイルを作成し、必要な環境変数を設定してください（現状はデフォルトで動作しますが、将来的な拡張のため）。
+ルートディレクトリに `.env` ファイルを作成し、必要な環境変数を設定してください。
 
 ```ini
-# 例
+# Database (Default)
 DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
-# OPENAI_API_KEY=sk-... (将来的な機能のため)
+
+# Optional: AI Features (Google Gemini)
+# GOOGLE_API_KEY=AIzaSy...
 ```
 
 ### 4. 起動
