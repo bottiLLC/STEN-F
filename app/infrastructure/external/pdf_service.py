@@ -20,10 +20,15 @@ class PDFService:
                 pdfmetrics.registerFont(TTFont(FONT_NAME, str(FONT_PATH)))
             except Exception:
                 pass # Already registered or error
+        elif FONT_NAME == "HeiseiMin-W3":
+            try:
+                from reportlab.pdfbase import cidfonts
+                pdfmetrics.registerFont(cidfonts.UnicodeCIDFont("HeiseiMin-W3"))
+            except Exception:
+                pass # Fallback or already registered
 
  
 
-    @staticmethod
     @staticmethod
     def generate_annual_report(corp: Corporation, rpt: FinancialReport, fy_full_obj, report_date: date, audit_date: date) -> bytes:
         PDFService._register_font()

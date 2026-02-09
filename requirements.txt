@@ -1,0 +1,15 @@
+streamlit
+sqlalchemy
+aiosqlite
+pydantic>=2.0
+pydantic-settings
+python-dotenv
+openai
+google-genai
+reportlab
+pymupdf
+# Test dependencies
+pytest
+pytest-asyncio
+httpx
+pandas
