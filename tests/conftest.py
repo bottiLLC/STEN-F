@@ -20,8 +20,22 @@ async def container():
     # SEED DATA
     from domain.models.corporation import Corporation
     from domain.models.account import Account, AccountType
+    from domain.models.fiscal_year import FiscalYear
+    from datetime import date
     
     ms = await c.get_master_service()
+    
+    # 0. Seed Fiscal Year
+    fys = await ms.get_fiscal_years()
+    if not fys:
+        today = date.today()
+        await ms.save_fiscal_year(FiscalYear(
+            name=f"FY{today.year}",
+            start_date=date(today.year, 1, 1),
+            end_date=date(today.year, 12, 31),
+            status="OPEN",
+            period_number=1
+        ))
     
     # 1. Seed Corporation
     if not await ms.get_corporation():

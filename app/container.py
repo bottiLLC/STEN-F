@@ -15,10 +15,8 @@ class Container:
         self._ledger_service = None
 
     async def get_db_session(self) -> AsyncSession:
-        # In this simple manual DI, we just yield a session from the generator
-        async for session in self._session_factory():
-            return session
-        raise RuntimeError("Could not create session")
+        from infrastructure.db.session import AsyncSessionLocal
+        return AsyncSessionLocal()
 
     async def get_ledger_repository(self) -> SQLAlchemyLedgerRepository:
         session = await self.get_db_session()
