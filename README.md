@@ -16,7 +16,7 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 1.  **Of course it's free** この程度のもの、当然無料だ。
 2.  **No Vendor Lock-in:** 財務データは人質ではない。いつでも生のSQLでアクセス可能であるべきだ。
 3.  **Local First:** ネットワークが切れても経理は止まらない。
-4.  **Pay for Intelligence, Not Storage:** 金を払うならストレージ代ではなく、AIによる高度な推論（OCR・自動仕訳）に対してのみ払うべきだ。
+4.  **Don't pay for apps, pay for AI:** 金を払うならアプリ代ではなく、AIによる推論（OCR・自動仕訳）に対して払うべきだ。
 
 ## 主な機能
 
@@ -85,7 +85,7 @@ DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 以下のコマンドでアプリケーションを起動します。
 
 ```bash
-streamlit run v2/app/main.py
+streamlit run app/main.py
 ```
 
 ブラウザが自動的に開き、アプリケーションが表示されます。
