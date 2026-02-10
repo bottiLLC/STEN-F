@@ -10,3 +10,4 @@ aiosqlite
 pydantic
 pydantic-settings
 pymupdf
+structlog
