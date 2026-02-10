@@ -1,0 +1,35 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.10, pytest-9.0.2, pluggy-1.6.0
+rootdir: G:\マイドライブ\Python\STEN-F
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\test_dencho_compliance.py F                                        [100%]
+
+================================== FAILURES ===================================
+_______________________ test_dencho_compliance_features _______________________
+
+container = <container.Container object at 0x000001AAD38D74D0>
+
+    @pytest.mark.asyncio
+    async def test_dencho_compliance_features(container):
+        # Container is provided by fixture
+    
+    
+        # dependencies
+        master_service = await container.get_master_service()
+        journal_service = await container.get_journal_service()
+        repo = await container.get_ledger_repository()
+    
+        # 1. Test Counterparty Upsert
+        cp = Counterparty(name="Test Corp", invoice_number="T1234567890123", default_account_type="Travel")
+>       saved_cp = await master_service.save_counterparty(cp)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'MasterService' object has no attribute 'save_counterparty'
+
+tests\test_dencho_compliance.py:19: AttributeError
+=========================== short test summary info ===========================
+FAILED tests/test_dencho_compliance.py::test_dencho_compliance_features - Att...
+============================== 1 failed in 0.51s ==============================

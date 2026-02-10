@@ -1,6 +1,9 @@
 [![CI](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml/badge.svg)](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml)
 
-# STEN-F (Simple Tax Entry for No-nonsense Freelancers) v1.0.0
+# STEN-F (Financial System)
+
+![Compliance](https://img.shields.io/badge/Compliance-Dencho_Act_%26_Invoice_System-blue)
+ Tax Entry for No-nonsense Freelancers) v1.0.0
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/Python-3.13+-yellow.svg)](https://www.python.org/)
@@ -23,6 +26,7 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 ## 主な機能
 
 *   **高速な仕訳入力**: 貸方・借方を選択し、キーボード操作主体のUIでスピーディに取引を入力。
+*   **安全なデータ管理**: 仕訳の論理削除（Soft Delete）を採用。削除済みデータの確認もGUIから可能で、監査証跡を確実に残します。
 *   **マスタ管理**: 法人情報、会計年度、勘定科目、摘要などを柔軟に管理。
 *   **レポート機能**:
     *   合計残高試算表

@@ -39,3 +39,20 @@ class LocalFileService:
             f.write(file_bytes)
             
         return str(save_path)
+
+    def save_evidence_for_transaction(self, file_bytes: bytes, transaction_id: int, date_obj: date, amount: int, corp_name: str) -> str:
+        """
+        Saves evidence with Dencho Act compliant filename:
+        YYYYMMDD_{Amount}_{NormalizedCorp}_{ID}.pdf
+        """
+        # Normalize corp name (remove typical legal entities for brevity)
+        normalized_corp = corp_name.replace("株式会社", "").replace("合同会社", "").replace("有限会社", "").strip()
+        safe_corp = "".join(c for c in normalized_corp if c.isalnum() or c in (' ', '_', '-')).strip()
+        
+        filename = f"{date_obj.strftime('%Y%m%d')}_{amount}_{safe_corp}_{transaction_id}.pdf"
+        save_path = self.storage_dir / filename
+        
+        with open(save_path, "wb") as f:
+            f.write(file_bytes)
+            
+        return str(save_path)

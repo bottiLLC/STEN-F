@@ -59,4 +59,5 @@ async def container():
             description="Sales"
         ))
     
-    return c
+    yield c
+    await c.shutdown()

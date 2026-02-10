@@ -11,12 +11,12 @@ class ILedgerRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_transactions(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Transaction]:
+    async def get_transactions(self, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False) -> List[Transaction]:
         """Fetch transactions within a date range."""
         pass
 
     @abstractmethod
-    async def get_transactions_by_account(self, account_id: int, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Transaction]:
+    async def get_transactions_by_account(self, account_id: int, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False) -> List[Transaction]:
         """Fetch transactions for a specific account within a date range."""
         pass
 
@@ -36,4 +36,14 @@ class ILedgerRepository(ABC):
         Fetch aggregated data for Trial Balance.
         Returns list of dicts with account_id, debit_total, credit_total.
         """
+        pass
+
+    @abstractmethod
+    async def commit(self):
+        """Commit the current transaction."""
+        pass
+
+    @abstractmethod
+    async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
+        """Update the evidence path for a transaction."""
         pass

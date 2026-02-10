@@ -8,8 +8,9 @@ from domain.models.corporation import Corporation
 from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account, AccountType
 from domain.models.abstract import Abstract
+from domain.models.counterparty import Counterparty
 
-from infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable
+from infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable
 
 class SQLAlchemyMasterRepository(IMasterRepository):
     def __init__(self, session: AsyncSession):
@@ -148,3 +149,41 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         self.session.add(new_abs)
         await self.session.commit()
         return Abstract.model_validate(new_abs)
+
+    # --- Counterparty ---
+    async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
+        # Check by invoice_number if present, otherwise by name
+        existing = None
+        
+        if counterparty.invoice_number:
+            stmt = select(CounterpartyTable).where(CounterpartyTable.invoice_number == counterparty.invoice_number)
+            result = await self.session.execute(stmt)
+            existing = result.scalar_one_or_none()
+            
+
+            
+        if not existing and counterparty.name:
+            stmt = select(CounterpartyTable).where(CounterpartyTable.name == counterparty.name)
+            result = await self.session.execute(stmt)
+            existing = result.scalar_one_or_none()
+            
+        if existing:
+            existing.name = counterparty.name
+            existing.name_kana = counterparty.name_kana
+            existing.invoice_number = counterparty.invoice_number
+            existing.default_account_type = counterparty.default_account_type
+            
+            await self.session.commit()
+            await self.session.refresh(existing)
+            return Counterparty.model_validate(existing)
+        else:
+            new_cp = CounterpartyTable(
+                name=counterparty.name,
+                name_kana=counterparty.name_kana,
+                invoice_number=counterparty.invoice_number,
+                default_account_type=counterparty.default_account_type
+            )
+            self.session.add(new_cp)
+            await self.session.commit()
+            await self.session.refresh(new_cp)
+            return Counterparty.model_validate(new_cp)

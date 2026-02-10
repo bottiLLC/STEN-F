@@ -2,7 +2,7 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from pathlib import Path
 from dotenv import load_dotenv
-from sqlalchemy import Column, Integer, String, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, ForeignKey, DateTime
 from sqlalchemy.orm import declarative_base, relationship
 
 load_dotenv()
@@ -34,6 +34,15 @@ class CorporationTable(Base):
     representative_title = Column(String, nullable=True)
     representative_name = Column(String, nullable=True)
 
+class CounterpartyTable(Base):
+    __tablename__ = 'counterparties'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    name_kana = Column(String, nullable=True)
+    invoice_number = Column(String, unique=True, nullable=True)
+    default_account_type = Column(String, nullable=True)
+
 class FiscalYearTable(Base):
     __tablename__ = 'fiscal_years'
     
@@ -62,6 +71,10 @@ class TransactionTable(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
     description = Column(String, nullable=True)
+    is_deleted = Column(Integer, default=0) # Boolean in SQLite is Integer 0/1
+    deleted_at = Column(DateTime, nullable=True)
+    counterparty = Column(String, nullable=True)
+    evidence_path = Column(String, nullable=True)
     
     lines = relationship("TransactionLineTable", back_populates="transaction", cascade="all, delete-orphan")
 

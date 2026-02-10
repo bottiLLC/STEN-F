@@ -18,7 +18,13 @@ async def render_account_tab(master_service: "MasterService"):
             table_data.append(row)
             
         df_acc = pd.DataFrame(table_data)
-        st.dataframe(df_acc[["code", "name", "type", "description"]], height=300, hide_index=True, use_container_width=True)
+        df_acc = df_acc.rename(columns={
+            "code": "コード",
+            "name": "科目名",
+            "type": "区分",
+            "description": "説明"
+        })
+        st.dataframe(df_acc[["コード", "科目名", "区分", "説明"]], height=300, hide_index=True, use_container_width=True)
     
     with st.expander("勘定科目 追加/編集"):
         with st.form("account_form"):
@@ -30,15 +36,24 @@ async def render_account_tab(master_service: "MasterService"):
             a_desc = st.text_input("説明")
             
             if st.form_submit_button("保存"):
-                existing = next((a for a in accounts if a.code == a_code), None)
-                acc_id = existing.id if existing else None
-                new_acc = Account(
-                    id=acc_id,
-                    code=a_code,
-                    name=a_name,
-                    type=AccountType(a_type_val),
-                    description=a_desc
-                )
-                await master_service.save_account(new_acc)
-                st.success(f"勘定科目 '{a_name}' を{'更新' if acc_id else '保存'}しました。")
-                st.rerun()
+                if not a_code:
+                    st.error("コードを入力してください。")
+                elif not a_name:
+                    st.error("科目名を入力してください。")
+                else:
+                    existing = next((a for a in accounts if a.code == a_code), None)
+                    acc_id = existing.id if existing else None
+                    
+                    try:
+                        new_acc = Account(
+                            id=acc_id,
+                            code=a_code,
+                            name=a_name,
+                            type=AccountType(a_type_val),
+                            description=a_desc
+                        )
+                        await master_service.save_account(new_acc)
+                        st.success(f"勘定科目 '{a_name}' を{'更新' if acc_id else '保存'}しました。")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"エラーが発生しました: {e}")

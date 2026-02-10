@@ -11,12 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class Container:
     def __init__(self):
         self._session_factory = get_session
+        self._sessions = []
         self._ledger_repo = None
         self._ledger_service = None
 
     async def get_db_session(self) -> AsyncSession:
         from infrastructure.db.session import AsyncSessionLocal
-        return AsyncSessionLocal()
+        session = AsyncSessionLocal()
+        self._sessions.append(session)
+        return session
 
     async def get_ledger_repository(self) -> SQLAlchemyLedgerRepository:
         session = await self.get_db_session()
@@ -51,6 +54,11 @@ class Container:
     def get_backup_service(self):
         from infrastructure.external.backup_service import BackupService
         return BackupService()
+
+    async def shutdown(self):
+        for session in self._sessions:
+            await session.close()
+        self._sessions.clear()
 
 # Global Container instance for simplicity (or instantiated in main)
 # But handling async session lifecycle properly is key.

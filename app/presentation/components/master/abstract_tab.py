@@ -12,7 +12,21 @@ async def render_abstract_tab(master_service: "MasterService"):
     
     if abstracts:
         df_abs = pd.DataFrame([a.model_dump() for a in abstracts])
-        st.dataframe(df_abs, hide_index=True, use_container_width=True)
+        # Add account name if available (already denormalized in service/repo?)
+        # Base model has account_name field populated?
+        # Let's check model definition or just trust dump. 
+        # From repo code: data.account_name = r.account.name
+        
+        df_abs = df_abs.rename(columns={
+            "account_name": "関連科目",
+            "text": "摘要内容"
+        })
+        # Filter and reorder
+        cols = ["関連科目", "摘要内容"]
+        # Ensure cols exist
+        final_cols = [c for c in cols if c in df_abs.columns]
+        
+        st.dataframe(df_abs[final_cols], hide_index=True, use_container_width=True)
         
     with st.form("abstract_form"):
         acc_options = {f"{a.code} - {a.name}": a.id for a in accounts} if accounts else {}

@@ -106,9 +106,15 @@ class TestSystemIntegration:
         # --- F. Cleanup ---
         await journal_service.delete_entry(tx_id)
         
-        # Verify Deletion
+        # Verify Deletion from View
         gl_df_after = await ledger_service.get_general_ledger(target_fy.id, cash_acc.id)
         if not gl_df_after.empty:
             assert tx_id not in gl_df_after['TransactionID'].values
+
+        # Verify Soft Delete Persistence and Accessibility
+        deleted_entries = await journal_service.get_entries(include_deleted=True)
+        target_deleted_entry = next((e for e in deleted_entries if e.id == tx_id), None)
+        assert target_deleted_entry is not None, "Soft deleted transaction should be retrievable with include_deleted=True"
+        assert target_deleted_entry.deleted_at is not None, "deleted_at timestamp should be set"
 
         await master_service.delete_fiscal_year(target_fy.id)

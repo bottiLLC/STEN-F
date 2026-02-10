@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -23,6 +23,10 @@ class Transaction(BaseModel):
     date: date
     description: str
     lines: List[TransactionLine] = Field(default_factory=list)
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    counterparty: Optional[str] = None
+    evidence_path: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
     

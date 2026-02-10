@@ -17,17 +17,20 @@ async def main():
     # Initialize Container
     container = Container()
     
-    st.sidebar.title("STEN-F")
-    page = st.sidebar.radio("メニュー", ["仕訳入力", "マスタ管理", "レポート"])
-    
-    if page == "仕訳入力":
-        await render_journal_page(container)
+    try:
+        st.sidebar.title("STEN-F")
+        page = st.sidebar.radio("メニュー", ["仕訳入力", "マスタ管理", "レポート"])
         
-    elif page == "マスタ管理":
-        await render_master_page(container)
-        
-    elif page == "レポート":
-        await render_reports_page(container)
+        if page == "仕訳入力":
+            await render_journal_page(container)
+            
+        elif page == "マスタ管理":
+            await render_master_page(container)
+            
+        elif page == "レポート":
+            await render_reports_page(container)
+    finally:
+        await container.shutdown()
 
 if __name__ == "__main__":
     # Streamlit runs in its own loop, but for async main:

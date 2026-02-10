@@ -4,6 +4,7 @@ from domain.models.corporation import Corporation
 from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
+from domain.models.counterparty import Counterparty
 
 class MasterService:
     def __init__(self, repository: IMasterRepository):
@@ -63,3 +64,10 @@ class MasterService:
         self.log.info("Deleting Abstract", abstract_id=abstract_id)
         await self.repository.delete_abstract(abstract_id)
         self.log.info("Abstract deleted")
+
+    # --- Counterparty ---
+    async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
+        self.log.info("Saving Counterparty", name=counterparty.name)
+        saved = await self.repository.save_counterparty(counterparty)
+        self.log.info("Counterparty saved")
+        return saved
