@@ -1,0 +1,12 @@
+streamlit
+pandas
+python-dotenv
+openai
+google-generativeai
+pytest
+pytest-asyncio
+sqlalchemy
+aiosqlite
+pydantic
+pydantic-settings
+pymupdf
