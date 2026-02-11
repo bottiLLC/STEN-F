@@ -140,17 +140,17 @@ class GoogleOCRService:
 
         # Check 8%
         if abs(tax_8_base * 0.08 - tax_8_amount) > 1:
-             messages.append(f"8% Tax Mismatch (Base:{tax_8_base}, Tax:{tax_8_amount})")
+             messages.append(f"8%消費税不整合 (対象:{tax_8_base}, 税額:{tax_8_amount})")
 
         # Check 10%
         if abs(tax_10_base * 0.10 - tax_10_amount) > 1:
-             messages.append(f"10% Tax Mismatch (Base:{tax_10_base}, Tax:{tax_10_amount})")
+             messages.append(f"10%消費税不整合 (対象:{tax_10_base}, 税額:{tax_10_amount})")
 
         # Check Total (Base + Tax = Total)
         calc_total = (tax_8_base + tax_8_amount) + (tax_10_base + tax_10_amount)
         if total_amount > 0 and abs(calc_total - total_amount) > 1:
              if calc_total > 0:
-                 messages.append(f"Total Mismatch (Calc:{calc_total}, OCR:{total_amount})")
+                 messages.append(f"合計金額不整合 (計算値:{calc_total}, OCR値:{total_amount})")
 
         # 2. Date Validation
         if data.date:
@@ -158,20 +158,20 @@ class GoogleOCRService:
                 from datetime import date
                 date.fromisoformat(data.date)
             except ValueError:
-                messages.append(f"Invalid Date Format: {data.date}")
+                messages.append(f"日付フォーマット不正: {data.date}")
                 data.date = None
 
         # 3. Account Item Validation
         if account_list and data.account_item:
             if data.account_item not in account_list:
                 # If exact match fails, it might be a valid guess but not in list style
-                messages.append(f"Account '{data.account_item}' not in master list")
+                messages.append(f"勘定科目 '{data.account_item}' はマスタに存在しません")
 
         # 4. Invoice Number Validation
         if data.invoice_number:
             import re
             if not re.match(r'^T\d{13}$', data.invoice_number):
-                messages.append(f"Invalid Invoice Num: {data.invoice_number}")
+                messages.append(f"インボイス番号の形式が不正です: {data.invoice_number}")
 
         # 5. Aggregation works
         if messages:

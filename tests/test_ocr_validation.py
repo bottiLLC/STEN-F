@@ -27,7 +27,7 @@ class TestOCRValidation:
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
-        assert "8% Tax Mismatch" in validated.error_message
+        assert "8%消費税不整合" in validated.error_message
 
     def test_total_math_error(self):
         # 1000 + 80 = 1080, but total is 2000
@@ -37,14 +37,14 @@ class TestOCRValidation:
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
-        assert "Total Mismatch" in validated.error_message
+        assert "合計金額不整合" in validated.error_message
 
     def test_invalid_date(self):
         data = ReceiptData(date="2023/10/01") # Not ISO
         validated = self.service._validate_receipt(data)
         assert validated.date is None
         assert validated.needs_manual_review is True
-        assert "Invalid Date Format" in validated.error_message
+        assert "日付フォーマット不正" in validated.error_message
 
     def test_rounding_tolerance(self):
         # 1008 * 0.08 = 80.64 -> 81 (Round up)
@@ -63,7 +63,7 @@ class TestOCRValidation:
         account_list = ["Bar", "Baz"]
         validated = self.service._validate_receipt(data, account_list)
         assert validated.needs_manual_review is True
-        assert "Account 'Foo' not in master list" in validated.error_message
+        assert "勘定科目 'Foo' はマスタに存在しません" in validated.error_message
 
         # "Bar" is in the list
         data2 = ReceiptData(account_item="Bar")
@@ -75,7 +75,7 @@ class TestOCRValidation:
         data = ReceiptData(invoice_number="12345")
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
-        assert "Invalid Invoice Num" in validated.error_message
+        assert "インボイス番号の形式が不正です" in validated.error_message
 
         # Valid format
         data2 = ReceiptData(invoice_number="T1234567890123")
