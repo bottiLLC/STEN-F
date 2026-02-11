@@ -10,12 +10,24 @@ from container import Container
 from presentation.pages.master_page import render_master_page
 from presentation.pages.journal_page import render_journal_page
 from presentation.pages.reports_page import render_reports_page
+from infrastructure.db.models import init_db, DEFAULT_DB_PATH
 
 st.set_page_config(page_title="STEN-F", layout="wide")
 
 async def main():
+    # Check if DB exists (before init_db creates it)
+    is_fresh_db = not DEFAULT_DB_PATH.exists()
+
+    # Initialize DB
+    await init_db()
+
     # Initialize Container
     container = Container()
+    
+    # Auto-initialize default accounts ONLY if fresh DB
+    if is_fresh_db:
+        master_service = await container.get_master_service()
+        await master_service.initialize_default_accounts()
     
     try:
         st.sidebar.title("STEN-F")

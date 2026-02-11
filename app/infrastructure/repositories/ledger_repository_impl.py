@@ -145,6 +145,11 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         # No Commit here! Unit of Work pattern requires Service to commit.
         return db_tx.id
 
+    async def has_transactions_for_account(self, account_id: int) -> bool:
+        stmt = select(TransactionLineTable).where(TransactionLineTable.account_id == account_id).limit(1)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
     async def delete_transaction(self, transaction_id: int) -> bool:
         stmt = select(TransactionTable).where(TransactionTable.id == transaction_id)
         result = await self.session.execute(stmt)

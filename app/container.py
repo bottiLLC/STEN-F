@@ -35,7 +35,8 @@ class Container:
 
     async def get_master_service(self) -> MasterService:
         repo = await self.get_master_repository()
-        return MasterService(repo)
+        ledger_repo = await self.get_ledger_repository()
+        return MasterService(repo, ledger_repository=ledger_repo)
 
     async def get_journal_service(self) -> JournalService:
         repo = await self.get_ledger_repository()

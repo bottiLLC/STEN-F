@@ -1,7 +1,6 @@
-
 import pytest
 from app.infrastructure.external.ocr_service import GoogleOCRService
-from app.domain.models.receipt import ReceiptData
+from app.domain.models.receipt import ReceiptData, TaxBreakdownItem
 
 class TestOCRValidation:
     
@@ -9,81 +8,78 @@ class TestOCRValidation:
         self.service = GoogleOCRService()
 
     def test_valid_receipt(self):
+        # 1000 + 100 (10%) = 1100
         data = ReceiptData(
-            tax_8_base=1000, tax_8_amount=80,
-            tax_10_base=2000, tax_10_amount=200,
-            total_amount=3280,
-            date="2023-10-01"
+            tax_breakdown=[
+                TaxBreakdownItem(tax_rate="10%", tax_amount=100, amount_excl_tax=1000)
+            ],
+            total_tax_amount=100,
+            total_amount_excl_tax=1000,
+            total_amount_incl_tax=1100,
+            transaction_date="2023-10-01"
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is False
         assert validated.error_message is None
 
     def test_tax_math_error(self):
-        # 1000 * 0.08 = 80, but provided 50
+        # 1000 * 0.10 = 100, but provided 50
         data = ReceiptData(
-            tax_8_base=1000, tax_8_amount=50,
-            total_amount=1050
+            tax_breakdown=[
+                TaxBreakdownItem(tax_rate="10%", tax_amount=50, amount_excl_tax=1000)
+            ],
+            total_amount_incl_tax=1050
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
-        assert "8%消費税不整合" in validated.error_message
+        assert "消費税計算不整合" in validated.error_message
 
-    def test_total_math_error(self):
-        # 1000 + 80 = 1080, but total is 2000
+    def test_total_tax_mismatch(self):
+        # Breakdown sum = 100, but total_tax_amount = 200
         data = ReceiptData(
-            tax_8_base=1000, tax_8_amount=80,
-            total_amount=2000
+            tax_breakdown=[
+                TaxBreakdownItem(tax_rate="10%", tax_amount=100, amount_excl_tax=1000)
+            ],
+            total_tax_amount=200
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
-        assert "合計金額不整合" in validated.error_message
+        assert "消費税合計不整合" in validated.error_message
+
+    def test_grand_total_mismatch(self):
+        # 1000 + 100 = 1100, but total_incl = 1200
+        data = ReceiptData(
+            total_amount_excl_tax=1000,
+            total_tax_amount=100,
+            total_amount_incl_tax=1200
+        )
+        validated = self.service._validate_receipt(data)
+        assert validated.needs_manual_review is True
+        assert "支払合計不整合" in validated.error_message
 
     def test_invalid_date(self):
-        data = ReceiptData(date="2023/10/01") # Not ISO
+        data = ReceiptData(transaction_date="2023/10/01") # Not ISO
         validated = self.service._validate_receipt(data)
-        assert validated.date is None
+        assert validated.transaction_date is None
         assert validated.needs_manual_review is True
         assert "日付フォーマット不正" in validated.error_message
 
-    def test_rounding_tolerance(self):
-        # 1008 * 0.08 = 80.64 -> 81 (Round up)
-        # 1008 + 81 = 1089
-        data = ReceiptData(
-            tax_8_base=1008, tax_8_amount=81,
-            total_amount=1089,
-            date="2023-10-01"
-        )
+    def test_invoice_number_validation_clean(self):
+        # Valid format
+        data = ReceiptData(invoice_registration_number="T1234567890123")
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is False
 
-    def test_account_item_validation(self):
-        # "Foo" is not in the list
-        data = ReceiptData(account_item="Foo")
-        account_list = ["Bar", "Baz"]
-        validated = self.service._validate_receipt(data, account_list)
-        assert validated.needs_manual_review is True
-        assert "勘定科目 'Foo' はマスタに存在しません" in validated.error_message
+    def test_invoice_number_validation_dirty(self):
+        # Dirty format (Auto-extraction)
+        data = ReceiptData(invoice_registration_number="登録番号: T1234567890123 です")
+        validated = self.service._validate_receipt(data)
+        assert validated.needs_manual_review is False
+        assert validated.invoice_registration_number == "T1234567890123"
 
-        # "Bar" is in the list
-        data2 = ReceiptData(account_item="Bar")
-        validated2 = self.service._validate_receipt(data2, account_list)
-        assert validated2.needs_manual_review is False
-
-    def test_invoice_number_validation(self):
+    def test_invoice_number_validation_invalid(self):
         # Invalid format
-        data = ReceiptData(invoice_number="12345")
+        data = ReceiptData(invoice_registration_number="12345")
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
         assert "インボイス番号の形式が不正です" in validated.error_message
-
-        # Valid format
-        data2 = ReceiptData(invoice_number="T1234567890123")
-        validated2 = self.service._validate_receipt(data2)
-        assert validated2.needs_manual_review is False
-
-        # Dirty format (Auto-extraction)
-        data3 = ReceiptData(invoice_number="登録番号: T1234567890123 です")
-        validated3 = self.service._validate_receipt(data3)
-        assert validated3.needs_manual_review is False
-        assert validated3.invoice_number == "T1234567890123"

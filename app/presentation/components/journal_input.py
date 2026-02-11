@@ -72,19 +72,19 @@ async def _handle_ocr(uploaded_file, ocr_service, session, acc_options):
                 st.error("読み取りに失敗しました。")
 
 def _apply_ocr_result(session, ocr_result):
-    d = date.fromisoformat(ocr_result.date) if ocr_result.date else date.today()
+    d = date.fromisoformat(ocr_result.transaction_date) if ocr_result.transaction_date else date.today()
     # Use new field names
-    vendor = ocr_result.vendor_name or ""
-    account = ocr_result.account_item or ""
+    vendor = ocr_result.merchant_name or ""
+    # account = ocr_result.account_item or "" # Start using manual selection
     
-    desc = f"{vendor} ({account})"
+    desc = f"{vendor}"
     
     session.set("default_date", d)
     session.set("default_desc", desc)
-    session.set("ocr_amount", ocr_result.total_amount)
-    session.set("ocr_account_type", account) # Logic uses this to match dropdown
+    session.set("ocr_amount", ocr_result.total_amount_incl_tax)
+    # session.set("ocr_account_type", account) # Logic uses this to match dropdown
     session.set("ocr_counterparty", vendor)
-    session.set("ocr_invoice_num", ocr_result.invoice_number)
+    session.set("ocr_invoice_num", ocr_result.invoice_registration_number)
     
     # Direct update of widget keys to ensure UI reflects changes immediately
     if "cp_input" in st.session_state:
@@ -92,7 +92,7 @@ def _apply_ocr_result(session, ocr_result):
     if "desc_input" in st.session_state:
         st.session_state["desc_input"] = desc
     if "inv_input" in st.session_state:
-        st.session_state["inv_input"] = ocr_result.invoice_number
+        st.session_state["inv_input"] = ocr_result.invoice_registration_number
 
 def _render_header_form(session):
     # Initialize session state for widgets if not present
@@ -120,10 +120,11 @@ def _render_lines_editor(session, acc_options):
     # OCR Line Application Logic
     ocr_amount = session.get("ocr_amount")
     if ocr_amount is not None:
-        target_type = session.get("ocr_account_type", "")
-        matched_account_str = next((opt for opt in acc_options if target_type and target_type in opt), None)
+        # No account type from OCR, so manual selection required
+        # target_type = session.get("ocr_account_type", "")
+        # matched_account_str = next((opt for opt in acc_options if target_type and target_type in opt), None)
         
-        new_row = {"借方": ocr_amount, "貸方": 0, "勘定科目": matched_account_str}
+        new_row = {"借方": ocr_amount, "貸方": 0, "勘定科目": None}
         session.journal_lines_df = pd.DataFrame([new_row])
         session.clear_journal_temp_data()
 

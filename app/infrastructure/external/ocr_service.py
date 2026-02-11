@@ -52,54 +52,29 @@ class GoogleOCRService:
         else:
             image_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
             
-        accounts_str = ", ".join(account_list) if account_list else "未分類, 消耗品費, 旅費交通費, 交際費, 新聞図書費"
+        sys_instruct = """
+You are an expert AI assistant specialized in accounting and OCR data extraction. Your task is to extract specific financial information from the provided image of a receipt.
 
-        sys_instruct = f"""
-            # Core Philosophy: "Sten-gun"
-            - Minimalist over complex. 
-            - Logic over inference. 
-            - Reliability over versatility.
-            - This is for professional use; assume the user expects zero mathematical errors.
+Please analyze the receipt and extract the following information into a valid JSON object. Do not include any markdown formatting (like ```json) in your response, just the raw JSON string.
 
-            # Task
-            Analyze the provided receipt image and extract data into STRICT JSON format.
+Extract the following fields:
+1. **merchant_name**: The name of the store or vendor.
+2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD). If the year is omitted, assume the current year or infer from context if possible.
+3. **total_amount_incl_tax**: The total amount paid including tax (integer).
+4. **invoice_registration_number**: The qualified invoice issuer registration number (e.g., T1234567890123). If not found, return null.
+5. **tax_breakdown**: An array of objects detailing tax amounts per tax rate. Each object should contain:
+    - "tax_rate": The tax rate (e.g., "10%" or "8%").
+    - "tax_amount": The amount of consumption tax for this rate.
+    - "amount_excl_tax": The taxable amount (price excluding tax) for this rate.
+6. **total_tax_amount**: The sum of all consumption tax amounts.
+7. **total_amount_excl_tax**: The total price excluding tax.
 
-            # JSON Schema
-            {{
-              "vendor_name": "string (The name of the vendor. ALWAYS abbreviate legal entities: e.g. 株式会社->(株), 有限会社->(有), 合同会社->(同), 合資会社->(資), etc.)",
-              "date": "YYYY-MM-DD",
-              "account_item": "string (MUST be one of: {accounts_str})",
-              "tax_8_base": number (integer, 0 if null),
-              "tax_8_amount": number (integer, 0 if null),
-              "tax_10_base": number (integer, 0 if null),
-              "tax_10_amount": number (integer, 0 if null),
-              "total_amount": number (integer),
-              "invoice_number": "string (T+13 digits, e.g. T1234567890123. If not found, null)",
-              "confidence_score": number (0.0 - 1.0),
-              "needs_manual_review": boolean,
-              "error_message": "string | null"
-            }}
-
-            # Business Rules
-            1. Master Data Mapping: Select the most appropriate 'account_item' from the provided list based on the receipt content.
-            2. Tax Logic: 
-               - Separate 8% (reduced tax) and 10% (standard tax) items if possible.
-               - If no tax breakdown is visible, assume 10% or apply simple logic, but check total.
-            3. Values: JPY only. Integer only (no decimals). No negative values.
-            4. Error Handling:
-               - If image is blurry/illegible: confidence_score < 0.5, needs_manual_review = true.
-               - If "First-time Vendor" (you cannot know this, but if name is unclear), flag review.
-
-            # Validation Logic (CRITICAL)
-            Before outputting, you MUST internally verify:
-            1. Suggest valid 'account_item' from list.
-            2. Check: tax_8_base * 0.08 approx equals tax_8_amount (+- 1)
-            3. Check: tax_10_base * 0.10 equals tax_10_amount
-            4. Check: (tax_8_base + tax_8_amount) + (tax_10_base + tax_10_amount) == total_amount
-            
-            If any math check fails materially, set "needs_manual_review": true and "error_message": "Math mismatch".
-            If the image is not a receipt, return null fields.
-        """
+Notes:
+- If a specific field is not found or is illegible, use null for that field.
+- Ensure the 'invoice_registration_number' follows the format 'T' followed by 13 digits if it exists.
+- Correct any obvious OCR errors based on context, but prioritize accuracy.
+- Return ONLY the JSON object.
+"""
         
         try:
             # Run async
@@ -123,61 +98,67 @@ class GoogleOCRService:
             )
             data = json.loads(response.text)
             receipt = ReceiptData(**data)
-            return self._validate_receipt(receipt, account_list)
+            return self._validate_receipt(receipt)
         except Exception as e:
             print(f"Gemini API Error: {e}")
             return None
 
-    def _validate_receipt(self, data: ReceiptData, account_list: list[str] = None) -> ReceiptData:
+    def _validate_receipt(self, data: ReceiptData) -> ReceiptData:
         messages = []
         
-        # 1. Tax Math Validation (Allow slight rounding errors of +/- 1 JPY)
-        tax_8_base = data.tax_8_base or 0
-        tax_8_amount = data.tax_8_amount or 0
-        tax_10_base = data.tax_10_base or 0
-        tax_10_amount = data.tax_10_amount or 0
-        total_amount = data.total_amount or 0
+        # 1. Math Validation
+        # Check Total Tax vs Breakdown Sum
+        calc_total_tax = 0
+        calc_total_excl = 0
+        
+        if data.tax_breakdown:
+            for item in data.tax_breakdown:
+                calc_total_tax += item.tax_amount
+                calc_total_excl += item.amount_excl_tax
+                
+                # Check rate consistency per item
+                rate_val = 0.10 if "10" in item.tax_rate else 0.08 if "8" in item.tax_rate else 0.0
+                if rate_val > 0:
+                     expected_tax = int(item.amount_excl_tax * rate_val)
+                     # Allow +/- 1 mismatch
+                     if abs(expected_tax - item.tax_amount) > 1:
+                         messages.append(f"消費税計算不整合 ({item.tax_rate}: 対象{item.amount_excl_tax}, 税額{item.tax_amount})")
 
-        # Check 8%
-        if abs(tax_8_base * 0.08 - tax_8_amount) > 1:
-             messages.append(f"8%消費税不整合 (対象:{tax_8_base}, 税額:{tax_8_amount})")
+        # Check Aggregated Totals
+        if data.total_tax_amount is not None and abs(calc_total_tax - data.total_tax_amount) > 1:
+             messages.append(f"消費税合計不整合 (計算値:{calc_total_tax}, OCR値:{data.total_tax_amount})")
 
-        # Check 10%
-        if abs(tax_10_base * 0.10 - tax_10_amount) > 1:
-             messages.append(f"10%消費税不整合 (対象:{tax_10_base}, 税額:{tax_10_amount})")
+        if data.total_amount_excl_tax is not None and abs(calc_total_excl - data.total_amount_excl_tax) > 1:
+             messages.append(f"税抜合計不整合 (計算値:{calc_total_excl}, OCR値:{data.total_amount_excl_tax})")
 
-        # Check Total (Base + Tax = Total)
-        calc_total = (tax_8_base + tax_8_amount) + (tax_10_base + tax_10_amount)
-        if total_amount > 0 and abs(calc_total - total_amount) > 1:
-             if calc_total > 0:
-                 messages.append(f"合計金額不整合 (計算値:{calc_total}, OCR値:{total_amount})")
+        # Check Grand Total
+        if data.total_amount_incl_tax:
+            calc_grand_total = (data.total_amount_excl_tax or 0) + (data.total_tax_amount or 0)
+            if abs(calc_grand_total - data.total_amount_incl_tax) > 1:
+                 # Only flag if components are present
+                 if (data.total_amount_excl_tax or 0) > 0:
+                     messages.append(f"支払合計不整合 (計算値:{calc_grand_total}, OCR値:{data.total_amount_incl_tax})")
 
         # 2. Date Validation
-        if data.date:
+        if data.transaction_date:
             try:
                 from datetime import date
-                date.fromisoformat(data.date)
+                date.fromisoformat(data.transaction_date)
             except ValueError:
-                messages.append(f"日付フォーマット不正: {data.date}")
-                data.date = None
+                messages.append(f"日付フォーマット不正: {data.transaction_date}")
+                data.transaction_date = None
 
-        # 3. Account Item Validation
-        if account_list and data.account_item:
-            if data.account_item not in account_list:
-                # If exact match fails, it might be a valid guess but not in list style
-                messages.append(f"勘定科目 '{data.account_item}' はマスタに存在しません")
-
-        # 4. Invoice Number Validation
-        if data.invoice_number:
+        # 3. Invoice Number Validation
+        if data.invoice_registration_number:
             import re
             # Extract pattern T + 13 digits from the string
-            match = re.search(r'(T\d{13})', data.invoice_number)
+            match = re.search(r'(T\d{13})', data.invoice_registration_number)
             if match:
-                data.invoice_number = match.group(1)
+                data.invoice_registration_number = match.group(1)
             else:
-                messages.append(f"インボイス番号の形式が不正です: {data.invoice_number}")
+                messages.append(f"インボイス番号の形式が不正です: {data.invoice_registration_number}")
 
-        # 5. Aggregation works
+        # 4. Aggregation works
         if messages:
             data.needs_manual_review = True
             existing_err = data.error_message or ""

@@ -27,6 +27,9 @@ class IMasterRepository(ABC):
     @abstractmethod
     async def save_account(self, account: Account) -> Account: pass
     
+    @abstractmethod
+    async def delete_account(self, account_id: int) -> bool: pass
+    
     # Abstract
     @abstractmethod
     async def get_abstracts(self) -> List[Abstract]: pass

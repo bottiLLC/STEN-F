@@ -14,6 +14,7 @@ ACCOUNT_TYPE_JP = {
     AccountType.NON_OPERATING_EXPENSE: "営業外費用",
     AccountType.EXTRAORDINARY_INCOME: "特別利益",
     AccountType.EXTRAORDINARY_LOSS: "特別損失",
+    AccountType.TAXES: "法人税等",
 }
 
 FY_STATUS_JP = {

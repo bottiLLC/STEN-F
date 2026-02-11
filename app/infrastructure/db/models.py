@@ -7,8 +7,8 @@ from sqlalchemy.orm import declarative_base, relationship
 
 load_dotenv()
 
-# Default DB Path (Parent of v2)
-DEFAULT_DB_PATH = Path(__file__).parents[4] / "bookkeeping.db"
+# Default DB Path (Parent of v2) → Project Root
+DEFAULT_DB_PATH = Path(__file__).parents[3] / "bookkeeping.db"
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
@@ -89,3 +89,7 @@ class TransactionLineTable(Base):
     
     transaction = relationship("TransactionTable", back_populates="lines")
     account = relationship("AccountTable")
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

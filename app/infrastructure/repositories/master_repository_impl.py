@@ -122,6 +122,16 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         await self.session.refresh(new_acc)
         return Account.model_validate(new_acc)
 
+    async def delete_account(self, account_id: int) -> bool:
+        stmt = select(AccountTable).where(AccountTable.id == account_id)
+        result = await self.session.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            await self.session.delete(existing)
+            await self.session.commit()
+            return True
+        return False
+
     # --- Abstract ---
     async def get_abstracts(self) -> List[Abstract]:
         # Join with Account to get name potentially, but eager load is better

@@ -18,6 +18,7 @@ class AccountType(str, Enum):
     NON_OPERATING_EXPENSE = "NonOperatingExpense" # 営業外費用
     EXTRAORDINARY_INCOME = "ExtraordinaryIncome" # 特別利益
     EXTRAORDINARY_LOSS = "ExtraordinaryLoss" # 特別損失
+    TAXES = "Taxes" # 法人税等
 
 class Account(BaseModel):
     id: Optional[int] = Field(None, description="Database ID")

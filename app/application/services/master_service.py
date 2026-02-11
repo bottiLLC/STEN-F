@@ -6,9 +6,12 @@ from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
 
+from domain.interfaces.i_ledger_repository import ILedgerRepository
+
 class MasterService:
-    def __init__(self, repository: IMasterRepository):
+    def __init__(self, repository: IMasterRepository, ledger_repository: ILedgerRepository = None):
         self.repository = repository
+        self.ledger_repository = ledger_repository
         self.log = logger.bind(service="MasterService")
 
     # --- Corporation ---
@@ -48,8 +51,38 @@ class MasterService:
     
     async def delete_account(self, account_id: int):
         self.log.info("Deleting Account", account_id=account_id)
+        
+        if self.ledger_repository:
+            has_tx = await self.ledger_repository.has_transactions_for_account(account_id)
+            if has_tx:
+                self.log.warning("Cannot delete account with existing transactions", account_id=account_id)
+                raise ValueError("この勘定科目は仕訳で使用されているため削除できません。")
+
         await self.repository.delete_account(account_id)
         self.log.info("Account deleted")
+
+    async def initialize_default_accounts(self) -> int:
+        """Initializes default accounts if they don't exist."""
+        from domain.constants.default_accounts import DEFAULT_ACCOUNTS
+        
+        self.log.info("Initializing default accounts")
+        existing_accounts = await self.get_accounts()
+        existing_codes = {acc.code for acc in existing_accounts}
+        
+        count = 0
+        for data in DEFAULT_ACCOUNTS:
+            if data["code"] not in existing_codes:
+                new_acc = Account(
+                    code=data["code"],
+                    name=data["name"],
+                    type=data["type"],
+                    description=data["description"]
+                )
+                await self.save_account(new_acc)
+                count += 1
+        
+        self.log.info("Default accounts initialized", count=count)
+        return count
 
     # --- Abstract ---
     async def get_abstracts(self) -> list[Abstract]:

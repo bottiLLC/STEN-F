@@ -26,6 +26,11 @@ class ILedgerRepository(ABC):
         pass
         
     @abstractmethod
+    async def has_transactions_for_account(self, account_id: int) -> bool:
+        """Check if any transactions exist for the given account ID."""
+        pass
+        
+    @abstractmethod
     async def delete_transaction(self, transaction_id: int) -> bool:
         """Delete a transaction by ID."""
         pass
