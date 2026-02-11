@@ -29,7 +29,10 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
     *   **論理削除 (Soft Delete)**: 仕訳の修正・削除履歴を完全に保持し、監査証跡を残します。
     *   **T番号管理**: 取引先ごとの適格請求書発行事業者登録番号（T番号）を管理。
     *   **証憑保存**: レシートや請求書のPDF/画像を取引に紐づけて保存可能。
-*   **マスタ管理**: 法人情報、会計年度、勘定科目、摘要、取引先を柔軟に管理。
+*   **洗練されたマスタ管理 (Refined Account Management)**:
+    *   **常時表示のエディタ**: 編集フォームが常に表示され、煩わしいモーダル遷移を排除。
+    *   **プリセット勘定科目**: 貸借対照表（BS）および損益計算書（PL）の標準的な勘定科目をプリセット済み。
+    *   法人情報、会計年度、取引先も柔軟に管理可能。
 *   **レポート機能**:
     *   合計残高試算表
     *   財務諸表（貸借対照表、損益計算書）
@@ -37,6 +40,8 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 *   **決算報告書出力**: 監査にも対応可能な形式のPDF決算報告書をワンクリックで生成。
 *   **AI OCR (Beta)**:
     *   Google Gemini 2.5 Flash Lite を採用。
+    *   **JSON Schema Validation**: 厳格なスキーマ検証により、LLMのハルシネーションを抑制。
+    *   **Nested Tax Breakdown**: 複雑な税区分（8%/10%の混在など）も正確に構造化して読み取り。
     *   レシートの自動読み取り、T番号の抽出、勘定科目の提案。
     *   法人格（株式会社など）の自動略称変換機能（例: 株式会社→(株)）。
 *   **完全日本語対応**: UIおよび出力帳票は全て日本語にローカライズ済み。
@@ -49,6 +54,7 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 *   **AI/LLM**: Google GenAI SDK (Gemini 2.5 Flash Lite)
 *   **データ検証**: Pydantic V2
 *   **PDF生成**: ReportLab
+*   **テスト**: Pytest + Asyncio
 *   **アーキテクチャ**: Clean Architecture (Layered Architecture) with Dependency Injection
 
 ## ディレクトリ構造
@@ -60,10 +66,13 @@ STEN-F/
 │   ├── domain/             # ドメインモデル・インターフェース
 │   ├── infrastructure/     # DB接続、外部API（PDF, Gemini等）、リポジトリ実装
 │   ├── presentation/       # UI層 (Page, Component)
+│   ├── scripts/            # ユーティリティスクリプト
 │   ├── config.py           # 設定ファイル
 │   ├── container.py        # DIコンテナ
 │   └── main.py             # アプリケーションエントリーポイント
+├── tests/                  # テストコード (Pytest)
 ├── bookeeping.db           # データベースファイル（初回起動時に自動生成）
+├── pytest.ini              # テスト設定ファイル
 ├── requirements.txt        # 依存ライブラリ
 └── README.md               # 本ファイル
 ```
@@ -85,6 +94,7 @@ pip install -r requirements.txt
 
 ### 3. 環境設定 (.env)
 ルートディレクトリに `.env` ファイルを作成し、必要な環境変数を設定してください。
+サンプル (`.env.sample`) をコピーして使用できます。
 
 ```ini
 # Database (Default)
@@ -102,6 +112,13 @@ streamlit run app/main.py
 ```
 
 ブラウザが自動的に開き、アプリケーションが表示されます。
+
+### 5. テスト実行
+開発時は以下のコマンドでテストを実行し、品質を担保します。
+
+```bash
+pytest
+```
 
 ## ライセンス (License)
 Copyright (c) 2026 Botti LLC (Contract LLC Bocchi)
