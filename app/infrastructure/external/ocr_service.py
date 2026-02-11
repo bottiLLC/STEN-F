@@ -170,7 +170,11 @@ class GoogleOCRService:
         # 4. Invoice Number Validation
         if data.invoice_number:
             import re
-            if not re.match(r'^T\d{13}$', data.invoice_number):
+            # Extract pattern T + 13 digits from the string
+            match = re.search(r'(T\d{13})', data.invoice_number)
+            if match:
+                data.invoice_number = match.group(1)
+            else:
                 messages.append(f"インボイス番号の形式が不正です: {data.invoice_number}")
 
         # 5. Aggregation works

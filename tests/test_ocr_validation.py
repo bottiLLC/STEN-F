@@ -81,3 +81,9 @@ class TestOCRValidation:
         data2 = ReceiptData(invoice_number="T1234567890123")
         validated2 = self.service._validate_receipt(data2)
         assert validated2.needs_manual_review is False
+
+        # Dirty format (Auto-extraction)
+        data3 = ReceiptData(invoice_number="登録番号: T1234567890123 です")
+        validated3 = self.service._validate_receipt(data3)
+        assert validated3.needs_manual_review is False
+        assert validated3.invoice_number == "T1234567890123"
