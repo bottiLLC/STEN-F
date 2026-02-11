@@ -24,7 +24,8 @@ async def render_journal_input(container):
     # 1. OCR Section
     uploaded_file = st.file_uploader("証憑アップロード (AI自動読取)", type=["pdf", "jpg", "png", "jpeg"])
     if uploaded_file:
-         await _handle_ocr(uploaded_file, ocr_service, session)
+         # Pass acc_options to OCR
+         await _handle_ocr(uploaded_file, ocr_service, session, acc_options)
 
     # 2. Input Form
     tx_date, tx_desc, tx_counterparty, tx_invoice_num, register_master = _render_header_form(session)
@@ -52,33 +53,42 @@ async def render_journal_input(container):
             register_master
         )
 
-async def _handle_ocr(uploaded_file, ocr_service, session):
+async def _handle_ocr(uploaded_file, ocr_service, session, acc_options):
     if st.button("AIで読み取る"):
-        with st.spinner("AI解析中 (Gemini 2.5 Flash-Lite)..."):
+        with st.spinner("AI解析中 (Gemini 2.5 Flash-Lite - Sten-gun Mode)..."):
             file_bytes = uploaded_file.getvalue()
             file_type = uploaded_file.name.split('.')[-1]
-            ocr_result = await ocr_service.extract_receipt_data(file_bytes, file_type)
+            # Pass account list for strict mapping
+            ocr_result = await ocr_service.extract_receipt_data(file_bytes, file_type, acc_options)
             
             if ocr_result:
-                st.success("読み取り成功！フォームに反映しました。")
+                if ocr_result.needs_manual_review:
+                    st.warning(f"要確認: {ocr_result.error_message or '信頼度が低いため内容を確認してください'}")
+                else:
+                    st.success("読み取り成功 (Sten-gun Mode)")
+                
                 _apply_ocr_result(session, ocr_result)
             else:
                 st.error("読み取りに失敗しました。")
 
 def _apply_ocr_result(session, ocr_result):
     d = date.fromisoformat(ocr_result.date) if ocr_result.date else date.today()
-    desc = f"{ocr_result.store_name} ({ocr_result.suggested_account_type})"
+    # Use new field names
+    vendor = ocr_result.vendor_name or ""
+    account = ocr_result.account_item or ""
+    
+    desc = f"{vendor} ({account})"
     
     session.set("default_date", d)
     session.set("default_desc", desc)
     session.set("ocr_amount", ocr_result.total_amount)
-    session.set("ocr_account_type", ocr_result.suggested_account_type)
-    session.set("ocr_counterparty", ocr_result.store_name)
+    session.set("ocr_account_type", account) # Logic uses this to match dropdown
+    session.set("ocr_counterparty", vendor)
     session.set("ocr_invoice_num", ocr_result.invoice_number)
     
     # Direct update of widget keys to ensure UI reflects changes immediately
     if "cp_input" in st.session_state:
-        st.session_state["cp_input"] = ocr_result.store_name
+        st.session_state["cp_input"] = vendor
     if "desc_input" in st.session_state:
         st.session_state["desc_input"] = desc
     if "inv_input" in st.session_state:
@@ -153,33 +163,11 @@ async def _handle_abstract_selection(edited_df, master_service, acc_code_name_ma
         st.selectbox(label, options=[""] + list(set(filtered_abstracts_txt)), key="selected_abstract", on_change=on_abstract_change, placeholder="摘要を選択...")
 
 async def _handle_submission(session, journal_service, master_service, file_service, uploaded_file, edited_df, acc_code_name_map, tx_date, tx_desc, tx_counterparty, tx_invoice_num, register_master):
-    lines = []
     try:
-        for i, row in edited_df.iterrows():
-            if not row["勘定科目"] and row["借方"] == 0 and row["貸方"] == 0: continue
-            if not row["勘定科目"]:
-                st.error(f"行 {i+1}: 勘定科目が選択されていません。")
-                return
-
-            acc_id = acc_code_name_map[row["勘定科目"]]
-            debit = int(row["借方"] or 0)
-            credit = int(row["貸方"] or 0)
-            
-            if debit == 0 and credit == 0: continue
-            
-            lines.append(TransactionLine(account_id=acc_id, debit=debit, credit=credit))
+        # 1. Validate & Build Lines
+        lines = _validate_and_build_lines(edited_df, acc_code_name_map)
         
-        if not lines:
-            st.warning("仕訳明細が空です。")
-            return
-
-        total_debit = sum(l.debit for l in lines)
-        total_credit = sum(l.credit for l in lines)
-        
-        if total_debit != total_credit:
-            st.error(f"借方合計 ({total_debit}) と貸方合計 ({total_credit}) が一致しません。")
-            return
-        
+        # 2. Build Transaction Object
         transaction = Transaction(
             date=tx_date,
             description=tx_desc,
@@ -188,24 +176,19 @@ async def _handle_submission(session, journal_service, master_service, file_serv
             evidence_path=None
         )
         
-        if register_master and (tx_counterparty or tx_invoice_num):
-                cp = Counterparty(name=tx_counterparty or "Unknown", invoice_number=tx_invoice_num)
-                try:
-                    await master_service.save_counterparty(cp)
-                    st.info(f"取引先マスタを更新しました: {cp.name}")
-                except Exception as e:
-                    st.warning(f"マスタ登録に失敗しましたが、仕訳は続行します: {e}")
+        # 3. Handle Master Data Registration
+        if register_master:
+            await _register_counterparty(master_service, tx_counterparty, tx_invoice_num)
 
-        if uploaded_file:
-                await journal_service.add_journal_entry_with_evidence(transaction, uploaded_file.getvalue(), file_service)
-                st.success("証憑付きで登録しました！")
-        else:
-                await journal_service.add_journal_entry(transaction)
-                st.success("登録しました！")
+        # 4. Save Transaction (with optional evidence)
+        await _save_transaction(journal_service, file_service, transaction, uploaded_file)
         
+        # 5. Reset & Rerun
         _reset_form(session)
         st.rerun()
         
+    except ValueError as ve:
+        st.error(str(ve))
     except Exception as e:
         st.error(f"エラーが発生しました: {e}")
 
@@ -223,3 +206,46 @@ def _reset_form(session):
         st.session_state["desc_input"] = ""
     if "inv_input" in st.session_state:
         st.session_state["inv_input"] = ""
+
+def _validate_and_build_lines(edited_df, acc_code_name_map):
+    lines = []
+    for i, row in edited_df.iterrows():
+        if not row["勘定科目"] and row["借方"] == 0 and row["貸方"] == 0: continue
+        if not row["勘定科目"]:
+            raise ValueError(f"行 {i+1}: 勘定科目が選択されていません。")
+
+        acc_id = acc_code_name_map[row["勘定科目"]]
+        debit = int(row["借方"] or 0)
+        credit = int(row["貸方"] or 0)
+        
+        if debit == 0 and credit == 0: continue
+        
+        lines.append(TransactionLine(account_id=acc_id, debit=debit, credit=credit))
+    
+    if not lines:
+        raise ValueError("仕訳明細が空です。")
+
+    total_debit = sum(l.debit for l in lines)
+    total_credit = sum(l.credit for l in lines)
+    
+    if total_debit != total_credit:
+         raise ValueError(f"借方合計 ({total_debit}) と貸方合計 ({total_credit}) が一致しません。")
+         
+    return lines
+
+async def _register_counterparty(master_service, name, invoice_num):
+    if name or invoice_num:
+        cp = Counterparty(name=name or "Unknown", invoice_number=invoice_num)
+        try:
+            await master_service.save_counterparty(cp)
+            st.info(f"取引先マスタを更新しました: {cp.name}")
+        except Exception as e:
+            st.warning(f"マスタ登録に失敗しましたが、仕訳は続行します: {e}")
+
+async def _save_transaction(journal_service, file_service, transaction, uploaded_file):
+    if uploaded_file:
+        await journal_service.add_journal_entry_with_evidence(transaction, uploaded_file.getvalue(), file_service)
+        st.success("証憑付きで登録しました！")
+    else:
+        await journal_service.add_journal_entry(transaction)
+        st.success("登録しました！")
