@@ -174,6 +174,7 @@ async def _handle_submission(session, journal_service, master_service, file_serv
             description=tx_desc,
             lines=lines,
             counterparty=tx_counterparty,
+            invoice_number=tx_invoice_num,
             evidence_path=None
         )
         

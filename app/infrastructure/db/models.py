@@ -74,6 +74,7 @@ class TransactionTable(Base):
     is_deleted = Column(Integer, default=0) # Boolean in SQLite is Integer 0/1
     deleted_at = Column(DateTime, nullable=True)
     counterparty = Column(String, nullable=True)
+    invoice_number = Column(String, nullable=True)
     evidence_path = Column(String, nullable=True)
     
     lines = relationship("TransactionLineTable", back_populates="transaction", cascade="all, delete-orphan")

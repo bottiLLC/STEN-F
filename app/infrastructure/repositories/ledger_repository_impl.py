@@ -60,6 +60,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                 is_deleted=bool(row.is_deleted),
                 deleted_at=row.deleted_at,
                 counterparty=row.counterparty,
+                invoice_number=row.invoice_number,
                 evidence_path=row.evidence_path
             ))
         return domain_txs
@@ -117,6 +118,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                 is_deleted=bool(row.is_deleted),
                 deleted_at=row.deleted_at,
                 counterparty=row.counterparty,
+                invoice_number=row.invoice_number,
                 evidence_path=row.evidence_path
             ))
         return domain_txs
@@ -128,6 +130,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             description=transaction.description,
             is_deleted=0,
             counterparty=transaction.counterparty,
+            invoice_number=transaction.invoice_number,
             evidence_path=transaction.evidence_path
         )
         self.session.add(db_tx)

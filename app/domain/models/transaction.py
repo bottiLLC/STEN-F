@@ -26,6 +26,7 @@ class Transaction(BaseModel):
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
     counterparty: Optional[str] = None
+    invoice_number: Optional[str] = None
     evidence_path: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
