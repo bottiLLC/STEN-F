@@ -31,7 +31,7 @@ class LedgerService:
                 credit = data['total_credit']
                 
                 balance = 0
-                # Standard Balance Logic
+                # Calculate Standard Balance (Book Value)
                 if acc.type in [
                     AccountType.CURRENT_ASSET, AccountType.FIXED_ASSET, AccountType.DEFERRED_ASSET,
                     AccountType.COST_OF_SALES, AccountType.SGA, 
@@ -40,7 +40,12 @@ class LedgerService:
                     balance = debit - credit
                 else:
                     balance = credit - debit
-                    
+                
+                # Calculate Columnar Balances (Raw)
+                net_raw = debit - credit
+                debit_bal = net_raw if net_raw > 0 else 0
+                credit_bal = abs(net_raw) if net_raw < 0 else 0
+
                 rows.append(TrialBalanceRow(
                     account_id=acc.id, 
                     account_code=acc.code,
@@ -48,7 +53,9 @@ class LedgerService:
                     account_type=acc.type,
                     debit_total=debit,
                     credit_total=credit,
-                    balance=balance
+                    balance=balance,
+                    debit_balance=debit_bal,
+                    credit_balance=credit_bal
                 ))
                 
             # Sort by code

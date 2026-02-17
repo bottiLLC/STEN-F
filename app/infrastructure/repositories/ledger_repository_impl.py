@@ -22,11 +22,17 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         rows = result.scalars().all()
         return [Account.model_validate(row) for row in rows]
 
-    async def get_transactions(self, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False) -> List[Transaction]:
+    async def get_transactions(self, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False, include_relationships: bool = False) -> List[Transaction]:
         """
         Retrieves transactions with optional date filtering and deletion status.
         """
-        stmt = select(TransactionTable).options(selectinload(TransactionTable.lines))
+        stmt = select(TransactionTable)
+        
+        if include_relationships:
+            from infrastructure.db.models import TransactionLineTable
+            stmt = stmt.options(selectinload(TransactionTable.lines).selectinload(TransactionLineTable.account))
+        else:
+            stmt = stmt.options(selectinload(TransactionTable.lines))
         
         if not include_deleted:
             stmt = stmt.where(TransactionTable.is_deleted == 0)
@@ -44,14 +50,18 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         # Mapping to Domain Models
         domain_txs = []
         for row in rows:
-            lines = [
-                TransactionLine(
+            lines = []
+            for l in row.lines:
+                line_domain = TransactionLine(
                     id=l.id,
                     account_id=l.account_id,
                     debit=l.debit,
                     credit=l.credit
-                ) for l in row.lines
-            ]
+                )
+                if include_relationships and l.account:
+                    line_domain.account = Account.model_validate(l.account)
+                lines.append(line_domain)
+
             domain_txs.append(Transaction(
                 id=row.id,
                 date=row.date,

@@ -20,6 +20,8 @@ class TrialBalanceRow(BaseModel):
     debit_total: int = 0
     credit_total: int = 0
     balance: int = 0
+    debit_balance: int = 0
+    credit_balance: int = 0
 
 class FinancialSection(BaseModel):
     title: str

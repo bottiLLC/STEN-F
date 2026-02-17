@@ -1,3 +1,7 @@
+.web
+.states
+assets/external/
+*.py[cod]
 # Python
 __pycache__/
 *.pyc

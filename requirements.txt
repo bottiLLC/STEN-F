@@ -1,4 +1,4 @@
-streamlit
+reflex
 pandas
 python-dotenv
 openai
@@ -12,3 +12,5 @@ pydantic-settings
 pymupdf
 structlog
 reportlab
+
+reflex==0.8.26

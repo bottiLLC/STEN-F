@@ -112,3 +112,56 @@ class JournalService:
         except Exception as e:
             context_log.error("Failed to delete journal entry", error=str(e))
             raise
+
+    async def export_journal_entries_csv(self, start_date=None, end_date=None) -> str:
+        """
+        Exports journal entries to CSV string.
+        """
+        import csv
+        import io
+        
+        try:
+            # Fetch transactions with relationships
+            transactions = await self.repository.get_transactions(
+                start_date=start_date, 
+                end_date=end_date, 
+                include_deleted=False, 
+                include_relationships=True
+            )
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Header
+            writer.writerow([
+                "取引日", "ID", "摘要", "取引先", "登録番号", "勘定科目コード", "勘定科目", "借方金額", "貸方金額"
+            ])
+            
+            for t in transactions:
+                # Common fields for all lines in this transaction
+                common = [
+                    t.date.isoformat(),
+                    t.id,
+                    t.description,
+                    t.counterparty or "",
+                    t.invoice_number or ""
+                ]
+                
+                for line in t.lines:
+                    # Account might be loaded
+                    account_code = line.account.code if line.account else ""
+                    account_name = line.account.name if line.account else f"ID:{line.account_id}"
+                    
+                    row = common + [
+                        account_code,
+                        account_name,
+                        line.debit if line.debit > 0 else 0,
+                        line.credit if line.credit > 0 else 0
+                    ]
+                    writer.writerow(row)
+                    
+            return output.getvalue()
+            
+        except Exception as e:
+            self.log.error("Failed to export CSV", error=str(e))
+            raise

@@ -11,7 +11,7 @@ class ILedgerRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_transactions(self, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False) -> List[Transaction]:
+    async def get_transactions(self, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False, include_relationships: bool = False) -> List[Transaction]:
         """Fetch transactions within a date range."""
         pass
 

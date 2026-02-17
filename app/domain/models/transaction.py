@@ -8,6 +8,9 @@ class TransactionLine(BaseModel):
     debit: int = Field(default=0, ge=0)
     credit: int = Field(default=0, ge=0)
     
+    # Optional loaded relationship
+    account: Optional['Account'] = None
+    
     # Optional denormalized fields for domain convenience, 
     # though strict composition prefers fetching Account object.
     # We keep it minimal for the entity.
@@ -38,3 +41,8 @@ class Transaction(BaseModel):
         if total_debit != total_credit:
             raise ValueError(f"Unbalanced Transaction: Debit({total_debit}) != Credit({total_credit})")
         return self
+
+# Fix for forward reference 'Account'
+from domain.models.account import Account
+TransactionLine.model_rebuild()
+Transaction.model_rebuild()
