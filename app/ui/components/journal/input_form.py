@@ -1,8 +1,14 @@
 import reflex as rx
 from ...view_models.journal_state import JournalState
+from .ocr_upload import render_ocr_upload_area
 
 def render_journal_input() -> rx.Component:
     return rx.vstack(
+        # OCR Section
+        render_ocr_upload_area(),
+        
+        rx.divider(),
+
         # Top Form
         rx.hstack(
             rx.vstack(

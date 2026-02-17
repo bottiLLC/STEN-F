@@ -247,3 +247,58 @@ class JournalState(rx.State):
         # Remove duplicates and empty
         unique_suggestions = sorted(list(set(s for s in suggestions if s)))
         return unique_suggestions
+
+    # --- OCR Functionality ---
+    is_analyzing: bool = False
+    uploaded_files: List[str] = []
+
+    async def handle_upload(self, files: List[rx.UploadFile]):
+        """Handle file upload for OCR."""
+        self.is_analyzing = True
+        yield
+        
+        try:
+            for file in files:
+                upload_data = await file.read()
+                file_type = file.filename.split('.')[-1]
+                
+                # Get OCR Service
+                ocr_service = DI.get_ocr_service()
+                
+                # Prepare account list for OCR context
+                acc_options = [f"{a.code}: {a.name}" for a in self.accounts]
+                
+                # Call OCR
+                receipt_data = await ocr_service.extract_receipt_data(upload_data, file_type, acc_options)
+                
+                if receipt_data:
+                    self._apply_ocr_result(receipt_data)
+                    yield rx.toast("AI読み取り完了！")
+                else:
+                    yield rx.window_alert("読み取りに失敗しました。")
+        except Exception as e:
+             yield rx.window_alert(f"アップロードエラー: {e}")
+        finally:
+             self.is_analyzing = False
+
+    def _apply_ocr_result(self, data):
+        """Apply OCR result to state."""
+        if data.transaction_date:
+            self.transaction_date = data.transaction_date
+        
+        if data.merchant_name:
+            self.counterparty = data.merchant_name
+            # Auto-set description to merchant name initially
+            self.description = data.merchant_name
+            
+        if data.invoice_registration_number:
+            self.invoice_number = data.invoice_registration_number
+            
+        if data.total_amount_incl_tax:
+            # Set first line debit to total amount
+            # Reset lines first? Or just update first line?
+            # Let's reset to ensure clean state
+            self.lines = [{"account_id": "", "debit": data.total_amount_incl_tax, "credit": 0}]
+            
+        if data.needs_manual_review:
+             return rx.window_alert(f"要確認: {data.error_message}")
