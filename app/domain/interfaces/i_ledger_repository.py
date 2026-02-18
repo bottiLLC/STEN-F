@@ -49,6 +49,11 @@ class ILedgerRepository(ABC):
         pass
 
     @abstractmethod
+    async def update_transaction(self, transaction: Transaction) -> bool:
+        """Update an existing transaction."""
+        pass
+
+    @abstractmethod
     async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
         """Update the evidence path for a transaction."""
         pass

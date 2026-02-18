@@ -213,6 +213,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             self.session.add(new_cp)
             await self.session.commit()
             await self.session.refresh(new_cp)
+            return Counterparty.model_validate(new_cp)
 
     async def get_counterparties(self) -> List[Counterparty]:
         stmt = select(CounterpartyTable).order_by(CounterpartyTable.name)

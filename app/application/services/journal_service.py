@@ -27,6 +27,25 @@ class JournalService:
             context_log.error("Failed to add journal entry", error=str(e))
             raise
 
+    async def update_journal_entry(self, transaction: Transaction) -> bool:
+        context_log = self.log.bind(
+            transaction_id=transaction.id,
+            description=transaction.description
+        )
+        try:
+            context_log.info("Updating journal entry")
+            success = await self.repository.update_transaction(transaction)
+            if success:
+                await self.repository.commit()
+                context_log.info("Journal entry updated successfully")
+                return True
+            else:
+                context_log.warning("Journal entry not found for update")
+                return False
+        except Exception as e:
+            context_log.error("Failed to update journal entry", error=str(e))
+            raise
+
     async def get_entries(self, start_date=None, end_date=None, include_deleted: bool = False):
         # Renamed get_journal_entries to get_entries to match Step 2567 signature?
         # Step 2567: async def get_entries(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Transaction]:

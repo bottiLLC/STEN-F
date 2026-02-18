@@ -158,6 +158,41 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         # No Commit here! Unit of Work pattern requires Service to commit.
         return db_tx.id
 
+    async def update_transaction(self, transaction: Transaction) -> bool:
+        stmt = select(TransactionTable).where(TransactionTable.id == transaction.id).options(selectinload(TransactionTable.lines))
+        result = await self.session.execute(stmt)
+        db_tx = result.scalar_one_or_none()
+        
+        if not db_tx:
+            return False
+            
+        # Update Header
+        db_tx.date = transaction.date
+        db_tx.description = transaction.description
+        db_tx.counterparty = transaction.counterparty
+        db_tx.invoice_number = transaction.invoice_number
+        if transaction.evidence_path: # Only update if provided? Or always? Assuming overwrite.
+             db_tx.evidence_path = transaction.evidence_path
+             
+        # Update Lines (Replace strategy)
+        # Clear existing lines
+        db_tx.lines = []
+        
+        # Add new lines
+        for line in transaction.lines:
+            db_line = TransactionLineTable(
+                transaction_id=db_tx.id,
+                account_id=line.account_id,
+                debit=line.debit,
+                credit=line.credit
+            )
+            # No session.add needed if appended to relationship? 
+            # SQLAlchemy handles it if appended to db_tx.lines
+            # But let's be explicit with list assignment above or append.
+            db_tx.lines.append(db_line)
+            
+        return True
+
     async def has_transactions_for_account(self, account_id: int) -> bool:
         stmt = select(TransactionLineTable).where(TransactionLineTable.account_id == account_id).limit(1)
         result = await self.session.execute(stmt)
