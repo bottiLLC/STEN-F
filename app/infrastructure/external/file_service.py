@@ -36,7 +36,7 @@ class LocalFileService:
         save_path = self.storage_dir / new_filename
         
         import aiofiles
-        with await aiofiles.open(save_path, "wb") as f:
+        async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)
             
         return str(save_path)
@@ -54,7 +54,7 @@ class LocalFileService:
         save_path = self.storage_dir / filename
         
         import aiofiles
-        with await aiofiles.open(save_path, "wb") as f:
+        async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)
             
         return str(save_path)

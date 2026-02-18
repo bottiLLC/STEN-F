@@ -122,6 +122,24 @@ Notes:
 
                     data = json.loads(response.text)
                     receipt = ReceiptData(**data)
+                    
+                    # Verify against counterparty list if provided
+                    if counterparty_list and receipt.merchant_name:
+                         # Normalize OCR result
+                         norm_ocr = self._normalize_name(receipt.merchant_name)
+                         
+                         match_found = False
+                         for registered_name in counterparty_list:
+                             norm_reg = self._normalize_name(registered_name)
+                             if norm_ocr == norm_reg:
+                                 receipt.merchant_name = registered_name  # Use the exact registered name
+                                 receipt.is_registered_merchant = True
+                                 match_found = True
+                                 break
+                        
+                         if not match_found:
+                             pass
+
                     return self._validate_receipt(receipt)
 
                 except Exception as e:
@@ -139,6 +157,34 @@ Notes:
             return None
         finally:
             client.close()
+
+    def _normalize_name(self, name: str) -> str:
+        """
+        Normalize company name for fuzzy matching.
+        1. Remove spaces (full/half).
+        2. Remove corporate status (株式会社, etc).
+        """
+        if not name:
+            return ""
+            
+        # 1. Remove spaces
+        name = name.replace(" ", "").replace("　", "")
+        
+        # 2. Remove corporate statuses (Common ones)
+        # Order matters: longer strings first to avoid partial replacements
+        statuses = [
+            "株式会社", "有限会社", "合同会社", "合名会社", "合資会社",
+            "一般社団法人", "公益社団法人", "一般財団法人", "公益財団法人",
+            "医療法人", "学校法人", "宗教法人", "社会福祉法人", 
+            "特定非営利活動法人", "NPO法人",
+            "(株)", "(有)", "(同)", "(名)", "(資)", "(財)", "(社)",
+            "㈱", "㈲", "㈇", "㈆", "㈅", "㈄", "㈃", "㈂", "㈁"
+        ]
+        
+        for status in statuses:
+            name = name.replace(status, "")
+            
+        return name
 
     def _validate_receipt(self, data: ReceiptData) -> ReceiptData:
         messages = []

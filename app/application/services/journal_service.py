@@ -79,7 +79,7 @@ class JournalService:
             total_amount = sum(l.debit for l in transaction.lines)
             corp_name = transaction.counterparty or "Unknown"
             
-            evidence_path = file_service.save_evidence_for_transaction(
+            evidence_path = await file_service.save_evidence_for_transaction(
                 file_bytes=file_bytes,
                 transaction_id=tx_id,
                 date_obj=transaction.date,

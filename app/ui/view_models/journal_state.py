@@ -347,7 +347,11 @@ class JournalState(rx.State):
                 
                 if receipt_data:
                     await self._apply_ocr_result(receipt_data)
-                    yield rx.toast("AI読み取り完了！")
+                    
+                    if receipt_data.is_registered_merchant:
+                        yield rx.toast(f"登録済みの取引先「{receipt_data.merchant_name}」と一致しました。", duration=5000, close_button=True)
+                    else:
+                        yield rx.toast("AI読み取り完了（新規取引先の可能性があります）", duration=5000, close_button=True)
                 else:
                     yield rx.window_alert("読み取りに失敗しました。")
         except Exception as e:

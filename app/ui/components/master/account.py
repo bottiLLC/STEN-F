@@ -72,10 +72,10 @@ def render_account_tab() -> rx.Component:
                 rx.input(value=AccountState.acc_desc, on_change=AccountState.set_acc_desc, width="100%"),
 
                 rx.hstack(
-                    rx.button("保存", on_click=AccountState.save_account, width="100%"),
+                    rx.button("保存", on_click=AccountState.save_account, flex="1"),
                     rx.cond(
                          AccountState.acc_id,
-                         rx.button("削除", on_click=lambda: AccountState.delete_account(AccountState.acc_id), color_scheme="red", variant="soft"),
+                         rx.button("削除", on_click=lambda: AccountState.delete_account(AccountState.acc_id), color_scheme="red", variant="soft", flex="1"),
                     ),
                     width="100%",
                     spacing="2"

@@ -21,6 +21,7 @@ class ReceiptData(BaseModel):
     # Internal fields for validation/UI
     confidence_score: float = 0.0
     needs_manual_review: bool = False
+    is_registered_merchant: bool = False
     error_message: Optional[str] = None
 
     model_config = ConfigDict(extra='ignore')
