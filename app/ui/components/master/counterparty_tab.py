@@ -46,12 +46,19 @@ def _render_form() -> rx.Component:
             width="100%"
         ),
 
-        rx.text("デフォルト勘定科目種別", weight="bold"),
-        rx.select(
-            CounterpartyState.cp_account_type_options,
-            value=CounterpartyState.cp_default_account_type,
-            on_change=CounterpartyState.set_cp_default_account_type,
-            width="100%"
+        rx.text("デフォルト勘定科目", weight="bold"),
+        rx.select.root(
+            rx.select.trigger(placeholder="勘定科目を選択...", width="100%"),
+            rx.select.content(
+                rx.select.group(
+                    rx.foreach(
+                        CounterpartyState.cp_account_options,
+                        lambda x: rx.select.item(x[1], value=x[0])
+                    )
+                )
+            ),
+            value=CounterpartyState.cp_default_account_id,
+            on_change=CounterpartyState.set_cp_default_account_id,
         ),
         rx.text("※ OCR読み取り時にこの勘定科目が優先されます", font_size="0.8em", color="gray"),
 
@@ -102,7 +109,13 @@ def _render_list() -> rx.Component:
                             ),
                             rx.table.cell(cp.name),
                             rx.table.cell(cp.invoice_number),
-                            rx.table.cell(cp.default_account_type_label),
+                            rx.table.cell(
+                                rx.cond(
+                                    cp.default_account_id,
+                                    "設定あり", # Simplified for now, or need a lookup map in state
+                                    "-"
+                                )
+                            ),
                             _hover={"bg": "#f5f5f5"}
                         )
                     )

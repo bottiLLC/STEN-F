@@ -3,8 +3,8 @@ from pydantic import BaseModel, ConfigDict
 
 class TaxBreakdownItem(BaseModel):
     tax_rate: str
-    tax_amount: int
-    amount_excl_tax: int
+    tax_amount: Optional[int] = None
+    amount_excl_tax: Optional[int] = None
 
 class ReceiptData(BaseModel):
     """
@@ -14,7 +14,7 @@ class ReceiptData(BaseModel):
     transaction_date: Optional[str] = None
     total_amount_incl_tax: Optional[int] = None
     invoice_registration_number: Optional[str] = None
-    tax_breakdown: List[TaxBreakdownItem] = []
+    tax_breakdown: Optional[List[TaxBreakdownItem]] = None
     total_tax_amount: Optional[int] = None
     total_amount_excl_tax: Optional[int] = None
     

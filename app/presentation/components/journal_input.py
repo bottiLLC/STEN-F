@@ -28,7 +28,7 @@ async def render_journal_input(container):
          await _handle_ocr(uploaded_file, ocr_service, session, acc_options)
 
     # 2. Input Form
-    tx_date, tx_desc, tx_counterparty, tx_invoice_num, register_master = _render_header_form(session)
+    tx_date, tx_desc, tx_counterparty, tx_invoice_num = _render_header_form(session)
 
     # 3. Lines Editor
     edited_df = _render_lines_editor(session, acc_options)
@@ -37,6 +37,7 @@ async def render_journal_input(container):
     await _handle_abstract_selection(edited_df, master_service, acc_code_name_map)
 
     # 5. Submission
+    register_master = st.checkbox("取引先マスタに登録/更新する", value=True if session.get("ocr_counterparty") else False)
     if st.button("仕訳登録", type="primary"):
         await _handle_submission(
             session, 
@@ -111,8 +112,7 @@ def _render_header_form(session):
         tx_desc = st.text_input("摘要", key="desc_input")
         tx_invoice_num = st.text_input("T番号 (任意)", key="inv_input")
         
-    register_master = st.checkbox("取引先マスタに登録/更新する", value=True if session.get("ocr_counterparty") else False)
-    return tx_date, tx_desc, tx_counterparty, tx_invoice_num, register_master
+    return tx_date, tx_desc, tx_counterparty, tx_invoice_num
 
 def _render_lines_editor(session, acc_options):
     st.caption("仕訳明細")

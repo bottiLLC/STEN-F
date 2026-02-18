@@ -175,6 +175,16 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         await self.session.refresh(new_abs)
         return Abstract.model_validate(new_abs)
 
+    async def delete_abstract(self, abs_id: int) -> bool:
+        stmt = select(AbstractTable).where(AbstractTable.id == abs_id)
+        result = await self.session.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            await self.session.delete(existing)
+            await self.session.commit()
+            return True
+        return False
+
     # --- Counterparty ---
     async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
         existing = None
@@ -204,7 +214,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             existing.name_kana = counterparty.name_kana
             # Handle empty string as None for invoice
             existing.invoice_number = counterparty.invoice_number if counterparty.invoice_number else None
-            existing.default_account_type = counterparty.default_account_type
+            existing.default_account_id = counterparty.default_account_id
             
             await self.session.commit()
             await self.session.refresh(existing)
@@ -214,7 +224,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
                 name=counterparty.name,
                 name_kana=counterparty.name_kana,
                 invoice_number=counterparty.invoice_number if counterparty.invoice_number else None,
-                default_account_type=counterparty.default_account_type
+                default_account_id=counterparty.default_account_id
             )
             self.session.add(new_cp)
             await self.session.commit()

@@ -2,9 +2,10 @@ import reflex as rx
 import re
 from typing import List, Dict, Any, Optional
 from datetime import date
-from app.domain.models.transaction import Transaction, TransactionLine
-from app.domain.models.account import Account
-from app.domain.models.abstract import Abstract
+from domain.models.transaction import Transaction, TransactionLine
+from domain.models.account import Account
+from domain.models.abstract import Abstract
+from domain.models.counterparty import Counterparty
 from ..di import DI
 
 class JournalState(rx.State):
@@ -24,6 +25,12 @@ class JournalState(rx.State):
     # Default to empty (will be set by on_mount)
     filter_start_date: str = ""
     filter_end_date: str = ""
+
+    # Master Registration Flag
+    register_master: bool = False
+
+    def set_register_master(self, value: bool):
+        self.register_master = value
 
     async def toggle_show_deleted(self):
         self.show_deleted = not self.show_deleted
@@ -73,8 +80,20 @@ class JournalState(rx.State):
     def set_description(self, value: str):
         self.description = value
 
-    def set_counterparty(self, value: str):
+    async def set_counterparty(self, value: str):
         self.counterparty = value
+        
+        # Auto-fill Default Account if exact match found
+        if value:
+            async with DI.get_master_service() as service:
+                cps = await service.get_counterparties()
+                # Find exact match
+                matched = next((c for c in cps if c.name == value), None)
+                if matched and matched.default_account_id:
+                     # Update first line if empty or overwrite? 
+                     # Let's overwrite first line's account for convenience
+                     if self.lines:
+                         self.update_line_account(0, str(matched.default_account_id))
 
     def set_invoice_number(self, value: str):
         # Auto-uppercase for 't' -> 'T'
@@ -162,10 +181,18 @@ class JournalState(rx.State):
                  else:
                      await service.add_journal_entry(transaction)
              
+             # Handle Master Registration
+             if self.register_master and (self.counterparty or self.invoice_number):
+                 cp = Counterparty(name=self.counterparty or "Unknown", invoice_number=self.invoice_number)
+                 async with DI.get_master_service() as master_service:
+                     await master_service.save_counterparty(cp)
+                     # Optionally toast? "Updated Master"
+                 
              self.description = ""
              self.counterparty = ""
              self.invoice_number = ""
              self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
+             self.register_master = False # Reset flag
              # Clear file state
              self._uploaded_file_data = None
              self._uploaded_filename = None
@@ -313,7 +340,7 @@ class JournalState(rx.State):
                 receipt_data = await ocr_service.extract_receipt_data(upload_data, file_type, acc_options)
                 
                 if receipt_data:
-                    self._apply_ocr_result(receipt_data)
+                    await self._apply_ocr_result(receipt_data)
                     yield rx.toast("AI読み取り完了！")
                 else:
                     yield rx.window_alert("読み取りに失敗しました。")
@@ -322,7 +349,7 @@ class JournalState(rx.State):
         finally:
              self.is_analyzing = False
 
-    def _apply_ocr_result(self, data):
+    async def _apply_ocr_result(self, data):
         """Apply OCR result to state."""
         if data.transaction_date:
             self.transaction_date = data.transaction_date
@@ -337,9 +364,18 @@ class JournalState(rx.State):
             
         if data.total_amount_incl_tax:
             # Set first line debit to total amount
-            # Reset lines first? Or just update first line?
-            # Let's reset to ensure clean state
-            self.lines = [{"account_id": "", "debit": data.total_amount_incl_tax, "credit": 0}]
+            acc_id = ""
+            
+            # Try to find default account from matched counterparty
+            if self.counterparty:
+                 async with DI.get_master_service() as service:
+                      # This might be repetitive, but safe
+                      cps = await service.get_counterparties()
+                      matched = next((c for c in cps if c.name == self.counterparty), None)
+                      if matched and matched.default_account_id:
+                           acc_id = str(matched.default_account_id)
+
+            self.lines = [{"account_id": acc_id, "debit": data.total_amount_incl_tax, "credit": 0}]
             
         if data.needs_manual_review:
              return rx.window_alert(f"要確認: {data.error_message}")

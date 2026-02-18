@@ -41,7 +41,8 @@ class CounterpartyTable(Base):
     name = Column(String, nullable=False)
     name_kana = Column(String, nullable=True)
     invoice_number = Column(String, unique=True, nullable=True)
-    default_account_type = Column(String, nullable=True)
+    invoice_number = Column(String, unique=True, nullable=True)
+    default_account_id = Column(Integer, nullable=True)
 
 class FiscalYearTable(Base):
     __tablename__ = 'fiscal_years'

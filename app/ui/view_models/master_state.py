@@ -51,7 +51,9 @@ class MasterState(rx.State):
             fy_state.fiscal_years = await service.get_fiscal_years()
             acc_state.accounts = await service.get_accounts()
             abs_state.abstracts = await service.get_abstracts()
-            cp_state.counterparties = await service.get_counterparties()
+            
+            # Use specific load method for Counterparty to populate options
+            await cp_state.load_counterparties()
             
             # Initialize Forms matches original logic
             if corp_state.corporation:

@@ -135,6 +135,14 @@ def render_journal_input() -> rx.Component:
         
         rx.divider(),
 
+        rx.divider(),
+        
+        rx.checkbox(
+            "取引先マスタに登録/更新する",
+            checked=JournalState.register_master,
+            on_change=JournalState.set_register_master
+        ),
+
         rx.button("登録する", on_click=JournalState.submit, size="3", width="200px"),
         
         spacing="5",
