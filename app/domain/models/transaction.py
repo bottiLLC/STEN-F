@@ -32,7 +32,7 @@ class Transaction(BaseModel):
     invoice_number: Optional[str] = None
     evidence_path: Optional[str] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra='forbid')
     
     @model_validator(mode='after')
     def check_balance(self) -> 'Transaction':

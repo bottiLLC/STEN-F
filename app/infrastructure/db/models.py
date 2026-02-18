@@ -2,7 +2,7 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from pathlib import Path
 from dotenv import load_dotenv
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Date, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import declarative_base, relationship
 
 load_dotenv()
@@ -41,7 +41,6 @@ class CounterpartyTable(Base):
     name = Column(String, nullable=False)
     name_kana = Column(String, nullable=True)
     invoice_number = Column(String, unique=True, nullable=True)
-    invoice_number = Column(String, unique=True, nullable=True)
     default_account_id = Column(Integer, nullable=True)
 
 class FiscalYearTable(Base):
@@ -72,7 +71,7 @@ class TransactionTable(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
     description = Column(String, nullable=True)
-    is_deleted = Column(Integer, default=0) # Boolean in SQLite is Integer 0/1
+    is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime, nullable=True)
     counterparty = Column(String, nullable=True)
     invoice_number = Column(String, nullable=True)

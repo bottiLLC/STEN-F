@@ -23,41 +23,42 @@ async def container():
     from domain.models.fiscal_year import FiscalYear
     from datetime import date
     
-    ms = await c.get_master_service()
-    
-    # 0. Seed Fiscal Year
-    fys = await ms.get_fiscal_years()
-    if not fys:
-        today = date.today()
-        await ms.save_fiscal_year(FiscalYear(
-            name=f"FY{today.year}",
-            start_date=date(today.year, 1, 1),
-            end_date=date(today.year, 12, 31),
-            status="OPEN",
-            period_number=1
-        ))
-    
-    # 1. Seed Corporation
-    if not await ms.get_corporation():
-        await ms.save_corporation(Corporation(name="Test Corp", address="Test Address"))
+    # 0. Seed Data using Scoped Service
+    async with c.master_service_scope() as ms:
+        # 0. Seed Fiscal Year
+        fys = await ms.get_fiscal_years()
+        if not fys:
+            today = date.today()
+            await ms.save_fiscal_year(FiscalYear(
+                name=f"FY{today.year}",
+                start_date=date(today.year, 1, 1),
+                end_date=date(today.year, 12, 31),
+                status="OPEN",
+                period_number=1
+            ))
         
-    # 2. Seed Accounts if empty
-    accounts = await ms.get_accounts()
-    if not accounts:
-        # Cash
-        await ms.save_account(Account(
-            code="111", 
-            name="現金", 
-            type=AccountType.CURRENT_ASSET, 
-            description="Cash"
-        ))
-        # Sales
-        await ms.save_account(Account(
-            code="411", 
-            name="売上高", 
-            type=AccountType.REVENUE, 
-            description="Sales"
-        ))
+        # 1. Seed Corporation
+        if not await ms.get_corporation():
+            await ms.save_corporation(Corporation(name="Test Corp", address="Test Address"))
+            
+        # 2. Seed Accounts if empty
+        accounts = await ms.get_accounts()
+        if not accounts:
+            # Cash
+            await ms.save_account(Account(
+                code="111", 
+                name="現金", 
+                type=AccountType.CURRENT_ASSET, 
+                description="Cash"
+            ))
+            # Sales
+            await ms.save_account(Account(
+                code="411", 
+                name="売上高", 
+                type=AccountType.REVENUE, 
+                description="Sales"
+            ))
     
     yield c
-    await c.shutdown()
+    # Container is now stateless (sessions are scoped), so no global shutdown needed.
+

@@ -17,7 +17,7 @@ class LocalFileService:
         self.storage_dir = base_dir / "storage"
         self.storage_dir.mkdir(exist_ok=True)
 
-    def save_evidence(self, file_bytes: bytes, original_filename: str, date_obj: date, description: str, amount: int) -> str:
+    async def save_evidence(self, file_bytes: bytes, original_filename: str, date_obj: date, description: str, amount: int) -> str:
         """
         Saves the evidence file with a standardized name.
         Format: YYYY-MM-DD_Store_Amount.pdf
@@ -35,12 +35,13 @@ class LocalFileService:
         new_filename = f"{date_obj}_{safe_desc}_{amount}{ext}"
         save_path = self.storage_dir / new_filename
         
-        with open(save_path, "wb") as f:
-            f.write(file_bytes)
+        import aiofiles
+        with await aiofiles.open(save_path, "wb") as f:
+            await f.write(file_bytes)
             
         return str(save_path)
 
-    def save_evidence_for_transaction(self, file_bytes: bytes, transaction_id: int, date_obj: date, amount: int, corp_name: str) -> str:
+    async def save_evidence_for_transaction(self, file_bytes: bytes, transaction_id: int, date_obj: date, amount: int, corp_name: str) -> str:
         """
         Saves evidence with Dencho Act compliant filename:
         YYYYMMDD_{Amount}_{NormalizedCorp}_{ID}.pdf
@@ -52,7 +53,8 @@ class LocalFileService:
         filename = f"{date_obj.strftime('%Y%m%d')}_{amount}_{safe_corp}_{transaction_id}.pdf"
         save_path = self.storage_dir / filename
         
-        with open(save_path, "wb") as f:
-            f.write(file_bytes)
+        import aiofiles
+        with await aiofiles.open(save_path, "wb") as f:
+            await f.write(file_bytes)
             
         return str(save_path)

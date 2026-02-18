@@ -1,4 +1,7 @@
-from infrastructure.db.session import get_session
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from infrastructure.db.session import AsyncSessionLocal
 from infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository
 from infrastructure.repositories.master_repository_impl import SQLAlchemyMasterRepository
 from infrastructure.external.ocr_service import GoogleOCRService
@@ -6,41 +9,65 @@ from infrastructure.external.file_service import LocalFileService
 from application.services.ledger_service import LedgerService
 from application.services.master_service import MasterService
 from application.services.journal_service import JournalService
-from sqlalchemy.ext.asyncio import AsyncSession
+from application.services.fiscal_year_service import FiscalYearService
 
 class Container:
-    def __init__(self):
-        self._session_factory = get_session
-        self._sessions = []
-        self._ledger_repo = None
-        self._ledger_service = None
-
-    async def get_db_session(self) -> AsyncSession:
-        from infrastructure.db.session import AsyncSessionLocal
-        session = AsyncSessionLocal()
-        self._sessions.append(session)
-        return session
-
-    async def get_ledger_repository(self) -> SQLAlchemyLedgerRepository:
-        session = await self.get_db_session()
-        return SQLAlchemyLedgerRepository(session)
+    """
+    Dependency Injection Container ensuring scoped session management.
+    """
     
-    async def get_master_repository(self) -> SQLAlchemyMasterRepository:
-        session = await self.get_db_session()
-        return SQLAlchemyMasterRepository(session)
+    @asynccontextmanager
+    async def session_scope(self):
+        """Provide a transactional scope."""
+        session = AsyncSessionLocal()
+        try:
+            yield session
+            # Commit is usually handled by Service or Repository commit() methods explicitly
+            # But we could auto-commit here if we wanted.
+            # For now, we leave it to explicit commit in services.
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
-    async def get_ledger_service(self) -> LedgerService:
-        repo = await self.get_ledger_repository()
-        return LedgerService(repo)
+    @asynccontextmanager
+    async def journal_service_scope(self) -> AsyncGenerator[JournalService, None]:
+        async with self.session_scope() as session:
+            repo = SQLAlchemyLedgerRepository(session)
+            service = JournalService(repo)
+            yield service
 
-    async def get_master_service(self) -> MasterService:
-        repo = await self.get_master_repository()
-        ledger_repo = await self.get_ledger_repository()
-        return MasterService(repo, ledger_repository=ledger_repo)
+    @asynccontextmanager
+    async def master_service_scope(self) -> AsyncGenerator[MasterService, None]:
+        async with self.session_scope() as session:
+            repo = SQLAlchemyMasterRepository(session)
+            ledger_repo = SQLAlchemyLedgerRepository(session)
+            service = MasterService(repo, ledger_repository=ledger_repo)
+            yield service
 
-    async def get_journal_service(self) -> JournalService:
-        repo = await self.get_ledger_repository()
-        return JournalService(repo)
+    @asynccontextmanager
+    async def ledger_service_scope(self) -> AsyncGenerator[LedgerService, None]:
+        async with self.session_scope() as session:
+            repo = SQLAlchemyLedgerRepository(session)
+            service = LedgerService(repo)
+            yield service
+
+    @asynccontextmanager
+    async def fiscal_year_service_scope(self) -> AsyncGenerator[FiscalYearService, None]:
+        # FY Service needs Master, Ledger, Journal services.
+        # They should share the SAME session for consistency.
+        async with self.session_scope() as session:
+            master_repo = SQLAlchemyMasterRepository(session)
+            ledger_repo = SQLAlchemyLedgerRepository(session)
+            
+            # Construct services sharing the repos (and thus the session)
+            master_service = MasterService(master_repo, ledger_repository=ledger_repo)
+            ledger_service = LedgerService(ledger_repo)
+            journal_service = JournalService(ledger_repo)
+            
+            service = FiscalYearService(master_service, ledger_service, journal_service)
+            yield service
 
     def get_ocr_service(self) -> GoogleOCRService:
         return GoogleOCRService()
@@ -56,20 +83,5 @@ class Container:
         from infrastructure.external.backup_service import BackupService
         return BackupService()
 
-    async def get_fiscal_year_service(self):
-        from application.services.fiscal_year_service import FiscalYearService
-        master = await self.get_master_service()
-        ledger = await self.get_ledger_service()
-        journal = await self.get_journal_service()
-        return FiscalYearService(master, ledger, journal)
-
-    async def shutdown(self):
-        for session in self._sessions:
-            await session.close()
-        self._sessions.clear()
-
-# Global Container instance for simplicity (or instantiated in main)
-# But handling async session lifecycle properly is key.
-# For Clean Arch, we usually use a request-scoped container.
-# In Streamlit, the script runs top-down.
-# We will instantiate Container in main.
+# Global instance
+container = Container()

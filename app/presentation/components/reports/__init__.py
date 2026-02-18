@@ -1,3 +1,0 @@
-"""
-Reports components package.
-"""

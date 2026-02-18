@@ -35,7 +35,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             stmt = stmt.options(selectinload(TransactionTable.lines))
         
         if not include_deleted:
-            stmt = stmt.where(TransactionTable.is_deleted == 0)
+            stmt = stmt.where(TransactionTable.is_deleted.is_(False))
         
         if start_date:
             stmt = stmt.where(TransactionTable.date >= start_date)
@@ -67,7 +67,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                 date=row.date,
                 description=row.description or "",
                 lines=lines,
-                is_deleted=bool(row.is_deleted),
+                is_deleted=row.is_deleted,
                 deleted_at=row.deleted_at,
                 counterparty=row.counterparty,
                 invoice_number=row.invoice_number,
@@ -83,7 +83,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         stmt_ids = select(TransactionLineTable.transaction_id).join(TransactionTable).where(TransactionLineTable.account_id == account_id)
         
         if not include_deleted:
-            stmt_ids = stmt_ids.where(TransactionTable.is_deleted == 0)
+            stmt_ids = stmt_ids.where(TransactionTable.is_deleted.is_(False))
 
         stmt_ids = stmt_ids.distinct()
         
@@ -125,7 +125,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                 date=row.date,
                 description=row.description or "",
                 lines=lines,
-                is_deleted=bool(row.is_deleted),
+                is_deleted=row.is_deleted,
                 deleted_at=row.deleted_at,
                 counterparty=row.counterparty,
                 invoice_number=row.invoice_number,
@@ -138,7 +138,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         db_tx = TransactionTable(
             date=transaction.date,
             description=transaction.description,
-            is_deleted=0,
+            is_deleted=False,
             counterparty=transaction.counterparty,
             invoice_number=transaction.invoice_number,
             evidence_path=transaction.evidence_path
@@ -203,7 +203,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         result = await self.session.execute(stmt)
         db_tx = result.scalar_one_or_none()
         if db_tx:
-            db_tx.is_deleted = 1
+            db_tx.is_deleted = True
             db_tx.deleted_at = datetime.now()
             await self.session.commit()
             return True
@@ -232,7 +232,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             .join(TransactionTable, TransactionTable.id == TransactionLineTable.transaction_id)
             .where(TransactionTable.date >= fy.start_date)
             .where(TransactionTable.date <= fy.end_date)
-            .where(TransactionTable.is_deleted == 0)
+            .where(TransactionTable.is_deleted.is_(False))
             .group_by(TransactionLineTable.account_id)
         )
         

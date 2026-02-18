@@ -85,7 +85,7 @@ Notes:
                 try:
                     # Run async
                     response = await client.aio.models.generate_content(
-                        model="gemini-3-flash-preview", 
+                        model="gemini-2.5-flash-lite", 
                         contents=[
                             types.Content(
                                 role="user",

@@ -1,0 +1,44 @@
+[project]
+name = "sten-f"
+version = "1.0.0"
+description = "STEN-F: Simple Tough Effective Next-generation Finance app"
+authors = [
+    {name = "Botti LLC", email = "botti@example.com"},
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "reflex>=0.6.8",
+    "sqlalchemy>=2.0.38",
+    "aiosqlite>=0.21.0",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.8.0",
+    "python-dotenv>=1.0.1",
+    "google-genai>=1.2.0",
+    "openai>=1.63.2",
+    "structlog>=25.1.0",
+    "aiofiles>=24.1.0",
+    "reportlab>=4.3.1",
+    "alembic>=1.14.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
+    "black>=25.1.0",
+    "isort>=6.0.0",
+    "mypy>=1.15.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --asyncio-mode=auto"
+testpaths = [
+    "tests",
+]
+python_files = ["test_*.py", "*_test.py"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
