@@ -62,6 +62,10 @@ DEFAULT_ACCOUNTS = [
     {"code": "7520", "name": "創立費償却", "type": AccountType.NON_OPERATING_EXPENSE, "description": "創立費の償却"},
     {"code": "7530", "name": "開業費償却", "type": AccountType.NON_OPERATING_EXPENSE, "description": "開業費の償却"},
 
-    # 5. 法人税等
+
+    # 5. 純資産 (Equity)
+    {"code": "3110", "name": "資本金", "type": AccountType.EQUITY, "description": "設立時の出資額"},
+    {"code": "3120", "name": "繰越利益剰余金", "type": AccountType.EQUITY, "description": "過去の利益の蓄積"},
+
     {"code": "9110", "name": "法人税、住民税及び事業税", "type": AccountType.TAXES, "description": "法人税、住民税及び事業税"},
 ]

@@ -56,6 +56,13 @@ class Container:
         from infrastructure.external.backup_service import BackupService
         return BackupService()
 
+    async def get_fiscal_year_service(self):
+        from application.services.fiscal_year_service import FiscalYearService
+        master = await self.get_master_service()
+        ledger = await self.get_ledger_service()
+        journal = await self.get_journal_service()
+        return FiscalYearService(master, ledger, journal)
+
     async def shutdown(self):
         for session in self._sessions:
             await session.close()

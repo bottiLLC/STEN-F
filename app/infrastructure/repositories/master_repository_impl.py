@@ -55,6 +55,12 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         result = await self.session.execute(stmt)
         return [FiscalYear.model_validate(r) for r in result.scalars().all()]
 
+    async def get_fiscal_year(self, fy_id: int) -> Optional[FiscalYear]:
+        stmt = select(FiscalYearTable).where(FiscalYearTable.id == fy_id)
+        result = await self.session.execute(stmt)
+        row = result.scalar_one_or_none()
+        return FiscalYear.model_validate(row) if row else None
+
     async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
         # Simplistic save (update if ID exists, else insert)
         if fy.id:

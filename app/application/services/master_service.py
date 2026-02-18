@@ -27,10 +27,14 @@ class MasterService:
     async def get_fiscal_years(self) -> list[FiscalYear]:
         return await self.repository.get_fiscal_years()
 
+    async def get_fiscal_year_by_id(self, fy_id: int) -> FiscalYear:
+        return await self.repository.get_fiscal_year(fy_id)
+
     async def save_fiscal_year(self, fy: FiscalYear):
         self.log.info("Saving Fiscal Year", name=fy.name, period=fy.period_number)
-        await self.repository.save_fiscal_year(fy)
+        saved = await self.repository.save_fiscal_year(fy)
         self.log.info("Fiscal Year saved")
+        return saved
 
     async def create_fiscal_year(self, fy: FiscalYear):
         return await self.save_fiscal_year(fy)

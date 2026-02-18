@@ -17,6 +17,9 @@ class IMasterRepository(ABC):
     # Fiscal Year
     @abstractmethod
     async def get_fiscal_years(self) -> List[FiscalYear]: pass
+
+    @abstractmethod
+    async def get_fiscal_year(self, fy_id: int) -> Optional[FiscalYear]: pass
     
     # Counterparty
     @abstractmethod
