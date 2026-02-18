@@ -17,7 +17,7 @@ class GoogleOCRService:
         load_dotenv()
         self.api_key = os.getenv("GOOGLE_API_KEY")
 
-    async def extract_receipt_data(self, file_bytes: bytes, file_type: str, account_list: list[str] = None) -> Optional[ReceiptData]:
+    async def extract_receipt_data(self, file_bytes: bytes, file_type: str, account_list: list[str] = None, counterparty_list: list[str] = None) -> Optional[ReceiptData]:
         if not self.api_key:
             print("ERROR: GOOGLE_API_KEY not found.")
             return None
@@ -37,9 +37,11 @@ class GoogleOCRService:
                 import fitz # PyMuPDF
                 doc = fitz.open(stream=file_bytes, filetype="pdf")
                 page = doc.load_page(0) 
-                pix = page.get_pixmap(dpi=300)
-                img_bytes = pix.tobytes("png")
-                image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+                # Optimization: 200 dpi is better for small fonts
+                pix = page.get_pixmap(dpi=200)
+                # Optimization: Use JPEG for smaller payload
+                img_bytes = pix.tobytes("jpg")
+                image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
             except ImportError:
                 print("PyMuPDF not installed")
                 return None
@@ -48,14 +50,25 @@ class GoogleOCRService:
                 return None
         else:
             image_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
+
+        # Format counterparty list for prompt
+        cp_list_str = ""
+        if counterparty_list:
+             cp_list_str = "\n".join([f"- {cp}" for cp in counterparty_list])
             
-        sys_instruct = """
+        sys_instruct = f"""
 You are an expert AI assistant specialized in accounting and OCR data extraction. Your task is to extract specific financial information from the provided image of a receipt.
 
 Please analyze the receipt and extract the following information into a valid JSON object. Do not include any markdown formatting (like ```json) in your response, just the raw JSON string.
 
+### Registered Counterparty List
+The user has registered the following counterparties. If the merchant name on the receipt matches or resembles one of these, please use the EXACT name from this list for "merchant_name".
+{cp_list_str}
+
 Extract the following fields:
-1. **merchant_name**: The name of the store or vendor.
+1. **merchant_name**: The name of the store or vendor. 
+   - **PRIORITY 1**: If a match is found in the Registered Counterparty List above, use that exact name.
+   - **PRIORITY 2**: If no match, extract the name from the receipt. If it contains a corporate status (e.g., 株式会社, 合同会社, 有限会社), prioritize including it (e.g., prefer "株式会社セブンイレブン" over "セブンイレブン").
 2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD). If the year is omitted, assume the current year or infer from context if possible.
 3. **total_amount_incl_tax**: The total amount paid including tax (integer).
 4. **invoice_registration_number**: The qualified invoice issuer registration number (e.g., T1234567890123). If not found, return null.
@@ -77,7 +90,8 @@ Notes:
         import random
 
         max_retries = 3
-        base_delay = 1.0
+        # Optimization: Faster retry for Gemini 2.5
+        base_delay = 0.5
 
         client = genai.Client(api_key=self.api_key)
         try:

@@ -336,8 +336,14 @@ class JournalState(rx.State):
                 # Prepare account list for OCR context
                 acc_options = [f"{a.code}: {a.name}" for a in self.accounts]
                 
+                # Prepare counterparty list for OCR context
+                cp_options = []
+                async with DI.get_master_service() as service:
+                     cps = await service.get_counterparties()
+                     cp_options = [c.name for c in cps]
+
                 # Call OCR
-                receipt_data = await ocr_service.extract_receipt_data(upload_data, file_type, acc_options)
+                receipt_data = await ocr_service.extract_receipt_data(upload_data, file_type, acc_options, cp_options)
                 
                 if receipt_data:
                     await self._apply_ocr_result(receipt_data)
