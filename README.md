@@ -1,19 +1,19 @@
 [![CI](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml/badge.svg)](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml)
 
-# STEN-F 
+# STEN-F (Phoenix Protocol)
 
 ![Compliance](https://img.shields.io/badge/Compliance-Dencho_Act_%26_Invoice_System-blue)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/Python-3.13+-yellow.svg)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.42+-red.svg)](https://streamlit.io/)
+[![Reflex](https://img.shields.io/badge/Reflex-0.6.7+-bf40bf.svg)](https://reflex.dev/)
 
 **STEN-F** は、既存のクラウド会計ソフト（SaaS）による「データの囲い込み」と「貧相な日本のDX」からベンチャー企業を救うべく開発された、エンジニア主導の経理・会計アプリケーションです。
 
-Python (Streamlit) をベースに構築されており、仕訳入力から決算書の作成までをシンプルかつ効率的に行えます。
+**Pure Python Web Framework (Reflex)** をベースに構築されており、仕訳入力から決算書の作成までをシンプルかつ効率的に行えます。
 データは全てローカル（または自前の管理下）にあるSQLiteに保存され、あなたがその所有権を完全に掌握できます。
 
-本バージョン(v1.0.0)では、モダンなアーキテクチャ（Clean Architecture, Async, Pydantic V2）を全面的に採用し、保守性と拡張性を大幅に向上させました。ハックして自分好みに改造してください。
+本バージョン(v2.0.0 - Phoenix Protocol)では、モダンなアーキテクチャ（**Clean Architecture**, **Async/Await**, **Pydantic V2**, **Reflex**）を全面的に採用し、保守性と拡張性を大幅に向上させました。ハックして自分好みに改造してください。
 
 ## Philosophy (行動指針)
 0.  **This is your Stengun.** これはステンガンだ。シンプルでタフな勝つための武器だ。（[ステン短機関銃](https://ja.wikipedia.org/wiki/%E3%82%B9%E3%83%86%E3%83%B3%E7%9F%AD%E6%A9%9F%E9%96%A2%E9%8A%83)）
@@ -28,33 +28,32 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 *   **電子帳簿保存法 & インボイス制度対応**:
     *   **論理削除 (Soft Delete)**: 仕訳の修正・削除履歴を完全に保持し、監査証跡を残します。
     *   **T番号管理**: 取引先ごとの適格請求書発行事業者登録番号（T番号）を管理。
-    *   **証憑保存**: レシートや請求書のPDF/画像を取引に紐づけて保存可能。
-*   **洗練されたマスタ管理 (Refined Account Management)**:
-    *   **常時表示のエディタ**: 編集フォームが常に表示され、煩わしいモーダル遷移を排除。
-    *   **プリセット勘定科目**: 貸借対照表（BS）および損益計算書（PL）の標準的な勘定科目をプリセット済み。
+    *   **証憑保存**: レシートや請求書のPDF/画像を取引に紐づけて保存可能（非同期保存）。
+*   **洗練されたマスタ管理**:
+    *   編集フォームが常に表示され、煩わしいモーダル遷移を排除。
     *   法人情報、会計年度、取引先も柔軟に管理可能。
 *   **レポート機能**:
-    *   合計残高試算表
+    *   合計残高試算表 (Trial Balance)
     *   財務諸表（貸借対照表、損益計算書）
     *   総勘定元帳（ドリルダウン可能）
 *   **決算報告書出力**: 監査にも対応可能な形式のPDF決算報告書をワンクリックで生成。
 *   **AI OCR (Beta)**:
-    *   Google Gemini 2.5 Flash Lite を採用。
-    *   **JSON Schema Validation**: 厳格なスキーマ検証により、LLMのハルシネーションを抑制。
+    *   **Google Gemini 2.5 Flash Lite** を採用（高速・低コスト）。
+    *   **Smart Counterparty Matching**: OCR結果の店舗名をマスタ登録済みの取引先と自動照合。
     *   **Nested Tax Breakdown**: 複雑な税区分（8%/10%の混在など）も正確に構造化して読み取り。
-    *   レシートの自動読み取り、T番号の抽出、勘定科目の提案。
-    *   法人格（株式会社など）の自動略称変換機能（例: 株式会社→(株)）。
+    *   **Async Processing**: 非同期処理により、アップロード中もUIがフリーズしません。
 *   **完全日本語対応**: UIおよび出力帳票は全て日本語にローカライズ済み。
 
 ## 技術スタック
 
 *   **言語**: Python 3.13+
-*   **フレームワーク**: Streamlit (Web UI)
-*   **データベース**: SQLite (via SQLAlchemy 2.0 Async + aiosqlite)
+*   **UIフレームワーク**: **Reflex** (Pure Python Web App)
+*   **データベース**: SQLite (via **SQLAlchemy 2.0 Async** + aiosqlite)
 *   **AI/LLM**: Google GenAI SDK (Gemini 2.5 Flash Lite)
-*   **データ検証**: Pydantic V2
+*   **データ検証**: **Pydantic V2** (Strict Config)
+*   **非同期I/O**: aiofiles
 *   **PDF生成**: ReportLab
-*   **テスト**: Pytest + Asyncio
+*   **テスト**: Pytest + Asyncio + AsyncExitStack
 *   **アーキテクチャ**: Clean Architecture (Layered Architecture) with Dependency Injection
 
 ## ディレクトリ構造
@@ -62,16 +61,15 @@ Python (Streamlit) をベースに構築されており、仕訳入力から決�
 ```text
 STEN-F/
 ├── app/
-│   ├── application/        # アプリケーションロジック（Service層）
-│   ├── domain/             # ドメインモデル・インターフェース
-│   ├── infrastructure/     # DB接続、外部API（PDF, Gemini等）、リポジトリ実装
-│   ├── presentation/       # UI層 (Page, Component)
-│   ├── scripts/            # ユーティリティスクリプト
+│   ├── app.py              # Reflex Entry Point
+│   ├── domain/             # ドメインモデル (Pydantic V2)・リポジトリIF
+│   ├── infrastructure/     # インフラ層 (DB接続, Gemini, FileSystem, Repo実装)
+│   ├── application/        # アプリケーションロジック (Async Service)
+│   ├── ui/                 # UI層 (Reflex Pages, Components, State)
 │   ├── config.py           # 設定ファイル
-│   ├── container.py        # DIコンテナ
-│   └── main.py             # アプリケーションエントリーポイント
-├── tests/                  # テストコード (Pytest)
-├── bookeeping.db           # データベースファイル（初回起動時に自動生成）
+│   └── container.py        # DIコンテナ (Scoped Session Management)
+├── tests/                  # テストコード (Pytest Async)
+├── bookkeeping.db           # データベースファイル
 ├── pytest.ini              # テスト設定ファイル
 ├── requirements.txt        # 依存ライブラリ
 └── README.md               # 本ファイル
@@ -108,13 +106,13 @@ DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 以下のコマンドでアプリケーションを起動します。
 
 ```bash
-streamlit run app/main.py
+reflex run
 ```
 
-ブラウザが自動的に開き、アプリケーションが表示されます。
+ブラウザが自動的に開き、アプリケーションが表示されます (`http://localhost:3000`)。
 
 ### 5. テスト実行
-開発時は以下のコマンドでテストを実行し、品質を担保します。
+品質担保のため、以下のコマンドで非同期テストを実行できます。
 
 ```bash
 pytest
