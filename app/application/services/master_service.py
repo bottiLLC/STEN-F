@@ -104,3 +104,40 @@ class MasterService:
         saved = await self.repository.save_counterparty(counterparty)
         self.log.info("Counterparty saved")
         return saved
+
+    # Common legal entity strings (Kana) to remove for sorting
+    LEGAL_ENTITY_KANA = [
+        "カブシキガイシャ", "カブシキカイシャ", "カ）", "（カ", 
+        "ユウゲンガイシャ", "ユウゲンカイシャ", "ユ）", "（ユ",
+        "ゴウドウガイシャ", "ド）", "（ド",
+        "イッパンシャダンホウジン",
+        "コウエキシャダンホウジン",
+        "ガッコウホウジン",
+        "シュウキョウホウジン",
+        "イリョウホウジン",
+        "シャカイフクシホウジン",
+        "トクテイヒエイリカツドウホウジン", # NPO
+        "　", " " # Spaces
+    ]
+
+    async def get_counterparties(self) -> list[Counterparty]:
+        cps = await self.repository.get_counterparties()
+        
+        def sort_key(cp: Counterparty):
+            # 1. Use kana if available, else name
+            key = cp.name_kana if cp.name_kana else cp.name
+            
+            # 2. Normalize: Remove common legal entity strings
+            for word in self.LEGAL_ENTITY_KANA:
+                key = key.replace(word, "")
+                
+            return key
+
+        # Python's sort is stable
+        cps.sort(key=sort_key)
+        return cps
+
+    async def delete_counterparty(self, cp_id: int):
+        self.log.info("Deleting Counterparty", cp_id=cp_id)
+        await self.repository.delete_counterparty(cp_id)
+        self.log.info("Counterparty deleted")

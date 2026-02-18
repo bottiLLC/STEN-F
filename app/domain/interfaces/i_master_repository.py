@@ -4,6 +4,7 @@ from domain.models.corporation import Corporation
 from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
+from domain.models.counterparty import Counterparty
 
 class IMasterRepository(ABC):
     # Corporation
@@ -16,6 +17,16 @@ class IMasterRepository(ABC):
     # Fiscal Year
     @abstractmethod
     async def get_fiscal_years(self) -> List[FiscalYear]: pass
+    
+    # Counterparty
+    @abstractmethod
+    async def save_counterparty(self, counterparty: Counterparty) -> Counterparty: pass
+    
+    @abstractmethod
+    async def get_counterparties(self) -> List[Counterparty]: pass
+    
+    @abstractmethod
+    async def delete_counterparty(self, cp_id: int) -> bool: pass
     
     @abstractmethod
     async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear: pass

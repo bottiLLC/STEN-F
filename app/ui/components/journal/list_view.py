@@ -36,7 +36,8 @@ def render_journal_list() -> rx.Component:
             width="100%",
             align_items="center",
             spacing="3",
-            padding_bottom="4"
+            padding_bottom="4",
+            padding_top="1em"
         ),
         rx.vstack(
             rx.foreach(
@@ -50,8 +51,8 @@ def render_journal_list() -> rx.Component:
                              rx.text(t.description, weight="bold", size="4"),
                              rx.spacer(),
                              rx.cond(
+                                 t.deleted_at,
                                  rx.badge("削除済", color_scheme="red", variant="solid"),
-                                 rx.badge("有効", color_scheme="green", variant="outline"),
                              ),
                              rx.text(f"ID: {t.id}", size="1", color="gray", width="50px", text_align="right"),
                              width="100%",
@@ -66,6 +67,16 @@ def render_journal_list() -> rx.Component:
                              rx.text(f"登録番号: {t.invoice_number}", size="2", color="gray"),
                              rx.spacer(),
                              rx.cond(
+                                 t.evidence_path,
+                                 rx.button(
+                                     rx.icon("file-text", size=16),
+                                     "証憑",
+                                     size="1",
+                                     variant="soft",
+                                     on_click=lambda: JournalState.download_evidence(t.id)
+                                 )
+                             ),
+                             rx.cond(
                                  t.deleted_at,
                                  rx.text(f"削除日時: {t.deleted_at}", size="2", color="red"),
                                  rx.button(
@@ -78,7 +89,9 @@ def render_journal_list() -> rx.Component:
                                  )
                              ),
                              width="100%",
-                             padding_y="3"
+                             padding_y="3",
+                             align_items="center",
+                             spacing="3"
                         ),
                         # Lines Table
                         rx.table.root(
@@ -105,7 +118,7 @@ def render_journal_list() -> rx.Component:
                             margin_top="2"
                         ),
                         
-                        padding="6",
+                        padding="2rem",
                         border="1px solid #e0e0e0",
                         border_radius="12px",
                         bg="white",
@@ -118,7 +131,7 @@ def render_journal_list() -> rx.Component:
                 )
             ),
             width="100%",
-            spacing="8"
+            spacing="3"
         ),
         spacing="6",
         width="100%"

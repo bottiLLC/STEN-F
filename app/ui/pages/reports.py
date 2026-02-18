@@ -30,19 +30,23 @@ def reports_page() -> rx.Component:
                 ),
                 rx.tabs.content(
                     render_trial_balance_tab(),
-                    value="tb"
+                    value="tb",
+                    padding_top="1em"
                 ),
                 rx.tabs.content(
                     render_financial_statements_tab(),
-                    value="fs"
+                    value="fs",
+                    padding_top="1em"
                 ),
                 rx.tabs.content(
                     render_general_ledger_tab(),
-                    value="gl"
+                    value="gl",
+                    padding_top="1em"
                 ),
                 rx.tabs.content(
                     render_pdf_export_tab(),
-                    value="pdf"
+                    value="pdf",
+                    padding_top="1em"
                 ),
                 default_value="tb",
             ),

@@ -10,7 +10,8 @@ def render_journal_input() -> rx.Component:
         rx.divider(),
 
         # Top Form
-        rx.hstack(
+        rx.vstack(
+            # Row 1: Date
             rx.vstack(
                 rx.text("取引日", weight="bold"),
                 rx.input(
@@ -20,57 +21,65 @@ def render_journal_input() -> rx.Component:
                     width="150px"
                 ),
             ),
-            rx.vstack(
-                rx.text("摘要", weight="bold"),
-                # Abstract Helper Select
-                rx.select.root(
-                    rx.select.trigger(placeholder="よく使う摘要...", width="400px"),
-                    rx.select.content(
-                         rx.select.group(
-                             rx.foreach(
-                                 JournalState.abstract_suggestions,
-                                 lambda s: rx.select.item(s, value=s)
+            
+            # Row 2: Description, Counterparty, Invoice
+            rx.hstack(
+                rx.vstack(
+                    rx.text("摘要", weight="bold"),
+                    # Abstract Helper Select
+                    rx.select.root(
+                        rx.select.trigger(placeholder="よく使う摘要...", width="400px"),
+                        rx.select.content(
+                             rx.select.group(
+                                 rx.foreach(
+                                     JournalState.abstract_suggestions,
+                                     lambda s: rx.select.item(s, value=s)
+                                 )
                              )
-                         )
+                        ),
+                        value=JournalState.description,
+                        on_change=JournalState.set_description,
                     ),
-                    value=JournalState.description,
-                    on_change=JournalState.set_description,
-                ),
-                rx.input(
-                    placeholder="取引内容を入力...",
-                    value=JournalState.description,
-                    on_change=JournalState.set_description,
-                    width="400px",
-                    list="abstract_suggestions_list" 
-                ),
-                rx.el.datalist(
-                    rx.foreach(
-                        JournalState.abstract_suggestions,
-                        lambda s: rx.el.option(value=s)
+                    rx.input(
+                        placeholder="取引内容を入力...",
+                        value=JournalState.description,
+                        on_change=JournalState.set_description,
+                        width="400px",
+                        list="abstract_suggestions_list" 
                     ),
-                    id="abstract_suggestions_list"
+                    rx.el.datalist(
+                        rx.foreach(
+                            JournalState.abstract_suggestions,
+                            lambda s: rx.el.option(value=s)
+                        ),
+                        id="abstract_suggestions_list"
+                    ),
                 ),
-            ),
-            rx.vstack(
-                rx.text("取引先", weight="bold"),
-                rx.input(
-                    placeholder="取引先名...",
-                    value=JournalState.counterparty,
-                    on_change=JournalState.set_counterparty,
-                    width="200px"
+                rx.vstack(
+                    rx.text("取引先", weight="bold"),
+                    rx.input(
+                        placeholder="取引先名...",
+                        value=JournalState.counterparty,
+                        on_change=JournalState.set_counterparty,
+                        width="200px"
+                    ),
                 ),
-            ),
-            rx.vstack(
-                rx.text("登録番号", weight="bold"),
-                rx.input(
-                     placeholder="T + 13桁の半角数字",
-                     value=JournalState.invoice_number,
-                     on_change=JournalState.set_invoice_number,
-                     width="200px"
+                rx.vstack(
+                    rx.text("登録番号", weight="bold"),
+                    rx.input(
+                         placeholder="T + 13桁の半角数字",
+                         value=JournalState.invoice_number,
+                         on_change=JournalState.set_invoice_number,
+                         width="200px"
+                    ),
                 ),
+                spacing="4",
+                align_items="end",
+                width="100%"
             ),
             spacing="4",
-            align_items="end"
+            align_items="start",
+            width="100%"
         ),
         
         rx.divider(),
@@ -115,6 +124,7 @@ def render_journal_input() -> rx.Component:
                         disabled=JournalState.lines.length() <= 1
                     ),
                     width="100%",
+                    align_items="center",
                 )
             ),
             width="100%",

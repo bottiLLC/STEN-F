@@ -149,8 +149,16 @@ class SQLAlchemyMasterRepository(IMasterRepository):
 
     async def save_abstract(self, abstract: Abstract) -> Abstract:
         if abstract.id:
-            # Update logic
-            pass # Skip for brevity unless needed immediately
+            stmt = select(AbstractTable).where(AbstractTable.id == abstract.id)
+            result = await self.session.execute(stmt)
+            existing = result.scalar_one_or_none()
+            
+            if existing:
+                existing.account_id = abstract.account_id
+                existing.text = abstract.text
+                await self.session.commit()
+                await self.session.refresh(existing)
+                return Abstract.model_validate(existing)
             
         new_abs = AbstractTable(
             account_id=abstract.account_id,
@@ -158,29 +166,38 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         )
         self.session.add(new_abs)
         await self.session.commit()
+        await self.session.refresh(new_abs)
         return Abstract.model_validate(new_abs)
 
     # --- Counterparty ---
     async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
-        # Check by invoice_number if present, otherwise by name
         existing = None
         
-        if counterparty.invoice_number:
-            stmt = select(CounterpartyTable).where(CounterpartyTable.invoice_number == counterparty.invoice_number)
+        # 1. Check by ID if provided (Update Mode)
+        if counterparty.id:
+            stmt = select(CounterpartyTable).where(CounterpartyTable.id == counterparty.id)
             result = await self.session.execute(stmt)
             existing = result.scalar_one_or_none()
             
-
+        # 2. If no ID (or not found), Check for Duplicates (Insert Mode)
+        else:
+            # Check by invoice_number if present
+            if counterparty.invoice_number:
+                stmt = select(CounterpartyTable).where(CounterpartyTable.invoice_number == counterparty.invoice_number)
+                result = await self.session.execute(stmt)
+                existing = result.scalar_one_or_none()
             
-        if not existing and counterparty.name:
-            stmt = select(CounterpartyTable).where(CounterpartyTable.name == counterparty.name)
-            result = await self.session.execute(stmt)
-            existing = result.scalar_one_or_none()
+            # Check by name if still not found
+            if not existing and counterparty.name:
+                stmt = select(CounterpartyTable).where(CounterpartyTable.name == counterparty.name)
+                result = await self.session.execute(stmt)
+                existing = result.scalar_one_or_none()
             
         if existing:
             existing.name = counterparty.name
             existing.name_kana = counterparty.name_kana
-            existing.invoice_number = counterparty.invoice_number
+            # Handle empty string as None for invoice
+            existing.invoice_number = counterparty.invoice_number if counterparty.invoice_number else None
             existing.default_account_type = counterparty.default_account_type
             
             await self.session.commit()
@@ -190,10 +207,24 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             new_cp = CounterpartyTable(
                 name=counterparty.name,
                 name_kana=counterparty.name_kana,
-                invoice_number=counterparty.invoice_number,
+                invoice_number=counterparty.invoice_number if counterparty.invoice_number else None,
                 default_account_type=counterparty.default_account_type
             )
             self.session.add(new_cp)
             await self.session.commit()
             await self.session.refresh(new_cp)
-            return Counterparty.model_validate(new_cp)
+
+    async def get_counterparties(self) -> List[Counterparty]:
+        stmt = select(CounterpartyTable).order_by(CounterpartyTable.name)
+        result = await self.session.execute(stmt)
+        return [Counterparty.model_validate(r) for r in result.scalars().all()]
+
+    async def delete_counterparty(self, cp_id: int) -> bool:
+        stmt = select(CounterpartyTable).where(CounterpartyTable.id == cp_id)
+        result = await self.session.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            await self.session.delete(existing)
+            await self.session.commit()
+            return True
+        return False

@@ -34,8 +34,5 @@ def render_pdf_export_tab() -> rx.Component:
         ),
         
         spacing="5",
-        padding="2em",
-        border="1px solid #eaeaea",
-        border_radius="8px",
         width="100%"
     )

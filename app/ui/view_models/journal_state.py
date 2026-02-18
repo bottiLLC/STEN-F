@@ -151,12 +151,25 @@ class JournalState(rx.State):
 
         try:
              async with DI.get_journal_service() as service:
-                 await service.add_journal_entry(transaction)
+                 if self._uploaded_file_data:
+                     # Use service with evidence
+                     file_service = DI.get_file_service()
+                     await service.add_journal_entry_with_evidence(
+                         transaction, 
+                         self._uploaded_file_data, 
+                         file_service
+                     )
+                 else:
+                     await service.add_journal_entry(transaction)
              
              self.description = ""
              self.counterparty = ""
              self.invoice_number = ""
              self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
+             # Clear file state
+             self._uploaded_file_data = None
+             self._uploaded_filename = None
+             
              await self.load_entries()
              return rx.window_alert("登録しました！")
              
@@ -216,6 +229,26 @@ class JournalState(rx.State):
             except Exception as e:
                 return rx.window_alert(f"Export Error: {e}")
 
+    async def download_evidence(self, entry_id: int):
+        """Download evidence file for a transaction."""
+        # Find the entry
+        entry = next((e for e in self.journal_entries if e.id == entry_id), None)
+        if not entry or not entry.evidence_path:
+             return rx.window_alert("証憑ファイルが見つかりません。")
+        
+        import os
+        if not os.path.exists(entry.evidence_path):
+             return rx.window_alert("指定されたファイルがサーバー上に存在しません。")
+             
+        try:
+            with open(entry.evidence_path, "rb") as f:
+                data = f.read()
+                
+            filename = os.path.basename(entry.evidence_path)
+            return rx.download(data=data, filename=filename)
+        except Exception as e:
+            return rx.window_alert(f"ダウンロードエラー: {e}")
+
     @rx.var
     def abstract_suggestions(self) -> List[str]:
         """Generate abstract suggestions based on selected accounts."""
@@ -251,6 +284,10 @@ class JournalState(rx.State):
     # --- OCR Functionality ---
     is_analyzing: bool = False
     uploaded_files: List[str] = []
+    
+    # Internal storage for file to be saved on submit
+    _uploaded_file_data: Optional[bytes] = None
+    _uploaded_filename: Optional[str] = None
 
     async def handle_upload(self, files: List[rx.UploadFile]):
         """Handle file upload for OCR."""
@@ -261,6 +298,10 @@ class JournalState(rx.State):
             for file in files:
                 upload_data = await file.read()
                 file_type = file.filename.split('.')[-1]
+                
+                # Store for later saving
+                self._uploaded_file_data = upload_data
+                self._uploaded_filename = file.filename
                 
                 # Get OCR Service
                 ocr_service = DI.get_ocr_service()

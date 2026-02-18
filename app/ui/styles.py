@@ -43,3 +43,11 @@ heading_style = {
     "font_weight": "700",
     "color": text_color,
 }
+
+master_form_style = {
+    "padding": "1.5em",
+    "border": "1px solid #e0e0e0",
+    "border_radius": "8px",
+    "width": "100%",
+    "background_color": "transparent",
+}

@@ -1,5 +1,6 @@
 import reflex as rx
-from ...view_models.master_state import MasterState
+from ...view_models.master_states.fiscal_year_state import FiscalYearState
+from app.ui.styles import master_form_style
 
 def render_fiscal_year_tab() -> rx.Component:
     return rx.vstack(
@@ -16,7 +17,7 @@ def render_fiscal_year_tab() -> rx.Component:
             ),
             rx.table.body(
                 rx.foreach(
-                    MasterState.fiscal_years,
+                    FiscalYearState.fiscal_years,
                     lambda fy: rx.table.row(
                         rx.table.cell(fy.period_number),
                         rx.table.cell(fy.name),
@@ -27,7 +28,7 @@ def render_fiscal_year_tab() -> rx.Component:
                                 rx.icon("trash-2", size=16),
                                 color_scheme="red", 
                                 variant="ghost",
-                                on_click=lambda: MasterState.delete_fiscal_year(fy.id)
+                                on_click=lambda: FiscalYearState.delete_fiscal_year(fy.id)
                             )
                         ),
                     )
@@ -41,37 +42,34 @@ def render_fiscal_year_tab() -> rx.Component:
             rx.hstack(
                 rx.vstack(
                     rx.text("年度名 (例: 第10期)"),
-                    rx.input(value=MasterState.new_fy_name, on_change=MasterState.set_new_fy_name)
+                    rx.input(value=FiscalYearState.new_fy_name, on_change=FiscalYearState.set_new_fy_name)
                 ),
                 rx.vstack(
                     rx.text("期数"),
-                    rx.input(value=MasterState.new_fy_period, on_change=MasterState.set_new_fy_period, type="number")
+                    rx.input(value=FiscalYearState.new_fy_period, on_change=FiscalYearState.set_new_fy_period, type="number")
                 ),
             ),
             rx.hstack(
                 rx.vstack(
                     rx.text("開始日"),
-                    rx.input(value=MasterState.new_fy_start, on_change=MasterState.set_new_fy_start, type="date")
+                    rx.input(value=FiscalYearState.new_fy_start, on_change=FiscalYearState.set_new_fy_start, type="date")
                 ),
                 rx.vstack(
                     rx.text("終了日"),
-                    rx.input(value=MasterState.new_fy_end, on_change=MasterState.set_new_fy_end, type="date")
+                    rx.input(value=FiscalYearState.new_fy_end, on_change=FiscalYearState.set_new_fy_end, type="date")
                 ),
                 rx.vstack(
                     rx.text("ステータス"),
                     rx.select(
                         ["OPEN", "CLOSED"], 
-                        value=MasterState.new_fy_status, 
-                        on_change=MasterState.set_new_fy_status
+                        value=FiscalYearState.new_fy_status, 
+                        on_change=FiscalYearState.set_new_fy_status
                     )
                 ),
             ),
-            rx.button("作成する", on_click=MasterState.save_fiscal_year),
+            rx.button("作成する", on_click=FiscalYearState.save_fiscal_year),
             spacing="4",
-            padding="1em",
-            border="1px solid #eaeaea",
-            border_radius="8px",
-            width="100%"
+            **master_form_style
         ),
         spacing="4",
         width="100%"

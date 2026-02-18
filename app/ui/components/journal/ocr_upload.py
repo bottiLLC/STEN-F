@@ -43,6 +43,6 @@ def render_ocr_upload_area() -> rx.Component:
         padding="1em",
         border="1px solid #e0e0e0",
         border_radius="8px",
-        width="100%",
+        width="600px",
         bg="#f8f9fa"
     )
