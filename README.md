@@ -1,6 +1,6 @@
 [![CI](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml/badge.svg)](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml)
 
-# STEN-F (Phoenix Protocol)
+# STEN-F
 
 ![Compliance](https://img.shields.io/badge/Compliance-Dencho_Act_%26_Invoice_System-blue)
 
@@ -39,6 +39,8 @@
 *   **決算報告書出力**: 監査にも対応可能な形式のPDF決算報告書をワンクリックで生成。
 *   **AI OCR (Beta)**:
     *   **Google Gemini 2.5 Flash Lite** を採用（高速・低コスト）。
+    *   **Native PDF Support**: PDFは画像変換せず、Geminiのネイティブ機能で直接解析（高精度）。
+    *   **Smart Image Optimization**: 画像は自動で最適化（最大2000px / 200dpi）し、トークン節約と精度向上を両立。
     *   **Smart Counterparty Matching**: OCR結果の店舗名をマスタ登録済みの取引先と自動照合。
     *   **Nested Tax Breakdown**: 複雑な税区分（8%/10%の混在など）も正確に構造化して読み取り。
     *   **Async Processing**: 非同期処理により、アップロード中もUIがフリーズしません。
