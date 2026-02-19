@@ -184,3 +184,13 @@ class JournalService:
         except Exception as e:
             self.log.error("Failed to export CSV", error=str(e))
             raise
+
+    async def get_frequent_account_ids(self, limit: int = 5) -> list[int]:
+        """
+        Get the defined number of frequently used account IDs.
+        """
+        try:
+            return await self.repository.get_frequent_account_ids(limit)
+        except Exception as e:
+            self.log.error("Failed to fetch frequent accounts", error=str(e))
+            return []

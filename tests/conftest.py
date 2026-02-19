@@ -46,14 +46,14 @@ async def container():
         if not accounts:
             # Cash
             await ms.save_account(Account(
-                code="111", 
+                code="1110", 
                 name="現金", 
                 type=AccountType.CURRENT_ASSET, 
                 description="Cash"
             ))
             # Sales
             await ms.save_account(Account(
-                code="411", 
+                code="4110", 
                 name="売上高", 
                 type=AccountType.REVENUE, 
                 description="Sales"

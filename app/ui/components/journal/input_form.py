@@ -92,10 +92,31 @@ def render_journal_input() -> rx.Component:
                     rx.select.root(
                         rx.select.trigger(placeholder="勘定科目...", width="250px"),
                         rx.select.content(
-                            rx.select.group(
-                                rx.foreach(
-                                    JournalState.account_select_items,
-                                    lambda item: rx.select.item(item[1], value=item[0])
+                            rx.cond(
+                                JournalState.frequent_select_items,
+                                rx.fragment(
+                                    rx.select.group(
+                                        rx.select.label("よく使う科目"),
+                                        rx.foreach(
+                                            JournalState.frequent_select_items,
+                                            lambda item: rx.select.item(item[1], value=item[0])
+                                        )
+                                    ),
+                                    rx.select.separator(),
+                                    rx.select.group(
+                                        rx.select.label("その他の科目"),
+                                        rx.foreach(
+                                            JournalState.other_select_items,
+                                            lambda item: rx.select.item(item[1], value=item[0])
+                                        )
+                                    )
+                                ),
+                                # Fallback if no frequent items (clean state)
+                                rx.select.group(
+                                    rx.foreach(
+                                        JournalState.other_select_items,
+                                        lambda item: rx.select.item(item[1], value=item[0])
+                                    )
                                 )
                             )
                         ),

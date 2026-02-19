@@ -59,8 +59,18 @@ class JournalState(rx.State):
     # Master Data
     accounts: List[Account] = []
     abstracts: List[Abstract] = []  # Added abstracts list
-    # Changed to list of lists for rx.select values [[value, label], ...]
+    
+    # Separation for UI Grouping
+    frequent_accounts: List[Account] = []
+    other_accounts: List[Account] = []
+    
+    # Select Items
+    frequent_select_items: List[List[str]] = []
+    other_select_items: List[List[str]] = []
+    
+    # Legacy/Fallback (All items flat)
     account_select_items: List[List[str]] = [] 
+    
     account_map: Dict[str, str] = {} # Label -> ID
     account_label_map: Dict[int, str] = {} # ID -> Label
 
@@ -69,8 +79,40 @@ class JournalState(rx.State):
         async with DI.get_master_service() as service:
             self.accounts = await service.get_accounts()
             self.abstracts = await service.get_abstracts()
-            # items = [[value, label]]
-            self.account_select_items = [[str(a.id), f"{a.code}: {a.name}"] for a in self.accounts]
+            
+            # 1. Fetch Frequent IDs
+            async with DI.get_journal_service() as j_service:
+                f_ids = await j_service.get_frequent_account_ids(5)
+            
+            # 2. Split Accounts
+            self.frequent_accounts = []
+            self.other_accounts = []
+            
+            # Map for O(1) lookup
+            account_dict = {a.id: a for a in self.accounts}
+            
+            # Populate Frequent (preserving order from DB aggregation)
+            processed_ids = set()
+            for fid in f_ids:
+                if fid in account_dict:
+                    self.frequent_accounts.append(account_dict[fid])
+                    processed_ids.add(fid)
+            
+            # Populate Others
+            for a in self.accounts:
+                if a.id not in processed_ids:
+                    self.other_accounts.append(a)
+                    
+            # 3. Build Select Items
+            def make_item(a):
+                return [str(a.id), f"{a.code}: {a.name}"]
+
+            self.frequent_select_items = [make_item(a) for a in self.frequent_accounts]
+            self.other_select_items = [make_item(a) for a in self.other_accounts]
+            
+            # Legacy/Flat backup
+            self.account_select_items = [make_item(a) for a in self.accounts]
+            
             self.account_map = {f"{a.code}: {a.name}": str(a.id) for a in self.accounts}
             self.account_label_map = {a.id: f"{a.code}: {a.name}" for a in self.accounts}
             

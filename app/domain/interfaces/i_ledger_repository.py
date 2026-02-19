@@ -57,3 +57,8 @@ class ILedgerRepository(ABC):
     async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
         """Update the evidence path for a transaction."""
         pass
+
+    @abstractmethod
+    async def get_frequent_account_ids(self, limit: int = 5) -> List[int]:
+        """Get IDs of frequently used accounts."""
+        pass

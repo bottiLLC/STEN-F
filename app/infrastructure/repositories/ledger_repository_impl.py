@@ -269,3 +269,20 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             # We don't commit here, ensuring atomic transaction with previous add
             return True
         return False
+
+    async def get_frequent_account_ids(self, limit: int = 5) -> List[int]:
+        """
+        Get IDs of frequently used accounts.
+        Based on occurance in TransactionLineTable, associated with non-deleted transactions.
+        """
+        stmt = (
+            select(TransactionLineTable.account_id)
+            .join(TransactionTable, TransactionTable.id == TransactionLineTable.transaction_id)
+            .where(TransactionTable.is_deleted.is_(False))
+            .group_by(TransactionLineTable.account_id)
+            .order_by(func.count(TransactionLineTable.account_id).desc())
+            .limit(limit)
+        )
+        
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
