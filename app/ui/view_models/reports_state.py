@@ -62,14 +62,16 @@ class ReportsState(rx.State):
              if not current_fy:
                   return rx.window_alert("会計年度データが見つかりません。")
 
-             # Generate PDF
+             # Generate PDF (Sync process -> offload to thread)
              pdf_service = DI.get_pdf_service()
              # Convert dates
              from datetime import date
              r_date = date.fromisoformat(self.report_date)
              a_date = date.fromisoformat(self.audit_date)
              
-             pdf_bytes = pdf_service.generate_annual_report(
+             import asyncio
+             pdf_bytes = await asyncio.to_thread(
+                 pdf_service.generate_annual_report,
                  corp, report_obj, current_fy, r_date, a_date
              )
              

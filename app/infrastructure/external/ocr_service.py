@@ -135,14 +135,7 @@ Return ONLY the raw JSON object without markdown formatting.
   "description": "摘要文（例：〇〇代として）"
 }}
 """
-                fallback_response = await client.aio.models.generate_content(
-                    model="gemini-3.1-flash-lite-preview",
-                    contents=[sys_instruct_fallback],
-                    config=types.GenerateContentConfig(
-                        temperature=0.0,
-                        response_mime_type="application/json",
-                    )
-                )
+                fallback_response = await self._call_gemini_fallback(client, sys_instruct_fallback)
                 
                 if fallback_response.text:
                     fallback_data = json.loads(fallback_response.text)
@@ -185,6 +178,17 @@ Return ONLY the raw JSON object without markdown formatting.
             config=types.GenerateContentConfig(
                 temperature=0.0,
                 max_output_tokens=8192,
+                response_mime_type="application/json",
+            )
+        )
+
+    @resilient_api_call(max_retries=3, base_delay=0.5)
+    async def _call_gemini_fallback(self, client, sys_instruct_fallback):
+        return await client.aio.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",
+            contents=[sys_instruct_fallback],
+            config=types.GenerateContentConfig(
+                temperature=0.0,
                 response_mime_type="application/json",
             )
         )
