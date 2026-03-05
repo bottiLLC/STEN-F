@@ -13,8 +13,6 @@
 **Pure Python Web Framework (Reflex)** をベースに構築されており、仕訳入力から決算書の作成までをシンプルかつ効率的に行えます。
 データは全てローカル（または自前の管理下）にあるSQLiteに保存され、あなたがその所有権を完全に掌握できます。
 
-本バージョン(v2.0.0 - Phoenix Protocol)では、コード全域に及ぶ「Zero-Base Refactoring（全面リファクタリング）」を完遂しました。モダンなアーキテクチャ（**Clean Architecture**, **Async/Await**, **Pydantic V2**, **Reflex**）を全面的に採用し、とりわけ巨大化しやすいUI層のコンポーネント分割、および全データモデルへの厳格な検証ルールの適用（`extra='forbid'`）を行っています。保守性と拡張性が極めて高くデザインされていますので、ハックして自分好みに改造してください。
-
 ## Philosophy (行動指針)
 0.  **This is your Stengun.** これはステンガンだ。シンプルでタフな勝つための武器だ。（[ステン短機関銃](https://ja.wikipedia.org/wiki/%E3%82%B9%E3%83%86%E3%83%B3%E7%9F%AD%E6%A9%9F%E9%96%A2%E9%8A%83)）
 1.  **Of course it's free** この程度のもの、当然無料だ。
