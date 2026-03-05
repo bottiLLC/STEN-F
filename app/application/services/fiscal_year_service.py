@@ -1,4 +1,4 @@
-from datetime import timedelta, date
+from datetime import timedelta
 from core.logging import logger
 from domain.models.account import AccountType
 from domain.models.transaction import Transaction, TransactionLine
@@ -52,11 +52,17 @@ class FiscalYearService:
 
             # 3. Prepare Next FY
             next_start = current_fy.end_date + timedelta(days=1)
-            next_end = next_start + timedelta(days=365) # Approximation, logic might need to be exact year ending?
-            # Usually 1 year. 
-            # Date logic: if start is 2025-04-01, end is 2026-03-31.
-            # next_end = date(next_start.year + 1, next_start.month, next_start.day) - timedelta(days=1)
-            next_end = date(next_start.year + 1, next_start.month, next_start.day) - timedelta(days=1)
+            
+            # 安全な翌年算出処理 (うるう年 2月29日決算対策)
+            try:
+                # 平年の場合はそのまま翌年の同月同日を取得
+                next_end_target = next_start.replace(year=next_start.year + 1)
+            except ValueError:
+                # 2月29日のまま平年の翌年を作成しようとすると発生するため、月末日の2月28日にフォールバック
+                next_end_target = next_start.replace(year=next_start.year + 1, month=2, day=28)
+            
+            # 翌年の同日からマイナス1日したものが、次年度終了日
+            next_end = next_end_target - timedelta(days=1)
 
             # Check if next FY exists
             # We need a way to check. `get_fiscal_year_by_date`?
@@ -96,15 +102,24 @@ class FiscalYearService:
             ]]
             
             retained_earnings_account_id = None
-            retained_earnings_row = next((r for r in tb_rows if r.account_code == "3120"), None)
             
-            if retained_earnings_row:
-                retained_earnings_account_id = retained_earnings_row.account_id
-
+            # 動的な繰越利益剰余金の検索
+            # 1. ユーザーの設定によらず「名称」での完全一致を最優先
+            retained_earnings_row = next((r for r in tb_rows if r.account_name == "繰越利益剰余金"), None)
+            
+            # 2. もし名称が変更されていた場合の最後の防波堤としての固定コード「3120」
+            if not retained_earnings_row:
+                 retained_earnings_row = next((r for r in tb_rows if r.account_code == "3120"), None)
+                 
+            # 3. それでも見つからない場合（異なる科目体系など）は安全にシステムエラーで中止
+            if not retained_earnings_row:
+                 raise ValueError("期末処理に必要な必須勘定科目「繰越利益剰余金」が見つかりませんでした。マスタの科目名をご確認ください。")
+                 
+            retained_earnings_account_id = retained_earnings_row.account_id
             retained_earnings_sum = 0
 
             for r in liabs_and_equity:
-                if r.account_code == "3120":
+                if r.account_id == retained_earnings_account_id:
                     retained_earnings_sum += r.balance # Existing RE
                     continue # specific handling later
                 
