@@ -18,13 +18,21 @@ from domain.models.receipt import ReceiptData
 class GoogleOCRService:
     def __init__(self):
         load_dotenv()
-        self.api_key = os.getenv("GOOGLE_API_KEY")
         self.log = logger.bind(service="GoogleOCRService")
 
     async def extract_receipt_data(self, file_bytes: bytes, file_type: str, account_list: list[str] = None, counterparty_list: list[str] = None) -> Optional[ReceiptData]:
-        if not self.api_key:
-            self.log.error("GOOGLE_API_KEY not found.")
-            return None
+        from app.ui.di import DI
+        async with DI.get_master_service() as ms:
+            system_settings = await ms.get_system_settings()
+            api_key = system_settings.openai_api_key
+            
+        # Fallback to .env for backward compatibility / local development
+        if not api_key:
+            api_key = os.getenv("GOOGLE_API_KEY", os.getenv("OPENAI_API_KEY"))
+            
+        if not api_key:
+            self.log.error("API Key not configured.")
+            raise ValueError("システム設定画面からAI連携用のAPIキー（OpenAIまたはGemini）を登録してください。")
             
         # Determine Mime Type
         mime_type = "image/jpeg" # Default
@@ -74,7 +82,7 @@ Extract the following fields into a valid JSON object:
 Return ONLY the raw JSON object without markdown formatting.
 """
         
-        client = genai.Client(api_key=self.api_key)
+        client = genai.Client(api_key=api_key)
         try:
             # Step 1: Raw Extraction
             response = await self._call_gemini_api(client, sys_instruct, image_part)
@@ -156,6 +164,9 @@ Return ONLY the raw JSON object without markdown formatting.
                     
             return self._validate_receipt(receipt)
 
+        except ValueError as e:
+            self.log.error("Configuration Error", error=str(e))
+            raise e
         except Exception as e:
             self.log.error("Failed to extract receipt data", error=str(e), exc_info=True)
             return None

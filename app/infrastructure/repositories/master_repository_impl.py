@@ -9,12 +9,48 @@ from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
+from domain.models.system import SystemSettings
 
-from infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable
+from infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable, SystemTable
 
 class SQLAlchemyMasterRepository(IMasterRepository):
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    # --- System Settings ---
+    async def get_system_settings(self) -> SystemSettings:
+        stmt = select(SystemTable).limit(1)
+        result = await self.session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row:
+            return SystemSettings.model_validate(row)
+        else:
+            # Create default empty settings if not exists
+            new_settings = SystemTable()
+            self.session.add(new_settings)
+            await self.session.commit()
+            await self.session.refresh(new_settings)
+            return SystemSettings.model_validate(new_settings)
+
+    async def save_system_settings(self, settings: SystemSettings) -> SystemSettings:
+        stmt = select(SystemTable).limit(1)
+        result = await self.session.execute(stmt)
+        existing = result.scalar_one_or_none()
+        
+        if existing:
+            existing.openai_api_key = settings.openai_api_key
+            await self.session.commit()
+            await self.session.refresh(existing)
+            return SystemSettings.model_validate(existing)
+        else:
+            new_settings = SystemTable(
+                openai_api_key=settings.openai_api_key
+            )
+            self.session.add(new_settings)
+            await self.session.commit()
+            await self.session.refresh(new_settings)
+            return SystemSettings.model_validate(new_settings)
+
 
     # --- Corporation ---
     async def get_corporation(self) -> Optional[Corporation]:

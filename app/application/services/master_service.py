@@ -5,6 +5,7 @@ from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
+from domain.models.system import SystemSettings
 
 from domain.interfaces.i_ledger_repository import ILedgerRepository
 
@@ -14,6 +15,16 @@ class MasterService:
         self.ledger_repository = ledger_repository
         self.log = logger.bind(service="MasterService")
 
+    # --- System Settings ---
+    async def get_system_settings(self) -> SystemSettings:
+        return await self.repository.get_system_settings()
+
+    async def save_system_settings(self, settings: SystemSettings) -> SystemSettings:
+        self.log.info("Saving System Settings")
+        saved = await self.repository.save_system_settings(settings)
+        self.log.info("System Settings saved")
+        return saved
+        
     # --- Corporation ---
     async def get_corporation(self) -> Corporation:
         return await self.repository.get_corporation()

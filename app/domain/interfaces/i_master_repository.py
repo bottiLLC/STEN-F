@@ -5,8 +5,16 @@ from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
+from domain.models.system import SystemSettings
 
 class IMasterRepository(ABC):
+    # System Settings
+    @abstractmethod
+    async def get_system_settings(self) -> SystemSettings: pass
+    
+    @abstractmethod
+    async def save_system_settings(self, settings: SystemSettings) -> SystemSettings: pass
+
     # Corporation
     @abstractmethod
     async def get_corporation(self) -> Optional[Corporation]: pass

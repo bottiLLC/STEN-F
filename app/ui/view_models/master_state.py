@@ -5,6 +5,7 @@ from .master_states.fiscal_year_state import FiscalYearState
 from .master_states.account_state import AccountState
 from .master_states.abstract_state import AbstractState
 from .master_states.counterparty_state import CounterpartyState
+from .master_states.system_state import SystemState
 from ..di import DI
 
 class MasterState(rx.State):
@@ -43,6 +44,7 @@ class MasterState(rx.State):
             acc_state = await self.get_state(AccountState)
             abs_state = await self.get_state(AbstractState)
             cp_state = await self.get_state(CounterpartyState)
+            sys_state = await self.get_state(SystemState)
             
             # Load Data
             corp_state.corporation = await service.get_corporation()
@@ -52,6 +54,9 @@ class MasterState(rx.State):
             
             # Use specific load method for Counterparty to populate options
             await cp_state.load_counterparties()
+            
+            # Load System Settings
+            await sys_state.load_settings()
             
             # Initialize Forms matches original logic
             if corp_state.corporation:

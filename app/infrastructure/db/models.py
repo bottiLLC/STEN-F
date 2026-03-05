@@ -92,6 +92,12 @@ class TransactionLineTable(Base):
     transaction = relationship("TransactionTable", back_populates="lines")
     account = relationship("AccountTable")
 
+class SystemTable(Base):
+    __tablename__ = 'system_settings'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    openai_api_key = Column(String, nullable=True)
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
