@@ -38,13 +38,13 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         existing = result.scalar_one_or_none()
         
         if existing:
-            existing.openai_api_key = settings.openai_api_key
+            existing.ai_api_key = settings.ai_api_key
             await self.session.commit()
             await self.session.refresh(existing)
             return SystemSettings.model_validate(existing)
         else:
             new_settings = SystemTable(
-                openai_api_key=settings.openai_api_key
+                ai_api_key=settings.ai_api_key
             )
             self.session.add(new_settings)
             await self.session.commit()

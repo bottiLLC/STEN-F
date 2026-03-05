@@ -93,10 +93,10 @@ class TransactionLineTable(Base):
     account = relationship("AccountTable")
 
 class SystemTable(Base):
-    __tablename__ = 'system_settings'
+    __tablename__ = 'system_config'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    openai_api_key = Column(String, nullable=True)
+    ai_api_key = Column(String, nullable=True)
 
 async def init_db():
     async with engine.begin() as conn:

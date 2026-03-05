@@ -24,7 +24,7 @@ class GoogleOCRService:
         from app.ui.di import DI
         async with DI.get_master_service() as ms:
             system_settings = await ms.get_system_settings()
-            api_key = system_settings.openai_api_key
+            api_key = system_settings.ai_api_key
             
         # Fallback to .env for backward compatibility / local development
         if not api_key:
@@ -34,18 +34,7 @@ class GoogleOCRService:
             self.log.error("API Key not configured.")
             raise ValueError("システム設定画面からAI連携用のAPIキー（OpenAIまたはGemini）を登録してください。")
             
-        # Determine Mime Type
-        mime_type = "image/jpeg" # Default
-        if file_type.lower() == "pdf":
-            mime_type = "application/pdf"
-        elif file_type.lower() in ["png", "jpg", "jpeg"]:
-             mime_type = f"image/{file_type.lower()}"
-             if mime_type == "image/jpg": 
-                 mime_type = "image/jpeg"
-
-        image_part = None
-        
-        # Determine basic MIME type first
+        # Determine MIME type first
         mime_type = "image/jpeg" # Default
         if file_type.lower() == "pdf":
             mime_type = "application/pdf"
