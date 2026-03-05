@@ -13,7 +13,7 @@
 **Pure Python Web Framework (Reflex)** をベースに構築されており、仕訳入力から決算書の作成までをシンプルかつ効率的に行えます。
 データは全てローカル（または自前の管理下）にあるSQLiteに保存され、あなたがその所有権を完全に掌握できます。
 
-本バージョン(v2.0.0 - Phoenix Protocol)では、モダンなアーキテクチャ（**Clean Architecture**, **Async/Await**, **Pydantic V2**, **Reflex**）を全面的に採用し、保守性と拡張性を大幅に向上させました。ハックして自分好みに改造してください。
+本バージョン(v2.0.0 - Phoenix Protocol)では、コード全域に及ぶ「Zero-Base Refactoring（全面リファクタリング）」を完遂しました。モダンなアーキテクチャ（**Clean Architecture**, **Async/Await**, **Pydantic V2**, **Reflex**）を全面的に採用し、とりわけ巨大化しやすいUI層のコンポーネント分割、および全データモデルへの厳格な検証ルールの適用（`extra='forbid'`）を行っています。保守性と拡張性が極めて高くデザインされていますので、ハックして自分好みに改造してください。
 
 ## Philosophy (行動指針)
 0.  **This is your Stengun.** これはステンガンだ。シンプルでタフな勝つための武器だ。（[ステン短機関銃](https://ja.wikipedia.org/wiki/%E3%82%B9%E3%83%86%E3%83%B3%E7%9F%AD%E6%A9%9F%E9%96%A2%E9%8A%83)）
@@ -24,6 +24,7 @@
 
 ## 主な機能
 
+*   **期首残高（BS）入力機能**: 法人の期首残高（資産・負債・純資産）を貸借一致のバリデーション付きで安全かつ簡単に登録可能。
 *   **高速な仕訳入力**: 貸方・借方を選択し、キーボード操作主体のUIでスピーディに取引を入力。
 *   **電子帳簿保存法 & インボイス制度対応**:
     *   **論理削除 (Soft Delete)**: 仕訳の修正・削除履歴を完全に保持し、監査証跡を残します。
@@ -64,14 +65,18 @@
 STEN-F/
 ├── app/
 │   ├── app.py              # Reflex Entry Point
-│   ├── domain/             # ドメインモデル (Pydantic V2)・リポジトリIF
-│   ├── infrastructure/     # インフラ層 (DB接続, Gemini, FileSystem, Repo実装)
+│   ├── domain/             # ドメインモデル (厳格なPydantic V2)・リポジトリIF
+│   ├── infrastructure/     # インフラ層 (DB接続, Gemini API, FileSystem, Repo実装)
 │   ├── application/        # アプリケーションロジック (Async Service)
-│   ├── ui/                 # UI層 (Reflex Pages, Components, State)
-│   ├── config.py           # 設定ファイル
-│   └── container.py        # DIコンテナ (Scoped Session Management)
+│   ├── ui/                 # UI層 (Reflex Pages)
+│   │   ├── pages/          # 画面ルーティング
+│   │   ├── components/     # 機能ごとのモジュール群 (master/, reports/, journal/ 等)
+│   │   ├── view_models/    # Reflex State (UIとドメインの仲介処理)
+│   │   └── layout.py       # 共通ベースレイアウト
+│   ├── config.py           # グローバル設定
+│   └── core/               # コア機能 (Logger, Error Resilience 等)
 ├── tests/                  # テストコード (Pytest Async)
-├── bookkeeping.db           # データベースファイル
+├── bookkeeping.db          # データベースファイル
 ├── pytest.ini              # テスト設定ファイル
 ├── requirements.txt        # 依存ライブラリ
 └── README.md               # 本ファイル

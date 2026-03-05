@@ -1,5 +1,7 @@
+from datetime import date
+from typing import List, Dict
 from core.logging import logger
-from domain.models.transaction import Transaction
+from domain.models.transaction import Transaction, TransactionLine
 from domain.interfaces.i_ledger_repository import ILedgerRepository
 
 class JournalService:
@@ -16,9 +18,6 @@ class JournalService:
         
         try:
             context_log.info("Adding new journal entry")
-            # In Step 2567 it was self.repo.add_transaction(transaction)
-            # In Step 2568 I wrote await self.repository.add(transaction)
-            # "add" vs "add_transaction". I suspect "add_transaction" is correct.
             tx_id = await self.repository.add_transaction(transaction)
             await self.repository.commit() # Unit of Work Commit
             context_log.info("Journal entry added successfully", transaction_id=tx_id)
@@ -26,6 +25,63 @@ class JournalService:
         except Exception as e:
             context_log.error("Failed to add journal entry", error=str(e))
             raise
+
+    async def register_opening_balance(self, opening_date: date, balances: Dict[str, str], asset_accounts: List[Dict[str, str]], liability_equity_accounts: List[Dict[str, str]]) -> int:
+        """
+        期首残高の登録処理（UIから受け取った生辞書データからトランザクションエンティティを構築して保存する）
+        """
+        lines: List[TransactionLine] = []
+        
+        # 資産の部 (借方)
+        for acc in asset_accounts:
+            val_str = balances.get(acc["id"], "0")
+            try:
+                val = int(val_str)
+                if val > 0:
+                    lines.append(TransactionLine(
+                        account_id=int(acc["id"]),
+                        debit=val,
+                        credit=0
+                    ))
+                elif val < 0:
+                    lines.append(TransactionLine(
+                        account_id=int(acc["id"]),
+                        debit=0,
+                        credit=abs(val)
+                    ))
+            except ValueError:
+                pass
+
+        # 負債・純資産の部 (貸方)
+        for acc in liability_equity_accounts:
+            val_str = balances.get(acc["id"], "0")
+            try:
+                val = int(val_str)
+                if val > 0:
+                    lines.append(TransactionLine(
+                        account_id=int(acc["id"]),
+                        debit=0,
+                        credit=val
+                    ))
+                elif val < 0:
+                    lines.append(TransactionLine(
+                        account_id=int(acc["id"]),
+                        debit=abs(val),
+                        credit=0
+                    ))
+            except ValueError:
+                pass
+
+        if not lines:
+            raise ValueError("入力された金額がありません。")
+
+        transaction = Transaction(
+            date=opening_date,
+            description="期首残高",
+            lines=lines
+        )
+        
+        return await self.add_journal_entry(transaction)
 
     async def update_journal_entry(self, transaction: Transaction) -> bool:
         context_log = self.log.bind(

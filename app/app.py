@@ -1,1 +1,1 @@
-from .ui.reflex_main import app
+from app.ui.reflex_main import app

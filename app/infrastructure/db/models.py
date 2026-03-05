@@ -1,5 +1,5 @@
 import os
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine
 from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import Column, Integer, String, Date, ForeignKey, DateTime, Boolean

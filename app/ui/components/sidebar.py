@@ -1,6 +1,5 @@
 import reflex as rx
-from ..state import State
-from ..styles import sidebar_style, sidebar_text_color, sidebar_hover_bg, accent_color
+from ..styles import sidebar_style, sidebar_text_color, sidebar_hover_bg
 
 def sidebar_item(text: str, icon: str, url: str) -> rx.Component:
     """Sidebar navigation item."""
@@ -31,6 +30,7 @@ def sidebar() -> rx.Component:
             rx.heading("STEN-F", color="white", size="6", margin_bottom="2em"),
             rx.vstack(
                 sidebar_item("仕訳入力", "notebook-pen", "/"),
+                sidebar_item("期首BS入力", "scale", "/opening_bs"),
                 sidebar_item("マスタ管理", "database", "/master"),
                 sidebar_item("レポート", "chart-bar", "/reports"),
                 width="100%",

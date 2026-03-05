@@ -1,6 +1,5 @@
 import reflex as rx
 from ...view_models.master_states.counterparty_state import CounterpartyState
-from domain.models.account import AccountType
 from app.ui.styles import master_form_style
 
 def render_counterparty_tab() -> rx.Component:

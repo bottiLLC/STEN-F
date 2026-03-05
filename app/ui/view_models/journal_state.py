@@ -272,10 +272,7 @@ class JournalState(rx.State):
             except Exception as e:
                 return rx.window_alert(f"削除エラー: {e}")
 
-    async def toggle_show_deleted(self):
-        self.show_deleted = not self.show_deleted
-        await self.load_entries()
-
+        # End of file
     async def handle_tab_change(self, val: str):
         if val == "list":
             await self.load_entries()

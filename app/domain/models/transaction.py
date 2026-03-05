@@ -15,7 +15,7 @@ class TransactionLine(BaseModel):
     # though strict composition prefers fetching Account object.
     # We keep it minimal for the entity.
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra='forbid')
     
     @property
     def amount(self) -> int:

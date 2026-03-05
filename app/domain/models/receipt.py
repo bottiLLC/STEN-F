@@ -5,6 +5,7 @@ class TaxBreakdownItem(BaseModel):
     tax_rate: str
     tax_amount: Optional[int] = None
     amount_excl_tax: Optional[int] = None
+    model_config = ConfigDict(from_attributes=True, extra='forbid')
 
 class ReceiptData(BaseModel):
     """
@@ -24,4 +25,4 @@ class ReceiptData(BaseModel):
     is_registered_merchant: bool = False
     error_message: Optional[str] = None
 
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(from_attributes=True, extra='forbid')

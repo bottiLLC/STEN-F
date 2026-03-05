@@ -3,7 +3,6 @@ import json
 import io 
 from typing import Optional
 from PIL import Image
-from pydantic import BaseModel, ConfigDict
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
@@ -120,8 +119,7 @@ Notes:
             self.log.error("Failed to extract receipt data", error=str(e), exc_info=True)
             return None
         finally:
-            if hasattr(client, 'aio') and client.aio:
-                await client.aio.close()
+            pass # The new google genai SDK does not require or support explicit closing of the async client.
 
     @resilient_api_call(max_retries=3, base_delay=0.5)
     async def _call_gemini_api(self, client, sys_instruct, image_part):

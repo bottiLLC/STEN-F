@@ -1,7 +1,6 @@
 from typing import List
 from pydantic import BaseModel, ConfigDict
 from domain.models.account import AccountType
-from infrastructure.db.models import FiscalYearTable # Using DB model for FiscalYear for now or should define Domain Entity?
 # Ideally Domain Entity. Let's define a simple one or use dict for now to save time, 
 # but for Clean Arch we should have Domain Entity.
 # I'll define a minimal FiscalYear in this file or minimal struct.
@@ -10,7 +9,7 @@ class FiscalYear(BaseModel):
     id: int
     name: str
     period_number: int
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra='forbid')
 
 class TrialBalanceRow(BaseModel):
     account_id: int
@@ -22,11 +21,13 @@ class TrialBalanceRow(BaseModel):
     balance: int = 0
     debit_balance: int = 0
     credit_balance: int = 0
+    model_config = ConfigDict(from_attributes=True, extra='forbid')
 
 class FinancialSection(BaseModel):
     title: str
     rows: List[TrialBalanceRow] = []
     total: int = 0
+    model_config = ConfigDict(from_attributes=True, extra='forbid')
 
 class FinancialReport(BaseModel):
     fiscal_year: FiscalYear
@@ -59,3 +60,4 @@ class FinancialReport(BaseModel):
     ordinary_income: int = 0
     income_before_tax: int = 0
     net_income: int = 0
+    model_config = ConfigDict(from_attributes=True, extra='forbid')

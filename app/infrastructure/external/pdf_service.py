@@ -6,7 +6,7 @@ from reportlab.pdfbase import pdfmetrics
 from datetime import date
 import io
 
-from config import FONT_PATH, FONT_NAME, APP_TITLE, CURRENCY_SYMBOL
+from config import FONT_PATH, FONT_NAME, APP_TITLE
 from domain.models.corporation import Corporation
 from domain.models.financial_report import FinancialReport
 

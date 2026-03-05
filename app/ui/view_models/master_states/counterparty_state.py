@@ -1,7 +1,6 @@
 import reflex as rx
 from typing import List, Optional
 from app.domain.models.counterparty import Counterparty
-from app.domain.models.account import AccountType
 from app.ui.di import DI
 
 class CounterpartyState(rx.State):

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from domain.interfaces.i_ledger_repository import ILedgerRepository
-from domain.models.account import Account, AccountType
+from domain.models.account import Account
 from domain.models.transaction import Transaction, TransactionLine
 from infrastructure.db.models import AccountTable, TransactionTable, TransactionLineTable
 

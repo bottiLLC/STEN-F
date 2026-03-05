@@ -58,4 +58,4 @@ class Account(BaseModel):
     def type_label(self) -> str:
         return self.type.label
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra='forbid')

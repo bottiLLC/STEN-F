@@ -1,5 +1,6 @@
 from sqlalchemy.future import select
 from app.infrastructure.db.session import AsyncSessionLocal
+from core.logging import logger
 from app.domain.models.account import Account, AccountType
 
 DEFAULT_ACCOUNTS = [
@@ -14,7 +15,6 @@ DEFAULT_ACCOUNTS = [
     {"code": "1180", "name": "前払費用", "type": AccountType.CURRENT_ASSET, "description": "継続的役務提供契約で前払いした費用"},
     {"code": "1210", "name": "建物", "type": AccountType.FIXED_ASSET, "description": "店舗、倉庫、事務所などの建物"},
     {"code": "1220", "name": "備品", "type": AccountType.FIXED_ASSET, "description": "パソコン、机、椅子などの事務機器"},
-    {"code": "1230", "name": "車両運搬具", "type": AccountType.FIXED_ASSET, "description": "営業車両など"},
     
     # Liabilities (負債)
     {"code": "2110", "name": "支払手形", "type": AccountType.CURRENT_LIABILITY, "description": "商品の購入等で振り出した手形"},
@@ -23,6 +23,7 @@ DEFAULT_ACCOUNTS = [
     {"code": "2140", "name": "未払金", "type": AccountType.CURRENT_LIABILITY, "description": "本来の営業取引以外の未払代金"},
     {"code": "2150", "name": "預り金", "type": AccountType.CURRENT_LIABILITY, "description": "源泉所得税、社会保険料などの預り分"},
     {"code": "2210", "name": "長期借入金", "type": AccountType.FIXED_LIABILITY, "description": "返済期限が1年を超える借入金"},
+    {"code": "2220", "name": "役員借入金", "type": AccountType.FIXED_LIABILITY, "description": "役員からの借入金"},
 
     # Equity (純資産)
     {"code": "3110", "name": "資本金", "type": AccountType.EQUITY, "description": "会社設立時等の出資額"},
@@ -71,7 +72,7 @@ async def seed_accounts():
             if result.scalar_one_or_none():
                 return  # Database already seeded
 
-            print("Seeding default accounts...")
+            logger.info("Seeding default accounts...")
             
             # Map Pydantic definition to ORM usage equivalent or directly save via Repo logic
             # Simulating Repo logic using session directly for speed/simplicity or use Repo?
@@ -90,7 +91,7 @@ async def seed_accounts():
                 pass 
                 
         except Exception as e:
-            print(f"Seeding check failed: {e}")
+            logger.error("Seeding check failed", error=str(e), exc_info=True)
             return
 
     # To avoid ORM model import issues without looking at files, let's use the MasterService via DI
@@ -102,8 +103,8 @@ async def seed_accounts():
         if existing:
              return
 
-        print("Seeding default accounts via Service...")
+        logger.info("Seeding default accounts via Service...")
         for acc_data in DEFAULT_ACCOUNTS:
             acc = Account(**acc_data)
             await service.save_account(acc)
-        print("Seeding complete.")
+        logger.info("Seeding complete.")

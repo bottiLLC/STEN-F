@@ -1,5 +1,5 @@
 import reflex as rx
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 from datetime import date
 from app.domain.models.fiscal_year import FiscalYear
 from app.domain.models.financial_report import TrialBalanceRow, FinancialReport

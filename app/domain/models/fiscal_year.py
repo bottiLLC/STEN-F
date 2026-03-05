@@ -11,4 +11,4 @@ class FiscalYear(BaseModel):
     period_number: Optional[int] = Field(None, description="期数 (数値)")
     created_at: Optional[datetime] = Field(None, description="作成日時")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra='forbid')

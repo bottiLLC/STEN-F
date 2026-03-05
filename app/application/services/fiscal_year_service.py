@@ -1,5 +1,4 @@
 from datetime import timedelta, date
-from typing import Optional
 from core.logging import logger
 from domain.models.account import AccountType
 from domain.models.transaction import Transaction, TransactionLine
@@ -35,7 +34,7 @@ class FiscalYearService:
             # 2. Calculate Net Income
             tb_rows = await self.ledger_service.get_trial_balance(fiscal_year_id)
             
-            revenue = sum(r.balance for r in tb_rows if r.account_type == AccountType.REVENUE) or 0
+            # revenue calculation was removed because it was unused
             expenses = sum(r.balance for r in tb_rows if r.account_type in [
                 AccountType.COST_OF_SALES, AccountType.SGA, 
                 AccountType.NON_OPERATING_EXPENSE, AccountType.EXTRAORDINARY_LOSS,

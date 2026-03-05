@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from domain.interfaces.i_master_repository import IMasterRepository
 from domain.models.corporation import Corporation
 from domain.models.fiscal_year import FiscalYear
-from domain.models.account import Account, AccountType
+from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
 

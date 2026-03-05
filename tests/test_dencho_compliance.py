@@ -16,7 +16,7 @@ async def test_dencho_compliance_features(container):
         # repo = await container.get_ledger_repository() # Use journal_service instead
     
         # 1. Test Counterparty Upsert
-        cp = Counterparty(name="Test Corp", invoice_number="T1234567890123", default_account_type="Travel")
+        cp = Counterparty(name="Test Corp", invoice_number="T1234567890123")
         saved_cp = await master_service.save_counterparty(cp)
         assert saved_cp.id is not None
         assert saved_cp.name == "Test Corp"

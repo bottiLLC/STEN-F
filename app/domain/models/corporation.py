@@ -1,5 +1,4 @@
 from typing import Optional
-from datetime import date
 from pydantic import BaseModel, ConfigDict, Field
 
 class Corporation(BaseModel):
@@ -9,4 +8,4 @@ class Corporation(BaseModel):
     representative_title: Optional[str] = Field(None, description="代表役職名")
     representative_name: Optional[str] = Field(None, description="代表者氏名")
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra='forbid')

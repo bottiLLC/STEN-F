@@ -1,4 +1,3 @@
-import reflex as rx
 
 # Color Palette (Premium Blue/Grey Theme)
 primary_bg = "#f4f6f8"

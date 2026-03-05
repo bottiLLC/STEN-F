@@ -1,5 +1,4 @@
 from app.container import container
-import contextlib
 
 class DI:
     @staticmethod
