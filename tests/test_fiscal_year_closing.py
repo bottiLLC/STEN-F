@@ -1,5 +1,5 @@
 import pytest
-from datetime import date, timedelta
+from datetime import date
 from sqlalchemy import delete
 from domain.models.account import Account, AccountType
 from domain.models.transaction import Transaction, TransactionLine
@@ -56,19 +56,24 @@ async def test_fiscal_year_closing_flow(container):
             return acc
 
         acc_cash = get_or_create("1110", "Cash", AccountType.CURRENT_ASSET)
-        if not acc_cash.id: await master_service.save_account(acc_cash)
+        if not acc_cash.id: 
+            await master_service.save_account(acc_cash)
 
         acc_sales = get_or_create("4110", "Sales", AccountType.REVENUE)
-        if not acc_sales.id: await master_service.save_account(acc_sales)
+        if not acc_sales.id: 
+            await master_service.save_account(acc_sales)
 
         acc_expense = get_or_create("6110", "Expense", AccountType.SGA)
-        if not acc_expense.id: await master_service.save_account(acc_expense)
+        if not acc_expense.id: 
+            await master_service.save_account(acc_expense)
 
         acc_capital = get_or_create("3110", "Capital", AccountType.EQUITY)
-        if not acc_capital.id: await master_service.save_account(acc_capital)
+        if not acc_capital.id: 
+            await master_service.save_account(acc_capital)
 
         acc_re = get_or_create("3120", "Retained Earnings", AccountType.EQUITY)
-        if not acc_re.id: await master_service.save_account(acc_re)
+        if not acc_re.id: 
+            await master_service.save_account(acc_re)
         
         # Reload accounts to get IDs
         accounts = await master_service.get_accounts()
@@ -153,23 +158,23 @@ async def test_fiscal_year_closing_flow(container):
         lines = opening_tx.lines
         
         # Cash (12000 Dr)
-        l_cash = next((l for l in lines if l.account_id == acc_cash.id), None)
+        l_cash = next((tx_line for tx_line in lines if tx_line.account_id == acc_cash.id), None)
         assert l_cash is not None
         assert l_cash.debit == 12000
         assert l_cash.credit == 0
         
         # Capital (5000 Cr)
-        l_cap = next((l for l in lines if l.account_id == acc_capital.id), None)
+        l_cap = next((tx_line for tx_line in lines if tx_line.account_id == acc_capital.id), None)
         assert l_cap is not None
         assert l_cap.debit == 0
         assert l_cap.credit == 5000
         
         # Retained Earnings (7000 Cr)
-        l_re = next((l for l in lines if l.account_id == acc_re.id), None)
+        l_re = next((tx_line for tx_line in lines if tx_line.account_id == acc_re.id), None)
         assert l_re is not None
         assert l_re.debit == 0
         assert l_re.credit == 7000
         
         # No PL items
-        assert not any(l.account_id == acc_sales.id for l in lines)
-        assert not any(l.account_id == acc_expense.id for l in lines)
+        assert not any(tx_line.account_id == acc_sales.id for tx_line in lines)
+        assert not any(tx_line.account_id == acc_expense.id for tx_line in lines)

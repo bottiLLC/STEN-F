@@ -129,8 +129,8 @@ class FiscalYearService:
             )
             
             # Verify Balance
-            total_debit = sum(l.debit for l in lines)
-            total_credit = sum(l.credit for l in lines)
+            total_debit = sum(line.debit for line in lines)
+            total_credit = sum(line.credit for line in lines)
             
             if abs(total_debit - total_credit) > 0.001: # Float tolerance
                 raise ValueError(f"Opening Balance unbalanced: Dr {total_debit} != Cr {total_credit}")

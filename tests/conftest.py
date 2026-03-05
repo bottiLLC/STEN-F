@@ -1,7 +1,6 @@
 import os
 import sys
 import pytest
-import asyncio
 
 # Ensure 'v2/app' is in python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../app')))

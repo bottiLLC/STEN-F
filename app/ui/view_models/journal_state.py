@@ -188,8 +188,8 @@ class JournalState(rx.State):
         if not valid_lines:
             return rx.window_alert("有効な仕訳明細がありません。")
 
-        total_debit = sum(l.debit for l in valid_lines)
-        total_credit = sum(l.credit for l in valid_lines)
+        total_debit = sum(line.debit for line in valid_lines)
+        total_credit = sum(line.credit for line in valid_lines)
         
         if total_debit != total_credit:
             return rx.window_alert(f"貸借不一致: 借方 {total_debit} / 貸方 {total_credit}")
@@ -406,26 +406,28 @@ class JournalState(rx.State):
         
         if data.merchant_name:
             self.counterparty = data.merchant_name
-            # Auto-set description to merchant name initially
-            self.description = data.merchant_name
+            # Auto-set description to merchant name initially, or use inferred description
+            self.description = data.description or data.merchant_name
             
         if data.invoice_registration_number:
             self.invoice_number = data.invoice_registration_number
             
         if data.total_amount_incl_tax:
-            # Set first line debit to total amount
-            acc_id = ""
+            debit_acc = data.inferred_debit_account_id or ""
+            credit_acc = data.inferred_credit_account_id or ""
             
-            # Try to find default account from matched counterparty
-            if self.counterparty:
+            # Fallback to existing logic if no template/inference matched
+            if not debit_acc and self.counterparty:
                  async with DI.get_master_service() as service:
-                      # This might be repetitive, but safe
                       cps = await service.get_counterparties()
                       matched = next((c for c in cps if c.name == self.counterparty), None)
                       if matched and matched.default_account_id:
-                           acc_id = str(matched.default_account_id)
+                           debit_acc = str(matched.default_account_id)
 
-            self.lines = [{"account_id": acc_id, "debit": data.total_amount_incl_tax, "credit": 0}]
+            self.lines = [
+                {"account_id": debit_acc, "debit": data.total_amount_incl_tax, "credit": 0},
+                {"account_id": credit_acc, "debit": 0, "credit": data.total_amount_incl_tax} # Basic single-entry mapping
+            ]
             
         if data.needs_manual_review:
              return rx.window_alert(f"要確認: {data.error_message}")

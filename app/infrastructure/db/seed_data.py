@@ -57,7 +57,7 @@ DEFAULT_ACCOUNTS = [
     {"code": "7110", "name": "支払利息", "type": AccountType.NON_OPERATING_EXPENSE, "description": "借入金の利息"},
 ]
 
-from app.infrastructure.db.models import AccountTable
+from app.infrastructure.db.models import AccountTable  # noqa: E402
 
 async def seed_accounts():
     """Seed existing database with default accounts if empty."""

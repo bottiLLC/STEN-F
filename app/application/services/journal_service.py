@@ -21,6 +21,39 @@ class JournalService:
             tx_id = await self.repository.add_transaction(transaction)
             await self.repository.commit() # Unit of Work Commit
             context_log.info("Journal entry added successfully", transaction_id=tx_id)
+
+            # --- Auto-Learning for Journal Template ---
+            if transaction.counterparty:
+                from app.ui.di import DI
+                try:
+                    async with DI.get_master_service() as master_service:
+                        existing_template = await master_service.get_journal_template(transaction.counterparty)
+                        if not existing_template:
+                            # Extract primary debit and primary credit from lines
+                            debit_account_id = None
+                            credit_account_id = None
+                            max_debit = -1
+                            max_credit = -1
+                            for line in transaction.lines:
+                                if line.debit > max_debit:
+                                    max_debit = line.debit
+                                    debit_account_id = line.account_id
+                                if line.credit > max_credit:
+                                    max_credit = line.credit
+                                    credit_account_id = line.account_id
+                                    
+                            from domain.models.journal_template import JournalTemplate
+                            new_template = JournalTemplate(
+                                keyword=transaction.counterparty,
+                                debit_account_id=debit_account_id,
+                                credit_account_id=credit_account_id,
+                                description_template=transaction.description
+                            )
+                            await master_service.save_journal_template(new_template)
+                            context_log.info("Auto-learned new journal template", keyword=transaction.counterparty)
+                except Exception as e:
+                    context_log.warning("Failed to auto-learn journal template", error=str(e))
+
             return tx_id
         except Exception as e:
             context_log.error("Failed to add journal entry", error=str(e))
@@ -132,7 +165,7 @@ class JournalService:
             
             # 2. Save Evidence File
             # Calculate amount from lines for filename
-            total_amount = sum(l.debit for l in transaction.lines)
+            total_amount = sum(line.debit for line in transaction.lines)
             corp_name = transaction.counterparty or "Unknown"
             
             evidence_path = await file_service.save_evidence_for_transaction(

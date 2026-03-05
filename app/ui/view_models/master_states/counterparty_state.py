@@ -61,7 +61,8 @@ class CounterpartyState(rx.State):
                 return rx.window_alert(f"エラー: {e}")
 
     async def delete_counterparty_data(self):
-        if not self.cp_id: return
+        if not self.cp_id: 
+            return
         async with DI.get_master_service() as service:
             try:
                 await service.delete_counterparty(self.cp_id)

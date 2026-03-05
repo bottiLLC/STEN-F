@@ -123,7 +123,7 @@ class LedgerService:
 
             for tx in transactions:
                 # Find the line for this account
-                line = next((l for l in tx.lines if l.account_id == account_id), None)
+                line = next((tx_line for tx_line in tx.lines if tx_line.account_id == account_id), None)
                 if not line:
                     continue
                     

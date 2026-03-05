@@ -69,7 +69,7 @@ async def test_journal_entry_update_flow(container):
         
         # Check Lines
         assert len(target.lines) == 2
-        l1 = next(l for l in target.lines if l.account_id == acc1.id)
+        l1 = next(tx_line for tx_line in target.lines if tx_line.account_id == acc1.id)
         assert l1.debit == 1200
         
         # 6. Verify non-existent update fails

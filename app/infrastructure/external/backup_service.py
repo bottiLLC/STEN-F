@@ -47,8 +47,10 @@ class BackupService:
             wal_path = Path(str(DB_PATH) + "-wal")
             shm_path = Path(str(DB_PATH) + "-shm")
             
-            if wal_path.exists(): shutil.copy2(wal_path, backup_subdir / "bookkeeping.db-wal")
-            if shm_path.exists(): shutil.copy2(shm_path, backup_subdir / "bookkeeping.db-shm")
+            if wal_path.exists(): 
+                shutil.copy2(wal_path, backup_subdir / "bookkeeping.db-wal")
+            if shm_path.exists(): 
+                shutil.copy2(shm_path, backup_subdir / "bookkeeping.db-shm")
             
             return str(dest_path)
         except Exception as e:

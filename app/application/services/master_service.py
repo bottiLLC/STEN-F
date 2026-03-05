@@ -5,6 +5,7 @@ from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
+from domain.models.journal_template import JournalTemplate
 
 from domain.interfaces.i_ledger_repository import ILedgerRepository
 
@@ -145,3 +146,23 @@ class MasterService:
         self.log.info("Deleting Counterparty", cp_id=cp_id)
         await self.repository.delete_counterparty(cp_id)
         self.log.info("Counterparty deleted")
+
+    # --- Journal Template ---
+    async def get_journal_templates(self) -> list[JournalTemplate]:
+        return await self.repository.get_journal_templates()
+
+    async def get_journal_template(self, keyword: str) -> JournalTemplate | None:
+        if not keyword:
+            return None
+        return await self.repository.get_journal_template_by_keyword(keyword)
+
+    async def save_journal_template(self, template: JournalTemplate):
+        self.log.info("Saving Journal Template", keyword=template.keyword)
+        saved = await self.repository.save_journal_template(template)
+        self.log.info("Journal Template saved")
+        return saved
+
+    async def delete_journal_template(self, jt_id: int):
+        self.log.info("Deleting Journal Template", jt_id=jt_id)
+        await self.repository.delete_journal_template(jt_id)
+        self.log.info("Journal Template deleted")

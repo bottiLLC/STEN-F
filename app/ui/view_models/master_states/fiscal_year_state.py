@@ -14,12 +14,20 @@ class FiscalYearState(rx.State):
     new_fy_end: str = date.today().isoformat()
     new_fy_status: str = "OPEN"
 
-    def set_new_fy_name(self, v: str): self.new_fy_name = v
+    def set_new_fy_name(self, v: str): 
+        self.new_fy_name = v
+        
     def set_new_fy_period(self, v: str): 
-        try: self.new_fy_period = int(v)
-        except: pass
-    def set_new_fy_start(self, v: str): self.new_fy_start = v
-    def set_new_fy_end(self, v: str): self.new_fy_end = v
+        try: 
+            self.new_fy_period = int(v)
+        except ValueError: 
+            pass
+            
+    def set_new_fy_start(self, v: str): 
+        self.new_fy_start = v
+        
+    def set_new_fy_end(self, v: str): 
+        self.new_fy_end = v
     def set_new_fy_status(self, v: str): self.new_fy_status = v
 
     async def save_fiscal_year(self):

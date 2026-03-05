@@ -32,7 +32,8 @@ class GoogleOCRService:
             mime_type = "application/pdf"
         elif file_type.lower() in ["png", "jpg", "jpeg"]:
              mime_type = f"image/{file_type.lower()}"
-             if mime_type == "image/jpg": mime_type = "image/jpeg"
+             if mime_type == "image/jpg": 
+                 mime_type = "image/jpeg"
 
         image_part = None
         
@@ -42,7 +43,8 @@ class GoogleOCRService:
             mime_type = "application/pdf"
         elif file_type.lower() in ["png", "jpg", "jpeg"]:
              mime_type = f"image/{file_type.lower()}"
-             if mime_type == "image/jpg": mime_type = "image/jpeg"
+             if mime_type == "image/jpg": 
+                 mime_type = "image/jpeg"
 
         # Optimize image if needed (PDFs are passed through)
         optimized_bytes, final_mime_type = self._optimize_for_gemini(file_bytes, mime_type)
@@ -57,62 +59,105 @@ class GoogleOCRService:
              cp_list_str = "\n".join([f"- {cp}" for cp in counterparty_list])
             
         sys_instruct = f"""
-You are an expert AI assistant specialized in accounting and OCR data extraction. Your task is to extract specific financial information from the provided image of a receipt.
-
-Please analyze the receipt and extract the following information into a valid JSON object. Do not include any markdown formatting (like ```json) in your response, just the raw JSON string.
+You are an expert OCR assistant. Extract EXACTLY the following 3 pieces of information from the receipt image.
+Do not make any accounting inferences.
 
 ### Registered Counterparty List
-The user has registered the following counterparties. If the merchant name on the receipt matches or resembles one of these, please use the EXACT name from this list for "merchant_name".
+If the merchant name matches or resembles one of these, use the EXACT name from this list for "merchant_name".
 {cp_list_str}
 
-Extract the following fields:
-1. **merchant_name**: The name of the store or vendor. 
-   - **PRIORITY 1**: If a match is found in the Registered Counterparty List above, use that exact name.
-   - **PRIORITY 2**: If no match, extract the name from the receipt. If it contains a corporate status (e.g., 株式会社, 合同会社, 有限会社), prioritize including it (e.g., prefer "株式会社セブンイレブン" over "セブンイレブン").
-2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD). If the year is omitted, assume the current year or infer from context if possible.
+Extract the following fields into a valid JSON object:
+1. **merchant_name**: The name of the store or vendor. If illegible, use null.
+2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD). 
 3. **total_amount_incl_tax**: The total amount paid including tax (integer).
-4. **invoice_registration_number**: The qualified invoice issuer registration number (e.g., T1234567890123). If not found, return null.
-5. **tax_breakdown**: An array of objects detailing tax amounts per tax rate. Each object should contain:
-    - "tax_rate": The tax rate (e.g., "10%" or "8%").
-    - "tax_amount": The amount of consumption tax for this rate.
-    - "amount_excl_tax": The taxable amount (price excluding tax) for this rate.
-6. **total_tax_amount**: The sum of all consumption tax amounts.
-7. **total_amount_excl_tax**: The total price excluding tax.
 
-Notes:
-- If a specific field is not found or is illegible, use null for that field.
-- Ensure the 'invoice_registration_number' follows the format 'T' followed by 13 digits if it exists.
-- Correct any obvious OCR errors based on context, but prioritize accuracy.
-- Return ONLY the JSON object.
+Return ONLY the raw JSON object without markdown formatting.
 """
         
         client = genai.Client(api_key=self.api_key)
         try:
+            # Step 1: Raw Extraction
             response = await self._call_gemini_api(client, sys_instruct, image_part)
             
             if not response.text:
                 raise ValueError("Empty response from Gemini")
 
             data = json.loads(response.text)
-            receipt = ReceiptData(**data)
+            # Safely create ReceiptData ignoring extra fields if LLM hallucinates them
+            receipt = ReceiptData(**{k: v for k, v in data.items() if k in ReceiptData.model_fields})
             
-            # Verify against counterparty list if provided
-            if counterparty_list and receipt.merchant_name:
-                 # Normalize OCR result
-                 norm_ocr = self._normalize_name(receipt.merchant_name)
-                 
-                 match_found = False
-                 for registered_name in counterparty_list:
-                     norm_reg = self._normalize_name(registered_name)
-                     if norm_ocr == norm_reg:
-                         receipt.merchant_name = registered_name  # Use the exact registered name
-                         receipt.is_registered_merchant = True
-                         match_found = True
-                         break
+            # Step 2: Journal Template (Dictionary) Matching
+            from app.ui.di import DI
+            async with DI.get_master_service() as master_service:
+                # Normalize OCR result and check against counterparty list
+                if counterparty_list and receipt.merchant_name:
+                     norm_ocr = self._normalize_name(receipt.merchant_name)
+                     for registered_name in counterparty_list:
+                         if norm_ocr == self._normalize_name(registered_name):
+                             receipt.merchant_name = registered_name
+                             receipt.is_registered_merchant = True
+                             break
                 
-                 if not match_found:
-                     pass
+                if receipt.merchant_name:
+                    template = await master_service.get_journal_template(receipt.merchant_name)
+                    if template:
+                        receipt.inferred_debit_account_id = str(template.debit_account_id) if template.debit_account_id else None
+                        receipt.inferred_credit_account_id = str(template.credit_account_id) if template.credit_account_id else None
+                        receipt.description = template.description_template
+                        receipt.is_dictionary_matched = True
+                        return self._validate_receipt(receipt)
 
+                # Step 3: LLM Fallback Inference for unknown counterparties
+                acc_list_str = chr(10).join(account_list) if account_list else '一覧なし'
+                sys_instruct_fallback = f"""
+お前は免税事業者の経理担当だ。
+先ほど、取引先『{receipt.merchant_name or '不明'}』で『{receipt.total_amount_incl_tax or 0}円』支払った。
+以下の【勘定科目一覧】の中から、適切な借方科目と貸方科目を推論し、JSON形式で返答しろ。
+
+【貸方の推論ルール（極めて重要）】
+- 当社は法人名義の口座引き落とし以外は、ほぼ全て代表個人のポケットマネーからの立替払いである。
+- そのため、貸方科目はデフォルトで「役員借入金」を優先的に推論すること。
+
+【借方の推論ルール（極めて重要）】
+- 当社の自家用車は法人に賃貸しているため、法人の固定資産にはならない。
+- 車用・車関係であっても、「車両運搬具」などの科目は推論結果に絶対に含めないこと。
+
+【勘定科目一覧】
+{acc_list_str}
+
+出力形式 (JSON):
+{{
+  "debit_account": "借方科目の名前",
+  "credit_account": "貸方科目の名前（迷ったら役員借入金）",
+  "description": "摘要文（例：〇〇代として）"
+}}
+"""
+                fallback_response = await client.aio.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=[sys_instruct_fallback],
+                    config=types.GenerateContentConfig(
+                        temperature=0.0,
+                        response_mime_type="application/json",
+                    )
+                )
+                
+                if fallback_response.text:
+                    fallback_data = json.loads(fallback_response.text)
+                    accounts_db = await master_service.get_accounts()
+                    
+                    def find_acc_id(name):
+                        if not name: 
+                            return None
+                        # Try exact match or find in code: name string
+                        for acc in accounts_db:
+                            if acc.name == name or name in f"{acc.code}: {acc.name}":
+                                return str(acc.id)
+                        return None
+                        
+                    receipt.inferred_debit_account_id = find_acc_id(fallback_data.get("debit_account"))
+                    receipt.inferred_credit_account_id = find_acc_id(fallback_data.get("credit_account"))
+                    receipt.description = fallback_data.get("description", receipt.merchant_name)
+                    
             return self._validate_receipt(receipt)
 
         except Exception as e:

@@ -202,7 +202,10 @@ class PDFService:
         c.drawRightString(x_val, y, f"{rpt.operating_income:,}")
         y -= 10 * mm
         
-        if y < 60 * mm: c.showPage(); draw_header("損益計算書 (続)"); y = height - 40 * mm
+        if y < 60 * mm: 
+            c.showPage()
+            draw_header("損益計算書 (続)")
+            y = height - 40 * mm
 
         draw_pl_section_obj(rpt.non_op_income)
         draw_pl_section_obj(rpt.non_op_expense)

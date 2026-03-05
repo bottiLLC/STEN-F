@@ -120,7 +120,8 @@ class ReportsState(rx.State):
     async def load_report_data(self):
         """Load data based on active tab? Or just load all for simplicity if small."""
         # For efficiency we might want to load only on tab change, but let's load TB first.
-        if not self.selected_fy_id: return
+        if not self.selected_fy_id: 
+            return
         try:
             fy_id_int = int(self.selected_fy_id)
             async with DI.get_ledger_service() as service:

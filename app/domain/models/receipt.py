@@ -24,5 +24,11 @@ class ReceiptData(BaseModel):
     needs_manual_review: bool = False
     is_registered_merchant: bool = False
     error_message: Optional[str] = None
+    
+    # Hybrid Matching fields
+    inferred_debit_account_id: Optional[str] = None
+    inferred_credit_account_id: Optional[str] = None
+    description: Optional[str] = None
+    is_dictionary_matched: bool = False
 
     model_config = ConfigDict(from_attributes=True, extra='forbid')

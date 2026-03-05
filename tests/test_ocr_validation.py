@@ -1,4 +1,3 @@
-import pytest
 from app.infrastructure.external.ocr_service import GoogleOCRService
 from app.domain.models.receipt import ReceiptData, TaxBreakdownItem
 

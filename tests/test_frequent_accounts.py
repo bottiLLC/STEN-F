@@ -7,21 +7,22 @@ app_dir = os.path.join(root_dir, 'app')
 sys.path.append(root_dir)
 sys.path.append(app_dir)
 
-import pytest
-import pytest_asyncio
-from datetime import date
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+import pytest  # noqa: E402
+from datetime import date  # noqa: E402
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker  # noqa: E402
 
 # Ensure app is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from pathlib import Path  # noqa: E402
+import sys  # noqa: E402
+app_dir = str(Path(__file__).parent.parent / "app")
+sys.path.append(app_dir)
 
 # Import App Modules
 # Assuming 'app' is in path, we can import directly
-from infrastructure.db.models import Base, TransactionTable, TransactionLineTable, AccountTable
-from infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository
-from application.services.journal_service import JournalService
-from domain.models.transaction import Transaction, TransactionLine
-from domain.models.account import Account, AccountType
+from infrastructure.db.models import Base, AccountTable  # noqa: E402
+from infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository  # noqa: E402
+from application.services.journal_service import JournalService  # noqa: E402
+from domain.models.transaction import Transaction, TransactionLine  # noqa: E402
 
 # Test Config
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"

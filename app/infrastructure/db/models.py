@@ -64,6 +64,17 @@ class AbstractTable(Base):
     
     account = relationship("AccountTable")
 
+class JournalTemplateTable(Base):
+    __tablename__ = 'journal_templates'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    keyword = Column(String, nullable=False, unique=True, index=True)
+    debit_account_id = Column(Integer, ForeignKey('accounts.id'), nullable=True)
+    credit_account_id = Column(Integer, ForeignKey('accounts.id'), nullable=True)
+    description_template = Column(String, nullable=True)
+
+    debit_account = relationship("AccountTable", foreign_keys=[debit_account_id])
+    credit_account = relationship("AccountTable", foreign_keys=[credit_account_id])
 
 class TransactionTable(Base):
     __tablename__ = 'transactions'

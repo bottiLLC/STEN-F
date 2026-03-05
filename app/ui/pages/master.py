@@ -6,6 +6,7 @@ from ..components.master.fiscal_year import render_fiscal_year_tab
 from ..components.master.account import render_account_tab
 from ..components.master.abstract import render_abstract_tab
 from ..components.master.counterparty_tab import render_counterparty_tab
+from ..components.master.journal_template_tab import render_journal_template_tab
 from ..components.master.system import render_system_tab
 
 def master_page() -> rx.Component:
@@ -19,6 +20,7 @@ def master_page() -> rx.Component:
                     rx.tabs.trigger("会計年度", value="fiscal_year"),
                     rx.tabs.trigger("勘定科目", value="account"),
                     rx.tabs.trigger("取引先", value="counterparty"),
+                    rx.tabs.trigger("仕訳辞書", value="journal_template"),
                     rx.tabs.trigger("摘要", value="abstract"),
                     rx.tabs.trigger("システム", value="system"),
                 ),
@@ -40,6 +42,11 @@ def master_page() -> rx.Component:
                 rx.tabs.content(
                     render_counterparty_tab(),
                     value="counterparty",
+                    padding_top="1em"
+                ),
+                rx.tabs.content(
+                    render_journal_template_tab(),
+                    value="journal_template",
                     padding_top="1em"
                 ),
                 rx.tabs.content(

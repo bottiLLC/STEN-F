@@ -51,15 +51,15 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         domain_txs = []
         for row in rows:
             lines = []
-            for l in row.lines:
+            for tx_line in row.lines:
                 line_domain = TransactionLine(
-                    id=l.id,
-                    account_id=l.account_id,
-                    debit=l.debit,
-                    credit=l.credit
+                    id=tx_line.id,
+                    account_id=tx_line.account_id,
+                    debit=tx_line.debit,
+                    credit=tx_line.credit
                 )
-                if include_relationships and l.account:
-                    line_domain.account = Account.model_validate(l.account)
+                if include_relationships and tx_line.account:
+                    line_domain.account = Account.model_validate(tx_line.account)
                 lines.append(line_domain)
 
             domain_txs.append(Transaction(
@@ -114,11 +114,11 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         for row in rows:
             lines = [
                 TransactionLine(
-                    id=l.id,
-                    account_id=l.account_id,
-                    debit=l.debit,
-                    credit=l.credit
-                ) for l in row.lines
+                    id=tx_line.id,
+                    account_id=tx_line.account_id,
+                    debit=tx_line.debit,
+                    credit=tx_line.credit
+                ) for tx_line in row.lines
             ]
             domain_txs.append(Transaction(
                 id=row.id,

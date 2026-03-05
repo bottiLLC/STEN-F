@@ -105,10 +105,10 @@ def render_journal_list() -> rx.Component:
                             rx.table.body(
                                 rx.foreach(
                                     t.lines,
-                                    lambda l: rx.table.row(
-                                        rx.table.cell(JournalState.account_label_map[l.account_id]),
-                                        rx.table.cell(rx.cond(l.debit > 0, l.debit.to_string(), ""), align="right"),
-                                        rx.table.cell(rx.cond(l.credit > 0, l.credit.to_string(), ""), align="right"),
+                                    lambda tx_line: rx.table.row(
+                                        rx.table.cell(JournalState.account_label_map[tx_line.account_id]),
+                                        rx.table.cell(rx.cond(tx_line.debit > 0, tx_line.debit.to_string(), ""), align="right"),
+                                        rx.table.cell(rx.cond(tx_line.credit > 0, tx_line.credit.to_string(), ""), align="right"),
                                     )
                                 )
                             ),

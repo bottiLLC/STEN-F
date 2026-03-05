@@ -59,7 +59,8 @@ class AbstractState(rx.State):
                 return rx.window_alert(f"エラー: {e}")
 
     async def delete_abstract_data(self):
-        if not self.abs_id: return
+        if not self.abs_id: 
+            return
         async with DI.get_master_service() as service:
             try:
                 await service.delete_abstract(self.abs_id)
