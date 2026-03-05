@@ -110,9 +110,9 @@ Return ONLY the raw JSON object without markdown formatting.
                 # Step 3: LLM Fallback Inference for unknown counterparties
                 acc_list_str = chr(10).join(account_list) if account_list else '一覧なし'
                 sys_instruct_fallback = f"""
-お前は免税事業者の経理担当だ。
+あなたは免税事業者の経理担当です。
 先ほど、取引先『{receipt.merchant_name or '不明'}』で『{receipt.total_amount_incl_tax or 0}円』支払った。
-以下の【勘定科目一覧】の中から、適切な借方科目と貸方科目を推論し、JSON形式で返答しろ。
+以下の【勘定科目一覧】の中から、適切な借方科目と貸方科目を推論し、JSON形式で返答してください。
 
 【貸方の推論ルール（極めて重要）】
 - 当社は法人名義の口座引き落とし以外は、ほぼ全て代表個人のポケットマネーからの立替払いである。
