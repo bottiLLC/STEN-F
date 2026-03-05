@@ -46,7 +46,7 @@ async def test_journal_entry_update_flow(container):
             date=date.today(),
             description="Updated Description",
             counterparty="Updated CP",
-            invoice_number="T99999", # Adding new field
+            invoice_number="T1234567890123", # Adding new field
             lines=[
                 # Changing amounts
                 TransactionLine(account_id=acc1.id, debit=1200, credit=0),
@@ -65,7 +65,7 @@ async def test_journal_entry_update_flow(container):
         assert target is not None
         assert target.description == "Updated Description"
         assert target.counterparty == "Updated CP"
-        assert target.invoice_number == "T99999"
+        assert target.invoice_number == "T1234567890123"
         
         # Check Lines
         assert len(target.lines) == 2

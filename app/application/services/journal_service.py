@@ -59,48 +59,34 @@ class JournalService:
             context_log.error("Failed to add journal entry", error=str(e))
             raise
 
-    async def register_opening_balance(self, opening_date: date, balances: Dict[str, str], asset_accounts: List[Dict[str, str]], liability_equity_accounts: List[Dict[str, str]]) -> int:
+    async def register_opening_balance(self, opening_date: date, debit_balances: Dict[str, str], credit_balances: Dict[str, str]) -> int:
         """
         期首残高の登録処理（UIから受け取った生辞書データからトランザクションエンティティを構築して保存する）
         """
         lines: List[TransactionLine] = []
         
-        # 資産の部 (借方)
-        for acc in asset_accounts:
-            val_str = balances.get(acc["id"], "0")
+        # 借方入力分の処理
+        for acc_id_str, val_str in debit_balances.items():
             try:
                 val = int(val_str)
                 if val > 0:
                     lines.append(TransactionLine(
-                        account_id=int(acc["id"]),
+                        account_id=int(acc_id_str),
                         debit=val,
                         credit=0
-                    ))
-                elif val < 0:
-                    lines.append(TransactionLine(
-                        account_id=int(acc["id"]),
-                        debit=0,
-                        credit=abs(val)
                     ))
             except ValueError:
                 pass
 
-        # 負債・純資産の部 (貸方)
-        for acc in liability_equity_accounts:
-            val_str = balances.get(acc["id"], "0")
+        # 貸方入力分の処理
+        for acc_id_str, val_str in credit_balances.items():
             try:
                 val = int(val_str)
                 if val > 0:
                     lines.append(TransactionLine(
-                        account_id=int(acc["id"]),
+                        account_id=int(acc_id_str),
                         debit=0,
                         credit=val
-                    ))
-                elif val < 0:
-                    lines.append(TransactionLine(
-                        account_id=int(acc["id"]),
-                        debit=abs(val),
-                        credit=0
                     ))
             except ValueError:
                 pass

@@ -1,5 +1,4 @@
 import reflex as rx
-import re
 from typing import List, Dict, Any, Optional
 from datetime import date
 from domain.models.transaction import Transaction, TransactionLine
@@ -175,8 +174,13 @@ class JournalState(rx.State):
         else:
             self.lines[index][field] = value
 
+    is_processing: bool = False
+    
     async def submit(self):
         """Submit the journal entry."""
+        self.is_processing = True
+        yield
+        
         valid_lines = []
         for line in self.lines:
              if line["account_id"] and (line["debit"] > 0 or line["credit"] > 0):
@@ -189,30 +193,29 @@ class JournalState(rx.State):
                  )
         
         if not valid_lines:
-            return rx.window_alert("有効な仕訳明細がありません。")
+            yield rx.window_alert("有効な仕訳明細がありません。")
+            return
 
         total_debit = sum(line.debit for line in valid_lines)
         total_credit = sum(line.credit for line in valid_lines)
         
         if total_debit != total_credit:
-            return rx.window_alert(f"貸借不一致: 借方 {total_debit} / 貸方 {total_credit}")
+            yield rx.window_alert(f"貸借不一致: 借方 {total_debit} / 貸方 {total_credit}")
+            return
 
-        if self.invoice_number:
-            # Validate Registration Number: T + 13 digits
-            # But only if it looks like they are trying to input one?
-            # User said: "Tと13桁の数字しか入力を受け付けないようにして" 
-            # This implies strict validation if input is provided.
-            if not re.match(r'^T[0-9]{13}$', self.invoice_number):
-                return rx.window_alert("登録番号は「T + 13桁の半角数字」で入力してください。（例：T1234567890123）")
-
-        transaction = Transaction(
-            date=date.fromisoformat(self.transaction_date),
-            description=self.description,
-            counterparty=self.counterparty,
-            invoice_number=self.invoice_number,
-            lines=valid_lines,
-            evidence_path=None
-        )
+        try:
+            transaction = Transaction(
+                date=date.fromisoformat(self.transaction_date),
+                description=self.description,
+                counterparty=self.counterparty,
+                invoice_number=self.invoice_number,
+                lines=valid_lines,
+                evidence_path=None
+            )
+        except ValueError:
+            self.is_processing = False
+            yield rx.window_alert("登録番号は「T + 13桁の半角数字」で入力してください。")
+            return
 
         try:
              async with DI.get_journal_service() as service:
@@ -244,10 +247,16 @@ class JournalState(rx.State):
              self._uploaded_filename = None
              
              await self.load_entries()
-             return rx.window_alert("登録しました！")
+             yield rx.window_alert("登録しました！")
+             return
              
         except Exception as e:
-            return rx.window_alert(f"エラーが発生しました: {str(e)}")
+            logger.error("Error submitting journal entry", error=str(e), exc_info=True)
+            yield rx.window_alert(f"エラーが発生しました: {str(e)}")
+            return
+        finally:
+            self.is_processing = False
+            yield
 
     async def load_entries(self):
         """Load recent journal entries."""
@@ -300,23 +309,25 @@ class JournalState(rx.State):
                 return rx.window_alert(f"Export Error: {e}")
 
     async def download_evidence(self, entry_id: int):
-        """Download evidence file for a transaction."""
+        """Download evidence file for a transaction asynchronously."""
         # Find the entry
         entry = next((e for e in self.journal_entries if e.id == entry_id), None)
         if not entry or not entry.evidence_path:
              return rx.window_alert("証憑ファイルが見つかりません。")
         
         import os
+        import aiofiles
         if not os.path.exists(entry.evidence_path):
              return rx.window_alert("指定されたファイルがサーバー上に存在しません。")
              
         try:
-            with open(entry.evidence_path, "rb") as f:
-                data = f.read()
+            async with aiofiles.open(entry.evidence_path, "rb") as f:
+                data = await f.read()
                 
             filename = os.path.basename(entry.evidence_path)
             return rx.download(data=data, filename=filename)
         except Exception as e:
+            logger.error("Failed to download evidence.", error=str(e), exc_info=True)
             return rx.window_alert(f"ダウンロードエラー: {e}")
 
     @rx.var

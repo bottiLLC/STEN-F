@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", 
         env_file_encoding="utf-8", 
-        extra="ignore",
+        extra="forbid",
         case_sensitive=True
     )
 
@@ -50,15 +50,3 @@ class Settings(BaseSettings):
 
 # Singleton instance
 settings = Settings()
-
-# Backward compatibility aliases (for existing code)
-APP_DIR = settings.APP_DIR
-PROJECT_ROOT = settings.PROJECT_ROOT
-DB_NAME = settings.DB_NAME
-DB_PATH = settings.PROJECT_ROOT / settings.DB_NAME # Re-derived for compatibility
-DATABASE_URL = settings.DATABASE_URL
-WINDOWS_FONT_PATH = settings.WINDOWS_FONT_PATH
-FONT_PATH = settings.FONT_PATH
-FONT_NAME = settings.FONT_NAME
-APP_TITLE = settings.APP_TITLE
-CURRENCY_SYMBOL = settings.CURRENCY_SYMBOL

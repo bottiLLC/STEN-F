@@ -127,7 +127,7 @@ async def test_frequent_accounts_manual_wiring(test_session):
     frequent_ids = await journal_service.get_frequent_account_ids(limit=3)
     
     # Map back to codes for clarity in failure message
-    print(f"Frequent IDs: {frequent_ids}")
+    # print(f"Frequent IDs: {frequent_ids}")
     
     assert len(frequent_ids) == 3
     assert frequent_ids[0] == id_cash

@@ -164,7 +164,17 @@ def render_journal_input() -> rx.Component:
             on_change=JournalState.set_register_master
         ),
 
-        rx.button("登録する", on_click=JournalState.submit, size="3", width="200px"),
+        rx.button(
+            rx.cond(
+                JournalState.is_processing,
+                rx.spinner(size="2"),
+                "登録する",
+            ),
+            on_click=JournalState.submit,
+            size="3",
+            width="200px",
+            disabled=JournalState.is_processing,
+        ),
         
         spacing="5",
         padding="1em",

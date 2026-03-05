@@ -54,3 +54,50 @@ class FiscalYearState(rx.State):
                 return rx.toast("削除しました。")
             except Exception as e:
                 return rx.window_alert(f"エラー: {e}")
+
+    is_processing_close: bool = False
+    show_close_dialog: bool = False
+    target_close_fy_id: int = 0
+    next_fy_name_input: str = ""
+
+    def open_close_dialog(self, current_period: int, fy_id: int):
+        self.target_close_fy_id = fy_id
+        self.next_fy_name_input = f"第{current_period + 1}期"
+        self.show_close_dialog = True
+
+    def toggle_close_dialog(self):
+        self.show_close_dialog = not self.show_close_dialog
+        
+    def set_next_fy_name_input(self, v: str):
+        self.next_fy_name_input = v
+
+    async def update_fiscal_year_name(self, fy_id: int, new_name: str):
+        async with DI.get_master_service() as service:
+            try:
+                fy = await service.get_fiscal_year_by_id(fy_id)
+                if fy:
+                    fy.name = new_name
+                    await service.save_fiscal_year(fy)
+                    self.fiscal_years = await service.get_fiscal_years()
+            except Exception as e:
+                return rx.window_alert(f"名称更新エラー: {e}")
+
+    async def close_fiscal_year(self):
+        self.is_processing_close = True
+        self.show_close_dialog = False
+        yield
+        try:
+            async with DI.get_fiscal_year_service() as service:
+                await service.close_fiscal_year(self.target_close_fy_id, next_fy_name=self.next_fy_name_input)
+            
+            # Reload the list
+            async with DI.get_master_service() as m_service:
+                self.fiscal_years = await m_service.get_fiscal_years()
+            yield rx.window_alert("期末処理が完了し、次年度の期首残高（開始仕訳）を登録しました！")
+            return
+        except Exception as e:
+            yield rx.window_alert(f"期末処理エラー: {e}")
+            return
+        finally:
+            self.is_processing_close = False
+            yield

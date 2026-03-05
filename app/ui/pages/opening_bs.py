@@ -3,19 +3,37 @@ from ..layout import layout
 from ..view_models.opening_bs_state import OpeningBSState
 
 def account_input_row(account) -> rx.Component:
+    # 資産科目であるかを判定し、視覚的なヒントとして背景色を分ける
+    is_asset = account["type"].contains("Asset")
+    
     return rx.hstack(
-        rx.text(account["code"] + " " + account["name"], width="180px", size="2"),
+        rx.text(account["code"] + " " + account["name"], width="220px", font_weight="bold", size="3"),
+        # 借方入力
         rx.input(
+            placeholder="借方(Debit)",
             type="number",
-            value=OpeningBSState.balances[account["id"]],
-            on_change=lambda val: OpeningBSState.update_balance(account["id"], val),
-            width="150px",
+            value=OpeningBSState.debit_balances[account["id"]],
+            on_change=lambda val: OpeningBSState.update_debit_balance(account["id"], val),
+            width="180px",
             text_align="right",
+            bg=rx.cond(is_asset, "#f0f8ff", "white"),
+        ),
+        # 貸方入力
+        rx.input(
+            placeholder="貸方(Credit)",
+            type="number",
+            value=OpeningBSState.credit_balances[account["id"]],
+            on_change=lambda val: OpeningBSState.update_credit_balance(account["id"], val),
+            width="180px",
+            text_align="right",
+            bg=rx.cond(~is_asset, "#f5fffa", "white"),
         ),
         align_items="center",
-        justify="between",
+        justify="start",
+        spacing="5",
+        padding_y="2",
+        border_bottom="1px solid #f0f0f0",
         width="100%",
-        padding_y="1",
     )
 
 def opening_bs_page() -> rx.Component:
@@ -26,59 +44,44 @@ def opening_bs_page() -> rx.Component:
             
             rx.cond(
                 OpeningBSState.is_loading,
-                rx.spinner(),
+                rx.center(rx.spinner(size="3"), width="100%", padding="50px"),
                 rx.vstack(
-                    rx.hstack(
-                        # 資産の部（左）
+                    rx.card(
                         rx.vstack(
-                            rx.heading("資産の部", size="5", color="blue"),
-                            rx.divider(),
-                            rx.foreach(
-                                OpeningBSState.asset_accounts,
-                                account_input_row
-                            ),
-                            rx.divider(),
+                            # ヘッダー列
                             rx.hstack(
-                                rx.text("資産合計", font_weight="bold"),
-                                rx.text(OpeningBSState.total_assets.to_string(), font_weight="bold"),
-                                justify="between",
+                                rx.text("勘定科目", width="220px", font_weight="bold", color="gray"),
+                                rx.text("借方 (Assets)", width="180px", font_weight="bold", color="blue"),
+                                rx.text("貸方 (Liabs / Equity)", width="180px", font_weight="bold", color="green"),
+                                spacing="5",
+                                padding_y="3",
+                                border_bottom="2px solid #eaeaea",
                                 width="100%",
-                                padding_y="2",
                             ),
-                            width="50%",
-                            padding="4",
-                            border="1px solid #eaeaea",
-                            border_radius="8px",
-                            bg="white",
-                            align_items="stretch",
-                        ),
-                        
-                        # 負債・純資産の部（右）
-                        rx.vstack(
-                            rx.heading("負債・純資産の部", size="5", color="green"),
-                            rx.divider(),
-                            rx.foreach(
-                                OpeningBSState.liability_equity_accounts,
-                                account_input_row
+                            # 各科目の入力行
+                            rx.vstack(
+                                rx.foreach(
+                                    OpeningBSState.bs_accounts,
+                                    account_input_row
+                                ),
+                                width="100%",
+                                spacing="0",
                             ),
-                            rx.divider(),
+                            # 合計行
                             rx.hstack(
-                                rx.text("負債・純資産合計", font_weight="bold"),
-                                rx.text(OpeningBSState.total_liabilities_equity.to_string(), font_weight="bold"),
-                                justify="between",
+                                rx.text("合計", width="220px", font_weight="bold", size="5"),
+                                rx.text(OpeningBSState.total_debit.to_string(), width="180px", font_weight="bold", text_align="right", size="5"),
+                                rx.text(OpeningBSState.total_credit.to_string(), width="180px", font_weight="bold", text_align="right", size="5"),
+                                spacing="5",
+                                padding_y="4",
+                                border_top="2px solid #eaeaea",
                                 width="100%",
-                                padding_y="2",
                             ),
-                            width="50%",
+                            width="100%",
                             padding="4",
-                            border="1px solid #eaeaea",
-                            border_radius="8px",
-                            bg="white",
-                            align_items="stretch",
                         ),
                         width="100%",
-                        align_items="start",
-                        spacing="6",
+                        border_radius="8px",
                     ),
                     
                     # フッター部分（貸借差額と登録ボタン）
@@ -117,7 +120,7 @@ def opening_bs_page() -> rx.Component:
             ),
             
             # Initialization
-            on_mount=[OpeningBSState.on_mount],
+            on_mount=OpeningBSState.load_accounts,
             spacing="5",
             padding="2em",
             width="100%",

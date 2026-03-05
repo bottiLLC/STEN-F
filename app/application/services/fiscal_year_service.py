@@ -11,7 +11,7 @@ class FiscalYearService:
         self.journal_service = journal_service
         self.log = logger.bind(service="FiscalYearService")
 
-    async def close_fiscal_year(self, fiscal_year_id: int):
+    async def close_fiscal_year(self, fiscal_year_id: int, next_fy_name: str = None):
         context_log = self.log.bind(fy_id=fiscal_year_id)
         try:
             context_log.info("Starting fiscal year closing process")
@@ -67,8 +67,9 @@ class FiscalYearService:
 
             if not next_fy:
                 context_log.info("Creating Next Fiscal Year")
+                determined_name = next_fy_name if next_fy_name else f"第{(current_fy.period_number or 0) + 1}期"
                 next_fy_data = FiscalYear(
-                    name=f"第{(current_fy.period_number or 0) + 1}期",
+                    name=determined_name,
                     start_date=next_start,
                     end_date=next_end,
                     status="OPEN",
@@ -114,11 +115,17 @@ class FiscalYearService:
             
             # 4.3 Add Net Income to Retained Earnings
             total_re = retained_earnings_sum + net_income
-            if total_re != 0:
+            if total_re > 0:
                  lines.append(TransactionLine(
                     account_id=retained_earnings_account_id,
                     debit=0,
                     credit=total_re
+                ))
+            elif total_re < 0:
+                 lines.append(TransactionLine(
+                    account_id=retained_earnings_account_id,
+                    debit=abs(total_re),
+                    credit=0
                 ))
 
             # 5. Save Opening Entry
@@ -132,7 +139,7 @@ class FiscalYearService:
             total_debit = sum(line.debit for line in lines)
             total_credit = sum(line.credit for line in lines)
             
-            if abs(total_debit - total_credit) > 0.001: # Float tolerance
+            if total_debit != total_credit:
                 raise ValueError(f"Opening Balance unbalanced: Dr {total_debit} != Cr {total_credit}")
 
             await self.journal_service.add_journal_entry(opening_tx)

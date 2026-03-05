@@ -14,6 +14,10 @@ class DI:
         return container.ledger_service_scope()
 
     @staticmethod
+    def get_fiscal_year_service():
+        return container.fiscal_year_service_scope()
+
+    @staticmethod
     def get_ocr_service():
         return container.get_ocr_service()
 

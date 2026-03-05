@@ -8,19 +8,16 @@ from ..di import DI
 class OpeningBSState(rx.State):
     """State for the Opening Balance Sheet entry page."""
     
-    # 資産の部 (Assets)
-    asset_accounts: List[Dict[str, str]] = []
-    # 負債・純資産の部 (Liabilities & Equity)
-    liability_equity_accounts: List[Dict[str, str]] = []
+    # 貸借対照表 (B/S) 全科目
+    bs_accounts: List[Dict[str, str]] = []
     
-    # 科目IDをキーにした残高の辞書 (文字列で保持し入力欄の変更を受け付ける)
-    balances: Dict[str, str] = {}
+    # 科目IDをキーにした残高の辞書
+    debit_balances: Dict[str, str] = {}
+    credit_balances: Dict[str, str] = {}
     
     is_loading: bool = False
 
-    async def on_mount(self):
-        """Called when the opening BS page is mounted."""
-        return self.load_accounts()
+
 
     async def load_accounts(self):
         self.is_loading = True
@@ -29,10 +26,10 @@ class OpeningBSState(rx.State):
             async with DI.get_master_service() as service:
                 all_accounts = await service.get_accounts()
                 
-                # 資産運用法人として不要な固定資産等を除外するフィルタリング
                 # B/S科目のみ抽出（PL科目は除外）
                 allowed_types = [
                     AccountType.CURRENT_ASSET,
+                    AccountType.FIXED_ASSET,
                     AccountType.DEFERRED_ASSET,
                     AccountType.CURRENT_LIABILITY,
                     AccountType.FIXED_LIABILITY,
@@ -41,28 +38,23 @@ class OpeningBSState(rx.State):
                 
                 filtered_accounts = [
                     acc for acc in all_accounts 
-                    if acc.type in allowed_types and acc.name not in ["車両運搬具", "建物", "備品"]
+                    if acc.type in allowed_types
                 ]
                 
-                self.asset_accounts = [
-                    {"id": str(a.id), "code": a.code, "name": a.name}
+                self.bs_accounts = [
+                    {"id": str(a.id), "code": a.code, "name": a.name, "type": a.type.value}
                     for a in filtered_accounts 
-                    if a.type in [AccountType.CURRENT_ASSET, AccountType.DEFERRED_ASSET]
-                ]
-                self.liability_equity_accounts = [
-                    {"id": str(a.id), "code": a.code, "name": a.name}
-                    for a in filtered_accounts 
-                    if a.type in [AccountType.CURRENT_LIABILITY, AccountType.FIXED_LIABILITY, AccountType.EQUITY]
                 ]
                 
                 # Sort by code
-                self.asset_accounts.sort(key=lambda x: x["code"])
-                self.liability_equity_accounts.sort(key=lambda x: x["code"])
+                self.bs_accounts.sort(key=lambda x: x["code"])
                 
                 # Initialize balances map if not exists
                 for acc in filtered_accounts:
-                    if str(acc.id) not in self.balances:
-                        self.balances[str(acc.id)] = "0"
+                    if str(acc.id) not in self.debit_balances:
+                        self.debit_balances[str(acc.id)] = ""
+                    if str(acc.id) not in self.credit_balances:
+                        self.credit_balances[str(acc.id)] = ""
                         
         except Exception as e:
             logger.error("Failed to load accounts for Opening BS", error=str(e), exc_info=True)
@@ -71,48 +63,51 @@ class OpeningBSState(rx.State):
             self.is_loading = False
             yield
 
-    def update_balance(self, account_id: str, value: str):
-        """Update balance for a specific account. 
-        Note: We must reassign the dict to trigger Reflex reactivity."""
-        if not value:
-            value = "0"
-        new_balances = self.balances.copy()
+    def update_debit_balance(self, account_id: str, value: str):
+        """Update debit balance for a specific account."""
+        new_balances = self.debit_balances.copy()
         new_balances[account_id] = value
-        self.balances = new_balances
+        self.debit_balances = new_balances
+
+    def update_credit_balance(self, account_id: str, value: str):
+        """Update credit balance for a specific account."""
+        new_balances = self.credit_balances.copy()
+        new_balances[account_id] = value
+        self.credit_balances = new_balances
 
     @rx.var
-    def total_assets(self) -> int:
-        """借方（資産）合計"""
+    def total_debit(self) -> int:
+        """借方合計"""
         total = 0
-        for acc in self.asset_accounts:
-            val_str = self.balances.get(acc["id"], "0")
-            try:
-                total += int(val_str)
-            except ValueError:
-                pass
+        for val_str in self.debit_balances.values():
+            if val_str:
+                try:
+                    total += int(val_str)
+                except ValueError:
+                    pass
         return total
 
     @rx.var
-    def total_liabilities_equity(self) -> int:
-        """貸方（負債・純資産）合計"""
+    def total_credit(self) -> int:
+        """貸方合計"""
         total = 0
-        for acc in self.liability_equity_accounts:
-            val_str = self.balances.get(acc["id"], "0")
-            try:
-                total += int(val_str)
-            except ValueError:
-                pass
+        for val_str in self.credit_balances.values():
+            if val_str:
+                try:
+                    total += int(val_str)
+                except ValueError:
+                    pass
         return total
 
     @rx.var
     def difference(self) -> int:
         """貸借差額"""
-        return self.total_assets - self.total_liabilities_equity
+        return abs(self.total_debit - self.total_credit)
 
     @rx.var
     def is_balanced(self) -> bool:
         """貸借が一致しており、かつ何か入力があるか"""
-        return self.difference == 0 and self.total_assets > 0
+        return self.total_debit == self.total_credit and self.total_debit > 0
 
     async def get_fiscal_start_date(self) -> date | None:
         """マスタから現在の会計年度（または最新）の期首日を取得する。設定がない場合はNoneを返す。"""
@@ -146,16 +141,18 @@ class OpeningBSState(rx.State):
             async with DI.get_journal_service() as service:
                 await service.register_opening_balance(
                     opening_date=opening_date,
-                    balances=self.balances,
-                    asset_accounts=self.asset_accounts,
-                    liability_equity_accounts=self.liability_equity_accounts
+                    debit_balances=self.debit_balances,
+                    credit_balances=self.credit_balances
                 )
                 
             # Clear form safely for Reflex reactivity
-            cleared_balances = self.balances.copy()
-            for acc_id in cleared_balances:
-                cleared_balances[acc_id] = "0"
-            self.balances = cleared_balances
+            cleared_debits = self.debit_balances.copy()
+            cleared_credits = self.credit_balances.copy()
+            for acc_id in cleared_debits:
+                cleared_debits[acc_id] = ""
+                cleared_credits[acc_id] = ""
+            self.debit_balances = cleared_debits
+            self.credit_balances = cleared_credits
                 
             return rx.toast("期首残高を登録しました！", duration=3000)
             

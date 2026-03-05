@@ -5,7 +5,7 @@ class Counterparty(BaseModel):
     id: Optional[int] = None
     name: str
     name_kana: Optional[str] = None
-    invoice_number: Optional[str] = Field(None, description="T番号 (T + 13 digits)")
+    invoice_number: Optional[str] = Field(None, pattern=r'^T[0-9]{13}$', description="T番号 (T + 13 digits)")
     debit_account_id: Optional[int] = None
     credit_account_id: Optional[int] = None
     description_template: Optional[str] = None

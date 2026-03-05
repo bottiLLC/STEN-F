@@ -6,21 +6,21 @@ from reportlab.pdfbase import pdfmetrics
 from datetime import date
 import io
 
-from config import FONT_PATH, FONT_NAME, APP_TITLE
+from config import settings
 from domain.models.corporation import Corporation
 from domain.models.financial_report import FinancialReport
 
 class PDFService:
     @staticmethod
     def _register_font():
-        if FONT_PATH and FONT_PATH.exists():
+        if settings.FONT_PATH and settings.FONT_PATH.exists():
             try:
                 # Use a unique name to avoid registration errors if called multiple times in some contexts
                 # or just try/except
-                pdfmetrics.registerFont(TTFont(FONT_NAME, str(FONT_PATH)))
+                pdfmetrics.registerFont(TTFont(settings.FONT_NAME, str(settings.FONT_PATH)))
             except Exception:
                 pass # Already registered or error
-        elif FONT_NAME == "HeiseiMin-W3":
+        elif settings.FONT_NAME == "HeiseiMin-W3":
             try:
                 from reportlab.pdfbase import cidfonts
                 pdfmetrics.registerFont(cidfonts.UnicodeCIDFont("HeiseiMin-W3"))
@@ -38,38 +38,38 @@ class PDFService:
         # PDF/A Metadata
         c.setTitle(f"Annual Report - {corp.name} - {fy_full_obj.name}")
         c.setAuthor(corp.name)
-        c.setCreator(APP_TITLE)
+        c.setCreator(settings.APP_TITLE)
         
         width, height = A4
         margin_x = 20 * mm
         
         def draw_header(title, subtitle=None):
-            c.setFont(FONT_NAME, 14)
+            c.setFont(settings.FONT_NAME, 14)
             c.drawCentredString(width / 2, height - 20 * mm, title)
-            c.setFont(FONT_NAME, 10)
+            c.setFont(settings.FONT_NAME, 10)
             if subtitle:
                 c.drawCentredString(width / 2, height - 26 * mm, subtitle)
             c.line(margin_x, height - 30 * mm, width - margin_x, height - 30 * mm)
 
         # --- COVER ---
-        c.setFont(FONT_NAME, 24)
+        c.setFont(settings.FONT_NAME, 24)
         c.drawCentredString(width / 2, height / 2 + 40 * mm, "決算報告書")
         
-        c.setFont(FONT_NAME, 16)
+        c.setFont(settings.FONT_NAME, 16)
         period_text = f"第 {fy_full_obj.period_number} 期" if fy_full_obj.period_number else fy_full_obj.name
         c.drawCentredString(width / 2, height / 2 + 20 * mm, period_text)
         
-        c.setFont(FONT_NAME, 12)
+        c.setFont(settings.FONT_NAME, 12)
         date_range = f"自 {fy_full_obj.start_date.strftime('%Y年%m月%d日')}　至 {fy_full_obj.end_date.strftime('%Y年%m月%d日')}"
         
         c.drawCentredString(width / 2, height / 2 + 10 * mm, f"自　{fy_full_obj.start_date.strftime('%Y年%m月%d日')}")
         c.drawCentredString(width / 2, height / 2 + 0 * mm, f"至　{fy_full_obj.end_date.strftime('%Y年%m月%d日')}")
         
-        c.setFont(FONT_NAME, 18)
+        c.setFont(settings.FONT_NAME, 18)
         c.drawCentredString(width / 2, height / 2 - 60 * mm, corp.name)
         
         if corp.address:
-            c.setFont(FONT_NAME, 11)
+            c.setFont(settings.FONT_NAME, 11)
             c.drawCentredString(width / 2, height / 2 - 80 * mm, corp.address)
             
         c.showPage()
@@ -79,7 +79,7 @@ class PDFService:
         y = height - 40 * mm
         
         def draw_bs_section(section, total_label, total_val, current_y):
-            c.setFont(FONT_NAME, 11)
+            c.setFont(settings.FONT_NAME, 11)
             # Assets vs Liabilities layout logic
             is_assets = "負債" not in section.title and "純資産" not in section.title
             x_title = 30 * mm if is_assets else 110 * mm
@@ -89,7 +89,7 @@ class PDFService:
             x_label = 35 * mm if is_assets else 115 * mm
             x_val = 100 * mm if is_assets else 180 * mm
             
-            c.setFont(FONT_NAME, 10)
+            c.setFont(settings.FONT_NAME, 10)
             for r in section.rows:
                 if r.balance != 0:
                     c.drawString(x_label, current_y, r.account_name)
@@ -106,7 +106,7 @@ class PDFService:
 
         # Assets
         y_left = y
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(30 * mm, y_left, "【資産の部】")
         y_left -= 6 * mm
         
@@ -122,7 +122,7 @@ class PDFService:
         
         # Liabilities
         y_right = y
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(110 * mm, y_right, "【負債の部】")
         y_right -= 6 * mm
         
@@ -136,11 +136,11 @@ class PDFService:
         y_right -= 12 * mm
         
         # Equity
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(110 * mm, y_right, "【純資産の部】")
         y_right -= 6 * mm
         
-        c.setFont(FONT_NAME, 10)
+        c.setFont(settings.FONT_NAME, 10)
         for r in rpt.equity.rows:
              if r.balance != 0:
                 c.drawString(115 * mm, y_right, r.account_name)
@@ -158,7 +158,7 @@ class PDFService:
         c.drawRightString(180 * mm, y_right, f"{rpt.total_equity:,}")
         y_right -= 10 * mm
         
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(115 * mm, y_right, "負債・純資産合計")
         c.drawRightString(180 * mm, y_right, f"{rpt.total_liabilities + rpt.total_equity:,}")
         
@@ -172,11 +172,11 @@ class PDFService:
         
         def draw_pl_section_obj(section):
             nonlocal y
-            c.setFont(FONT_NAME, 11)
+            c.setFont(settings.FONT_NAME, 11)
             c.drawString(x_label - 5*mm, y, section.title)
             y -= 6 * mm
             
-            c.setFont(FONT_NAME, 10)
+            c.setFont(settings.FONT_NAME, 10)
             for r in section.rows:
                 if r.balance != 0:
                     c.drawString(x_label + 5*mm, y, r.account_name)
@@ -190,14 +190,14 @@ class PDFService:
         draw_pl_section_obj(rpt.revenue)
         draw_pl_section_obj(rpt.cost_of_sales)
         
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(x_label, y, "売上総利益")
         c.drawRightString(x_val, y, f"{rpt.gross_profit:,}")
         y -= 10 * mm
         
         draw_pl_section_obj(rpt.sga)
         
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(x_label, y, "営業利益")
         c.drawRightString(x_val, y, f"{rpt.operating_income:,}")
         y -= 10 * mm
@@ -210,7 +210,7 @@ class PDFService:
         draw_pl_section_obj(rpt.non_op_income)
         draw_pl_section_obj(rpt.non_op_expense)
         
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(x_label, y, "経常利益")
         c.drawRightString(x_val, y, f"{rpt.ordinary_income:,}")
         y -= 10 * mm
@@ -218,7 +218,7 @@ class PDFService:
         draw_pl_section_obj(rpt.extra_income)
         draw_pl_section_obj(rpt.extra_loss)
         
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(x_label, y, "税引前当期純利益")
         c.drawRightString(x_val, y, f"{rpt.income_before_tax:,}")
         
@@ -230,19 +230,19 @@ class PDFService:
         
         def draw_detail_table(section):
             nonlocal y
-            c.setFont(FONT_NAME, 11)
+            c.setFont(settings.FONT_NAME, 11)
             c.drawString(30 * mm, y, f"{section.title.replace('【','').replace('】','')} 明細")
             y -= 6 * mm
             
             has_rows = any(r.balance > 0 for r in section.rows)
             
             if not has_rows:
-                c.setFont(FONT_NAME, 10)
+                c.setFont(settings.FONT_NAME, 10)
                 c.drawString(35 * mm, y, "(該当なし)")
                 y -= 8 * mm
                 return
 
-            c.setFont(FONT_NAME, 10)
+            c.setFont(settings.FONT_NAME, 10)
             for r in section.rows:
                 if r.balance > 0:
                     c.drawString(35 * mm, y, r.account_name)
@@ -267,14 +267,14 @@ class PDFService:
         c.line(margin_x, y, width - margin_x, y)
         y -= 10 * mm
         
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(30 * mm, y, "上記の通りご報告申し上げます。")
         y -= 10 * mm
         
         c.drawString(30 * mm, y, f"報告日：{report_date.strftime('%Y年%m月%d日')}")
         y -= 10 * mm
         
-        c.setFont(FONT_NAME, 12)
+        c.setFont(settings.FONT_NAME, 12)
         c.drawString(30 * mm, y, corp.name)
         y -= 8 * mm
         
@@ -282,7 +282,7 @@ class PDFService:
              c.drawString(30 * mm, y, f"{corp.representative_title}  {corp.representative_name}")
              
         y -= 25 * mm
-        c.setFont(FONT_NAME, 11)
+        c.setFont(settings.FONT_NAME, 11)
         c.drawString(30 * mm, y, "監査の結果、適法かつ正確なることを認めます。")
         y -= 10 * mm
         c.drawString(30 * mm, y, f"監査日：{audit_date.strftime('%Y年%m月%d日')}")

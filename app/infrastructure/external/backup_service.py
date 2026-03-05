@@ -2,7 +2,7 @@ import shutil
 import asyncio
 from pathlib import Path
 from datetime import datetime
-from config import DB_PATH
+from config import settings
 
 class BackupService:
     async def create_backup(self, target_dir_str: str) -> str:
@@ -38,14 +38,16 @@ class BackupService:
         # Define destination path
         dest_path = backup_subdir / "bookkeeping.db"
         
+        # Define source path
+        db_path = settings.PROJECT_ROOT / "data" / settings.DB_NAME
+        
         # Copy logic
         try:
-            shutil.copy2(DB_PATH, dest_path)
+            shutil.copy2(db_path, dest_path)
             
             # Try to copy WAL files if they exist (SQLite)
-            # Note: DB_PATH is a Path object
-            wal_path = Path(str(DB_PATH) + "-wal")
-            shm_path = Path(str(DB_PATH) + "-shm")
+            wal_path = Path(str(db_path) + "-wal")
+            shm_path = Path(str(db_path) + "-shm")
             
             if wal_path.exists(): 
                 shutil.copy2(wal_path, backup_subdir / "bookkeeping.db-wal")
