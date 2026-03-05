@@ -6,6 +6,7 @@ from domain.models.transaction import Transaction, TransactionLine
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
+from core.logging import logger
 from ..di import DI
 
 class JournalState(rx.State):
@@ -260,7 +261,7 @@ class JournalState(rx.State):
                  )
                  self.journal_entries = entries
              except Exception as e:
-                 print(f"Error loading entries: {e}")
+                 logger.error("Error loading entries", error=str(e), exc_info=True)
 
     async def delete_entry(self, entry_id: int):
         async with DI.get_journal_service() as service:

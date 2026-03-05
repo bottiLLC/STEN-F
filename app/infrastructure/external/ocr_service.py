@@ -8,6 +8,9 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
+from core.logging import logger
+from core.resilience import resilient_api_call
+
 # Re-using the Pydantic model for internal data transfer
 from domain.models.receipt import ReceiptData
 
@@ -16,12 +19,12 @@ from domain.models.receipt import ReceiptData
 class GoogleOCRService:
     def __init__(self):
         load_dotenv()
-        load_dotenv()
         self.api_key = os.getenv("GOOGLE_API_KEY")
+        self.log = logger.bind(service="GoogleOCRService")
 
     async def extract_receipt_data(self, file_bytes: bytes, file_type: str, account_list: list[str] = None, counterparty_list: list[str] = None) -> Optional[ReceiptData]:
         if not self.api_key:
-            print("ERROR: GOOGLE_API_KEY not found.")
+            self.log.error("GOOGLE_API_KEY not found.")
             return None
             
         # Determine Mime Type
@@ -84,77 +87,62 @@ Notes:
 - Return ONLY the JSON object.
 """
         
-        import asyncio
-        import random
-
-        max_retries = 3
-        # Optimization: Faster retry for Gemini 2.5
-        base_delay = 0.5
-
         client = genai.Client(api_key=self.api_key)
         try:
-            for attempt in range(max_retries):
-                try:
-                    # Run async
-                    response = await client.aio.models.generate_content(
-                        model="gemini-2.5-flash-lite", 
-                        contents=[
-                            types.Content(
-                                role="user",
-                                parts=[
-                                    types.Part.from_text(text=sys_instruct),
-                                    image_part
-                                ]
-                            )
-                        ],
-                        config=types.GenerateContentConfig(
-                            temperature=0.0,
-                            max_output_tokens=8192,
-                            response_mime_type="application/json",
-                        )
-                    )
-                    
-                    # Check for empty response or error
-                    if not response.text:
-                        raise ValueError("Empty response from Gemini")
+            response = await self._call_gemini_api(client, sys_instruct, image_part)
+            
+            if not response.text:
+                raise ValueError("Empty response from Gemini")
 
-                    data = json.loads(response.text)
-                    receipt = ReceiptData(**data)
-                    
-                    # Verify against counterparty list if provided
-                    if counterparty_list and receipt.merchant_name:
-                         # Normalize OCR result
-                         norm_ocr = self._normalize_name(receipt.merchant_name)
-                         
-                         match_found = False
-                         for registered_name in counterparty_list:
-                             norm_reg = self._normalize_name(registered_name)
-                             if norm_ocr == norm_reg:
-                                 receipt.merchant_name = registered_name  # Use the exact registered name
-                                 receipt.is_registered_merchant = True
-                                 match_found = True
-                                 break
-                        
-                         if not match_found:
-                             pass
+            data = json.loads(response.text)
+            receipt = ReceiptData(**data)
+            
+            # Verify against counterparty list if provided
+            if counterparty_list and receipt.merchant_name:
+                 # Normalize OCR result
+                 norm_ocr = self._normalize_name(receipt.merchant_name)
+                 
+                 match_found = False
+                 for registered_name in counterparty_list:
+                     norm_reg = self._normalize_name(registered_name)
+                     if norm_ocr == norm_reg:
+                         receipt.merchant_name = registered_name  # Use the exact registered name
+                         receipt.is_registered_merchant = True
+                         match_found = True
+                         break
+                
+                 if not match_found:
+                     pass
 
-                    return self._validate_receipt(receipt)
+            return self._validate_receipt(receipt)
 
-                except Exception as e:
-                    # Check for 503 or 429
-                    error_str = str(e)
-                    if "503" in error_str or "429" in error_str:
-                        if attempt < max_retries - 1:
-                            delay = (base_delay * (2 ** attempt)) + (random.uniform(0, 1))
-                            print(f"Gemini API Busy (Attempt {attempt+1}/{max_retries}). Retrying in {delay:.2f}s...")
-                            await asyncio.sleep(delay)
-                            continue
-                    
-                    print(f"Gemini API Error (Final): {e}")
-                    return None
+        except Exception as e:
+            self.log.error("Failed to extract receipt data", error=str(e), exc_info=True)
             return None
         finally:
-            client.close()
+            if hasattr(client, 'aio') and client.aio:
+                await client.aio.close()
+
+    @resilient_api_call(max_retries=3, base_delay=0.5)
+    async def _call_gemini_api(self, client, sys_instruct, image_part):
+        return await client.aio.models.generate_content(
+            model="gemini-3-flash-preview", 
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=sys_instruct),
+                        image_part
+                    ]
+                )
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                max_output_tokens=8192,
+                response_mime_type="application/json",
+            )
+        )
+
 
     def _normalize_name(self, name: str) -> str:
         """
@@ -300,5 +288,5 @@ Notes:
 
         except Exception as e:
             # 万が一Pillowで開けない変なファイルが来たら、元のデータをそのまま投げる（フェイルセーフ）
-            print(f"画像最適化エラー: {e}")
+            self.log.warning("Image optimization failed", error=str(e))
             return file_bytes, mime_type

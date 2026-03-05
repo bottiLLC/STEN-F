@@ -38,7 +38,7 @@
     *   総勘定元帳（ドリルダウン可能）
 *   **決算報告書出力**: 監査にも対応可能な形式のPDF決算報告書をワンクリックで生成。
 *   **AI OCR (Beta)**:
-    *   **Google Gemini 2.5 Flash Lite** を採用（高速・低コスト）。
+    *   **Google Gemini 3 Flash Preview** を採用（最先端の非同期API統合）。
     *   **Native PDF Support**: PDFは画像変換せず、Geminiのネイティブ機能で直接解析（高精度）。
     *   **Smart Image Optimization**: 画像は自動で最適化（最大2000px / 200dpi）し、トークン節約と精度向上を両立。
     *   **Smart Counterparty Matching**: OCR結果の店舗名をマスタ登録済みの取引先と自動照合。
@@ -51,7 +51,7 @@
 *   **言語**: Python 3.13+
 *   **UIフレームワーク**: **Reflex** (Pure Python Web App)
 *   **データベース**: SQLite (via **SQLAlchemy 2.0 Async** + aiosqlite)
-*   **AI/LLM**: Google GenAI SDK (Gemini 2.5 Flash Lite)
+*   **AI/LLM**: Google GenAI SDK (Gemini 3 Flash Preview)
 *   **データ検証**: **Pydantic V2** (Strict Config)
 *   **非同期I/O**: aiofiles
 *   **PDF生成**: ReportLab
@@ -84,12 +84,12 @@ STEN-F/
 *   Git
 
 ### 2. インストール
-リポジトリをクローンし、依存ライブラリをインストールします。
+リポジトリをクローンし、`uv` を用いて環境を構築します。
 
 ```bash
 git clone https://github.com/bottiLLC/STEN-F.git
 cd STEN-F
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 3. 環境設定 (.env)
@@ -108,7 +108,7 @@ DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 以下のコマンドでアプリケーションを起動します。
 
 ```bash
-reflex run
+uv run reflex run
 ```
 
 ブラウザが自動的に開き、アプリケーションが表示されます (`http://localhost:3000`)。
@@ -117,7 +117,7 @@ reflex run
 品質担保のため、以下のコマンドで非同期テストを実行できます。
 
 ```bash
-pytest
+uv run pytest
 ```
 
 ## ライセンス (License)
