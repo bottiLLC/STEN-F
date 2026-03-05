@@ -126,17 +126,20 @@ class JournalState(rx.State):
     async def set_counterparty(self, value: str):
         self.counterparty = value
         
-        # Auto-fill Default Account if exact match found
+        # Auto-fill Details if exact match found
         if value:
             async with DI.get_master_service() as service:
                 cps = await service.get_counterparties()
                 # Find exact match
                 matched = next((c for c in cps if c.name == value), None)
-                if matched and matched.default_account_id:
-                     # Update first line if empty or overwrite? 
+                if matched:
+                     if matched.invoice_number:
+                         self.invoice_number = matched.invoice_number
+                         
+                     # Only update if the user hasn't explicitly set another account yet?
                      # Let's overwrite first line's account for convenience
-                     if self.lines:
-                         self.update_line_account(0, str(matched.default_account_id))
+                     if self.lines and matched.debit_account_id:
+                         self.update_line_account(0, str(matched.debit_account_id))
 
     def set_invoice_number(self, value: str):
         # Auto-uppercase for 't' -> 'T'
@@ -421,8 +424,14 @@ class JournalState(rx.State):
                  async with DI.get_master_service() as service:
                       cps = await service.get_counterparties()
                       matched = next((c for c in cps if c.name == self.counterparty), None)
-                      if matched and matched.default_account_id:
-                           debit_acc = str(matched.default_account_id)
+                      if matched:
+                           if matched.debit_account_id:
+                               debit_acc = str(matched.debit_account_id)
+                           if matched.credit_account_id and not credit_acc:
+                               credit_acc = str(matched.credit_account_id)
+                           # Also fallback for invoice number if OCR missed it
+                           if matched.invoice_number and not self.invoice_number:
+                               self.invoice_number = matched.invoice_number
 
             self.lines = [
                 {"account_id": debit_acc, "debit": data.total_amount_incl_tax, "credit": 0},

@@ -99,8 +99,11 @@ Return ONLY the raw JSON object without markdown formatting.
                              break
                 
                 if receipt.merchant_name:
-                    template = await master_service.get_journal_template(receipt.merchant_name)
+                    template = await master_service.get_counterparty_by_keyword(receipt.merchant_name)
                     if template:
+                        # Map invoice number from master if available
+                        receipt.invoice_registration_number = template.invoice_number if template.invoice_number else None
+                        # Map dictionary data
                         receipt.inferred_debit_account_id = str(template.debit_account_id) if template.debit_account_id else None
                         receipt.inferred_credit_account_id = str(template.credit_account_id) if template.credit_account_id else None
                         receipt.description = template.description_template
@@ -133,7 +136,7 @@ Return ONLY the raw JSON object without markdown formatting.
 }}
 """
                 fallback_response = await client.aio.models.generate_content(
-                    model="gemini-3-flash-preview",
+                    model="gemini-3.1-flash-lite-preview",
                     contents=[sys_instruct_fallback],
                     config=types.GenerateContentConfig(
                         temperature=0.0,
@@ -169,7 +172,7 @@ Return ONLY the raw JSON object without markdown formatting.
     @resilient_api_call(max_retries=3, base_delay=0.5)
     async def _call_gemini_api(self, client, sys_instruct, image_part):
         return await client.aio.models.generate_content(
-            model="gemini-3-flash-preview", 
+            model="gemini-3.1-flash-lite-preview", 
             contents=[
                 types.Content(
                     role="user",

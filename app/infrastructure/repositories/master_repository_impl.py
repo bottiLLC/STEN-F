@@ -9,9 +9,8 @@ from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
-from domain.models.journal_template import JournalTemplate
 
-from infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable, JournalTemplateTable
+from infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable
 
 class SQLAlchemyMasterRepository(IMasterRepository):
     def __init__(self, session: AsyncSession):
@@ -215,7 +214,9 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             existing.name_kana = counterparty.name_kana
             # Handle empty string as None for invoice
             existing.invoice_number = counterparty.invoice_number if counterparty.invoice_number else None
-            existing.default_account_id = counterparty.default_account_id
+            existing.debit_account_id = counterparty.debit_account_id
+            existing.credit_account_id = counterparty.credit_account_id
+            existing.description_template = counterparty.description_template
             
             await self.session.commit()
             await self.session.refresh(existing)
@@ -225,7 +226,9 @@ class SQLAlchemyMasterRepository(IMasterRepository):
                 name=counterparty.name,
                 name_kana=counterparty.name_kana,
                 invoice_number=counterparty.invoice_number if counterparty.invoice_number else None,
-                default_account_id=counterparty.default_account_id
+                debit_account_id=counterparty.debit_account_id,
+                credit_account_id=counterparty.credit_account_id,
+                description_template=counterparty.description_template
             )
             self.session.add(new_cp)
             await self.session.commit()
@@ -237,61 +240,16 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         result = await self.session.execute(stmt)
         return [Counterparty.model_validate(r) for r in result.scalars().all()]
 
-    async def delete_counterparty(self, cp_id: int) -> bool:
-        stmt = select(CounterpartyTable).where(CounterpartyTable.id == cp_id)
-        result = await self.session.execute(stmt)
-        existing = result.scalar_one_or_none()
-        if existing:
-            await self.session.delete(existing)
-            await self.session.commit()
-            return True
-        return False
-
-    # --- Journal Template ---
-    async def get_journal_template_by_keyword(self, keyword: str) -> Optional[JournalTemplate]:
-        stmt = select(JournalTemplateTable).where(JournalTemplateTable.keyword.ilike(f"%{keyword}%")).limit(1)
+    async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]:
+        stmt = select(CounterpartyTable).where(
+            CounterpartyTable.name.ilike(f"%{keyword}%")
+        ).limit(1)
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
-        return JournalTemplate.model_validate(row) if row else None
+        return Counterparty.model_validate(row) if row else None
 
-    async def get_journal_templates(self) -> List[JournalTemplate]:
-        stmt = select(JournalTemplateTable).order_by(JournalTemplateTable.keyword)
-        result = await self.session.execute(stmt)
-        return [JournalTemplate.model_validate(r) for r in result.scalars().all()]
-
-    async def save_journal_template(self, template: JournalTemplate) -> JournalTemplate:
-        existing = None
-        if template.id:
-            stmt = select(JournalTemplateTable).where(JournalTemplateTable.id == template.id)
-            result = await self.session.execute(stmt)
-            existing = result.scalar_one_or_none()
-        else:
-            stmt = select(JournalTemplateTable).where(JournalTemplateTable.keyword == template.keyword)
-            result = await self.session.execute(stmt)
-            existing = result.scalar_one_or_none()
-        
-        if existing:
-            existing.keyword = template.keyword
-            existing.debit_account_id = template.debit_account_id
-            existing.credit_account_id = template.credit_account_id
-            existing.description_template = template.description_template
-            await self.session.commit()
-            await self.session.refresh(existing)
-            return JournalTemplate.model_validate(existing)
-        else:
-            new_tpl = JournalTemplateTable(
-                keyword=template.keyword,
-                debit_account_id=template.debit_account_id,
-                credit_account_id=template.credit_account_id,
-                description_template=template.description_template
-            )
-            self.session.add(new_tpl)
-            await self.session.commit()
-            await self.session.refresh(new_tpl)
-            return JournalTemplate.model_validate(new_tpl)
-
-    async def delete_journal_template(self, template_id: int) -> bool:
-        stmt = select(JournalTemplateTable).where(JournalTemplateTable.id == template_id)
+    async def delete_counterparty(self, cp_id: int) -> bool:
+        stmt = select(CounterpartyTable).where(CounterpartyTable.id == cp_id)
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
         if existing:

@@ -45,9 +45,9 @@ def _render_form() -> rx.Component:
             width="100%"
         ),
 
-        rx.text("デフォルト勘定科目", weight="bold"),
+        rx.text("借方科目", weight="bold"),
         rx.select.root(
-            rx.select.trigger(placeholder="勘定科目を選択...", width="100%"),
+            rx.select.trigger(placeholder="借方科目を選択...", width="100%"),
             rx.select.content(
                 rx.select.group(
                     rx.foreach(
@@ -56,10 +56,33 @@ def _render_form() -> rx.Component:
                     )
                 )
             ),
-            value=CounterpartyState.cp_default_account_id,
-            on_change=CounterpartyState.set_cp_default_account_id,
+            value=CounterpartyState.cp_debit_account_id,
+            on_change=CounterpartyState.set_cp_debit_account_id,
         ),
-        rx.text("※ OCR読み取り時にこの勘定科目が優先されます", font_size="0.8em", color="gray"),
+
+        rx.text("貸方科目", weight="bold"),
+        rx.select.root(
+            rx.select.trigger(placeholder="貸方科目を選択...", width="100%"),
+            rx.select.content(
+                rx.select.group(
+                    rx.foreach(
+                        CounterpartyState.cp_account_options,
+                        lambda x: rx.select.item(x[1], value=x[0])
+                    )
+                )
+            ),
+            value=CounterpartyState.cp_credit_account_id,
+            on_change=CounterpartyState.set_cp_credit_account_id,
+        ),
+
+        rx.text("自動摘要フォーマット", weight="bold"),
+        rx.input(
+            placeholder="例: {keyword} 支払い",
+            value=CounterpartyState.cp_description_template,
+            on_change=CounterpartyState.set_cp_description_template,
+            width="100%"
+        ),
+        rx.text("※ OCR読み取り時にこれらの設定が適用されます", font_size="0.8em", color="gray"),
 
         rx.hstack(
             rx.button("クリア", on_click=CounterpartyState.clear_counterparty_form, variant="outline"),
@@ -90,7 +113,9 @@ def _render_list() -> rx.Component:
                         rx.table.column_header_cell("", width="50px"), # Checkbox column
                         rx.table.column_header_cell("取引先名"),
                         rx.table.column_header_cell("登録番号"),
-                        rx.table.column_header_cell("科目種別"),
+                        rx.table.column_header_cell("借方科目ID"),
+                        rx.table.column_header_cell("貸方科目ID"),
+                        rx.table.column_header_cell("摘要テンプレート"),
                     )
                 ),
                 rx.table.body(
@@ -108,13 +133,9 @@ def _render_list() -> rx.Component:
                             ),
                             rx.table.cell(cp.name),
                             rx.table.cell(cp.invoice_number),
-                            rx.table.cell(
-                                rx.cond(
-                                    cp.default_account_id,
-                                    "設定あり", # Simplified for now, or need a lookup map in state
-                                    "-"
-                                )
-                            ),
+                            rx.table.cell(cp.debit_account_id),
+                            rx.table.cell(cp.credit_account_id),
+                            rx.table.cell(cp.description_template),
                             _hover={"bg": "#f5f5f5"}
                         )
                     )

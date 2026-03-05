@@ -53,10 +53,7 @@ class AccountState(rx.State):
                 )
                 await service.save_account(new_acc)
                 self.accounts = await service.get_accounts()
-                from .journal_template_state import JournalTemplateState
                 from .counterparty_state import CounterpartyState
-                jt_state = await self.get_state(JournalTemplateState)
-                await jt_state.load_templates()
                 cp_state = await self.get_state(CounterpartyState)
                 await cp_state.load_counterparties()
 
@@ -70,10 +67,7 @@ class AccountState(rx.State):
             try:
                 await service.delete_account(acc_id)
                 self.accounts = await service.get_accounts()
-                from .journal_template_state import JournalTemplateState
                 from .counterparty_state import CounterpartyState
-                jt_state = await self.get_state(JournalTemplateState)
-                await jt_state.load_templates()
                 cp_state = await self.get_state(CounterpartyState)
                 await cp_state.load_counterparties()
 

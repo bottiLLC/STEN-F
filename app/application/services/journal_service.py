@@ -22,12 +22,12 @@ class JournalService:
             await self.repository.commit() # Unit of Work Commit
             context_log.info("Journal entry added successfully", transaction_id=tx_id)
 
-            # --- Auto-Learning for Journal Template ---
+            # --- Auto-Learning for Counterparty Dictionary ---
             if transaction.counterparty:
                 from app.ui.di import DI
                 try:
                     async with DI.get_master_service() as master_service:
-                        existing_template = await master_service.get_journal_template(transaction.counterparty)
+                        existing_template = await master_service.get_counterparty_by_keyword(transaction.counterparty)
                         if not existing_template:
                             # Extract primary debit and primary credit from lines
                             debit_account_id = None
@@ -42,17 +42,17 @@ class JournalService:
                                     max_credit = line.credit
                                     credit_account_id = line.account_id
                                     
-                            from domain.models.journal_template import JournalTemplate
-                            new_template = JournalTemplate(
-                                keyword=transaction.counterparty,
+                            from domain.models.counterparty import Counterparty
+                            new_template = Counterparty(
+                                name=transaction.counterparty,
                                 debit_account_id=debit_account_id,
                                 credit_account_id=credit_account_id,
                                 description_template=transaction.description
                             )
-                            await master_service.save_journal_template(new_template)
-                            context_log.info("Auto-learned new journal template", keyword=transaction.counterparty)
+                            await master_service.save_counterparty(new_template)
+                            context_log.info("Auto-learned new counterparty rules", keyword=transaction.counterparty)
                 except Exception as e:
-                    context_log.warning("Failed to auto-learn journal template", error=str(e))
+                    context_log.warning("Failed to auto-learn counterparty rules", error=str(e))
 
             return tx_id
         except Exception as e:

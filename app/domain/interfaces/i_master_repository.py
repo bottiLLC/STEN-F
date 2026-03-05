@@ -5,7 +5,6 @@ from domain.models.fiscal_year import FiscalYear
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from domain.models.counterparty import Counterparty
-from domain.models.journal_template import JournalTemplate
 
 class IMasterRepository(ABC):
     # Corporation
@@ -30,6 +29,9 @@ class IMasterRepository(ABC):
     async def get_counterparties(self) -> List[Counterparty]: pass
     
     @abstractmethod
+    async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]: pass
+    
+    @abstractmethod
     async def delete_counterparty(self, cp_id: int) -> bool: pass
     
     @abstractmethod
@@ -51,16 +53,3 @@ class IMasterRepository(ABC):
     
     @abstractmethod
     async def save_abstract(self, abstract: Abstract) -> Abstract: pass
-
-    # Journal Template
-    @abstractmethod
-    async def get_journal_template_by_keyword(self, keyword: str) -> Optional[JournalTemplate]: pass
-
-    @abstractmethod
-    async def get_journal_templates(self) -> List[JournalTemplate]: pass
-
-    @abstractmethod
-    async def save_journal_template(self, template: JournalTemplate) -> JournalTemplate: pass
-
-    @abstractmethod
-    async def delete_journal_template(self, template_id: int) -> bool: pass

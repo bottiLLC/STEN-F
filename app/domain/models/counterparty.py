@@ -6,6 +6,8 @@ class Counterparty(BaseModel):
     name: str
     name_kana: Optional[str] = None
     invoice_number: Optional[str] = Field(None, description="T番号 (T + 13 digits)")
-    default_account_id: Optional[int] = None
+    debit_account_id: Optional[int] = None
+    credit_account_id: Optional[int] = None
+    description_template: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True, extra='forbid')
