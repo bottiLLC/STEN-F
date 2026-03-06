@@ -2,7 +2,7 @@
 cd "$(dirname "$0")"
 echo "STEN-F 起動準備中..."
 
-# バックグラウンドで6秒待機してからブラウザを開く
-(sleep 6 && open "http://localhost:3000") &
+# バックグラウンドでPythonを使用して7秒後にブラウザを開く
+uv run python -c "import webbrowser, time; time.sleep(7); webbrowser.open('http://localhost:3000')" &
 
 uv run reflex run
