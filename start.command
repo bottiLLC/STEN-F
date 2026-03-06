@@ -1,8 +1,8 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-echo "STEN-F 起動準備中..."
+echo "Starting STEN-F Application..."
 
-# 別プロセスとして7秒待機後にブラウザを起動させる
-(sleep 7 && open http://localhost:3000) &
+# Launch browser in the background after 8 seconds
+(sleep 8 && open http://localhost:3000) &
 
 uv run reflex run

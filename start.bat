@@ -1,10 +1,10 @@
 @echo off
-cd /d %~dp0
-echo STEN-F 襍ｷ蜍墓ｺ門ｙ荳ｭ...
+chcp 65001 > nul
+cd /d "%~dp0"
+echo Starting STEN-F Application...
 
-:: 蛻･繝励Ο繧ｻ繧ｹ縺ｨ縺励※邏・遘貞ｾ・ｩ溷ｾ後↓繝悶Λ繧ｦ繧ｶ繧定ｵｷ蜍輔＆縺帙ｋ・医Γ繧､繝ｳ繝励Ο繧ｻ繧ｹ繧呈ｭ｢繧√↑縺・ｼ・
-start "" cmd /c "timeout /t 7 /nobreak >nul && start http://localhost:3000"
+REM Launch browser in the background after 8 seconds
+start "" cmd /c "timeout /t 8 /nobreak >nul & start http://localhost:3000"
 
 uv run reflex run
 pause
-
