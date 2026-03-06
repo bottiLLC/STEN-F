@@ -14,6 +14,12 @@ engine = create_async_engine(DATABASE_URL, echo=False)
 
 async def init_db():
     from infrastructure.db.models import Base
+    # Ensure the directory exists before creating the database
+    if "sqlite" in DATABASE_URL:
+        db_path = DATABASE_URL.split("///")[-1]
+        if db_path and db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
