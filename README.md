@@ -110,11 +110,17 @@ DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 ```
 
 ### 4. 起動
-以下のコマンドでアプリケーションを起動します。
+以下のコマンドでアプリケーションを起動するか、各OS用の起動スクリプトを使用できます。
 
+**コマンドで起動する場合:**
 ```bash
 uv run reflex run
 ```
+
+**ダブルクリックで起動する場合:**
+*   **Windows**: `start.bat` をダブルクリックして実行します。
+*   **macOS**: `start.command` をダブルクリックして実行します。
+    *   ※初回のみ、ターミナルで `chmod +x start.command` を実行して権限を付与してください。
 
 ブラウザが自動的に開き、アプリケーションが表示されます (`http://localhost:3000`)。
 
