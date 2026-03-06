@@ -34,9 +34,9 @@ class SystemState(rx.State):
                 settings.ai_api_key = self.ai_api_key
                 await service.save_system_settings(settings)
                 
-            return rx.toast.success("AI設定が保存されました。")
+            yield rx.toast.success("AI設定が保存されました。")
         except Exception as e:
-            return rx.window_alert(f"保存エラー: {str(e)}")
+            yield rx.window_alert(f"保存エラー: {str(e)}")
         finally:
             self.is_saving_key = False
             yield
@@ -46,6 +46,6 @@ class SystemState(rx.State):
         service = DI.get_backup_service()
         try:
              saved_path = await service.create_backup(self.backup_path)
-             return rx.window_alert(f"バックアップが完了しました！\n保存場所: {saved_path}")
+             yield rx.window_alert(f"バックアップが完了しました！\n保存場所: {saved_path}")
         except Exception as e:
-             return rx.window_alert(f"エラーが発生しました: {str(e)}")
+             yield rx.window_alert(f"エラーが発生しました: {str(e)}")
