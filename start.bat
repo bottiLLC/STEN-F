@@ -2,8 +2,8 @@
 cd /d %~dp0
 echo STEN-F 起動準備中...
 
-:: バックグラウンドでPythonを使用して7秒後にブラウザを開く
-start /B "" uv run python -c "import webbrowser, time; time.sleep(7); webbrowser.open('http://localhost:3000')"
+:: 別プロセスとして約7秒待機後にブラウザを起動させる（メインプロセスを止めない）
+start "" cmd /c "timeout /t 7 /nobreak >nul && start http://localhost:3000"
 
 uv run reflex run
 pause
