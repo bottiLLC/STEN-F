@@ -32,6 +32,18 @@ class JournalState(rx.State):
     def set_register_master(self, value: bool):
         self.register_master = value
 
+    clear_on_submit: bool = True
+    
+    def set_clear_on_submit(self, value: bool):
+        self.clear_on_submit = value
+
+    @rx.var
+    def continuous_entry(self) -> bool:
+        return not self.clear_on_submit
+
+    def set_continuous_entry(self, value: bool):
+        self.clear_on_submit = not value
+
     async def toggle_show_deleted(self):
         self.show_deleted = not self.show_deleted
         await self.load_entries()
@@ -208,13 +220,17 @@ class JournalState(rx.State):
                 date=date.fromisoformat(self.transaction_date),
                 description=self.description,
                 counterparty=self.counterparty,
-                invoice_number=self.invoice_number,
+                invoice_number=self.invoice_number if self.invoice_number.strip() else None,
                 lines=valid_lines,
                 evidence_path=None
             )
-        except ValueError:
+        except ValueError as e:
             self.is_processing = False
-            yield rx.window_alert("登録番号は「T + 13桁の半角数字」で入力してください。")
+            # Check if it's the invoice number pattern error
+            if "invoice_number" in str(e):
+                yield rx.window_alert("登録番号は「T + 13桁の半角数字」で入力してください。")
+            else:
+                yield rx.window_alert(f"入力内容にエラーがあります: {str(e)}")
             return
 
         try:
@@ -232,16 +248,16 @@ class JournalState(rx.State):
              
              # Handle Master Registration
              if self.register_master and (self.counterparty or self.invoice_number):
-                 cp = Counterparty(name=self.counterparty or "Unknown", invoice_number=self.invoice_number)
+                 cp = Counterparty(name=self.counterparty or "Unknown", invoice_number=self.invoice_number if self.invoice_number.strip() else None)
                  async with DI.get_master_service() as master_service:
                      await master_service.save_counterparty(cp)
-                     # Optionally toast? "Updated Master"
-                 
-             self.description = ""
-             self.counterparty = ""
-             self.invoice_number = ""
-             self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
-             self.register_master = False # Reset flag
+                     
+             if self.clear_on_submit:
+                 self.description = ""
+                 self.counterparty = ""
+                 self.invoice_number = ""
+                 self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
+                 self.register_master = False # Reset flag
              # Clear file state
              self._uploaded_file_data = None
              self._uploaded_filename = None
@@ -257,6 +273,22 @@ class JournalState(rx.State):
         finally:
             self.is_processing = False
             yield
+
+    async def clear_form(self):
+        """Clear all inputs in the journal entry form."""
+        self.transaction_date = date.today().isoformat()
+        self.description = ""
+        self.counterparty = ""
+        self.invoice_number = ""
+        self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
+        self.register_master = False
+        
+        # Clear OCR state
+        self._uploaded_file_data = None
+        self._uploaded_filename = None
+        
+        # Clear the upload component visually
+        yield rx.clear_selected_files("upload_receipt")
 
     async def load_entries(self):
         """Load recent journal entries."""

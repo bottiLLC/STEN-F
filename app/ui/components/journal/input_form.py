@@ -157,23 +157,42 @@ def render_journal_input() -> rx.Component:
         rx.divider(),
 
         rx.divider(),
-        
-        rx.checkbox(
-            "取引先マスタに登録/更新する",
-            checked=JournalState.register_master,
-            on_change=JournalState.set_register_master
+        rx.hstack(
+            rx.checkbox(
+                "取引先マスタに登録/更新する",
+                checked=JournalState.register_master,
+                on_change=JournalState.set_register_master
+            ),
+            rx.checkbox(
+                "連続して登録する（入力内容を保持）",
+                checked=JournalState.continuous_entry,
+                on_change=JournalState.set_continuous_entry
+            ),
+            spacing="5"
         ),
 
-        rx.button(
-            rx.cond(
-                JournalState.is_processing,
-                rx.spinner(size="2"),
-                "登録する",
+        rx.hstack(
+            rx.button(
+                "クリア",
+                on_click=JournalState.clear_form,
+                size="3",
+                variant="outline",
+                color_scheme="gray",
+                width="120px",
+                disabled=JournalState.is_processing,
             ),
-            on_click=JournalState.submit,
-            size="3",
-            width="200px",
-            disabled=JournalState.is_processing,
+            rx.button(
+                rx.cond(
+                    JournalState.is_processing,
+                    rx.spinner(size="2"),
+                    "登録する",
+                ),
+                on_click=JournalState.submit,
+                size="3",
+                width="200px",
+                disabled=JournalState.is_processing,
+            ),
+            spacing="5",
         ),
         
         spacing="5",
