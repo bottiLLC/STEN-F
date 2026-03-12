@@ -107,99 +107,107 @@ class JournalFormState(JournalState):
 
     async def submit(self):
         """Submit the journal entry."""
+        if self.is_processing:
+            return
+            
         self.is_processing = True
         yield
         
-        valid_lines = []
-        for line in self.lines:
-             if line["account_id"] and (line["debit"] > 0 or line["credit"] > 0):
-                 valid_lines.append(
-                     TransactionLine(
-                         account_id=line["account_id"],
-                         debit=line["debit"],
-                         credit=line["credit"]
-                     )
-                 )
-        
-        if not valid_lines:
-            self.is_processing = False
-            yield rx.window_alert("有効な仕訳明細がありません。")
-            return
-
-        total_debit = sum(line.debit for line in valid_lines)
-        total_credit = sum(line.credit for line in valid_lines)
-        
-        if total_debit != total_credit:
-            self.is_processing = False
-            yield rx.window_alert(f"貸借不一致: 借方 {total_debit} / 貸方 {total_credit}")
-            return
-
         try:
-            transaction = Transaction(
-                date=date.fromisoformat(self.transaction_date),
-                description=self.description,
-                counterparty=self.counterparty,
-                invoice_number=self.invoice_number if self.invoice_number.strip() else None,
-                lines=valid_lines,
-                evidence_path=None
-            )
-        except ValueError as e:
-            self.is_processing = False
-            if "invoice_number" in str(e):
-                yield rx.window_alert("登録番号は「T + 13桁の半角数字」で入力してください。")
-            else:
-                yield rx.window_alert(f"入力内容にエラーがあります: {str(e)}")
-            return
-
-        try:
-             # Retrieve OCR state to check if there is an uploaded evidence file
-             from .ocr import JournalOCRState
-             ocr_state = await self.get_state(JournalOCRState)
-             
-             async with DI.get_journal_service() as service:
-                 if ocr_state._uploaded_file_data:
-                     file_service = DI.get_file_service()
-                     await service.add_journal_entry_with_evidence(
-                         transaction, 
-                         ocr_state._uploaded_file_data, 
-                         file_service
+            valid_lines = []
+            for line in self.lines:
+                 if line["account_id"] and (line["debit"] > 0 or line["credit"] > 0):
+                     valid_lines.append(
+                         TransactionLine(
+                             account_id=line["account_id"],
+                             debit=line["debit"],
+                             credit=line["credit"]
+                         )
                      )
-                 else:
-                     await service.add_journal_entry(transaction)
-             
-             if self.register_master and (self.counterparty or self.invoice_number):
-                 cp = Counterparty(name=self.counterparty or "Unknown", invoice_number=self.invoice_number if self.invoice_number.strip() else None)
-                 async with DI.get_master_service() as master_service:
-                     await master_service.save_counterparty(cp)
-                     
-             if self.clear_on_submit:
-                 self.description = ""
-                 self.counterparty = ""
-                 self.invoice_number = ""
-                 self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
-                 self.register_master = False
-             
-             # Clear OCR state
-             yield await ocr_state.clear_upload_state()
-             
-             # Trigger list reload
-             from .list import JournalListState
-             list_state = await self.get_state(JournalListState)
-             await list_state.load_entries()
-             
-             yield rx.window_alert("登録しました！")
-             return
-             
+            
+            if not valid_lines:
+                self.is_processing = False
+                yield rx.toast("有効な仕訳明細がありません。")
+                return
+
+            total_debit = sum(line.debit for line in valid_lines)
+            total_credit = sum(line.credit for line in valid_lines)
+            
+            if total_debit != total_credit:
+                self.is_processing = False
+                yield rx.toast(f"貸借不一致: 借方 {total_debit} / 貸方 {total_credit}")
+                return
+
+            try:
+                transaction = Transaction(
+                    date=date.fromisoformat(self.transaction_date),
+                    description=self.description,
+                    counterparty=self.counterparty,
+                    invoice_number=self.invoice_number if self.invoice_number.strip() else None,
+                    lines=valid_lines,
+                    evidence_path=None
+                )
+            except ValueError as e:
+                self.is_processing = False
+                if "invoice_number" in str(e):
+                    yield rx.toast("登録番号は「T + 13桁の半角数字」で入力してください。")
+                else:
+                    yield rx.toast(f"入力内容にエラーがあります: {str(e)}")
+                return
+
+            try:
+                # Retrieve OCR state to check if there is an uploaded evidence file
+                from .ocr import JournalOCRState
+                ocr_state = await self.get_state(JournalOCRState)
+                 
+                async with DI.get_journal_service() as service:
+                    if ocr_state._uploaded_file_data:
+                        file_service = DI.get_file_service()
+                        await service.add_journal_entry_with_evidence(
+                            transaction, 
+                            ocr_state._uploaded_file_data, 
+                            file_service
+                        )
+                    else:
+                        await service.add_journal_entry(transaction)
+                 
+                if self.register_master and (self.counterparty or self.invoice_number):
+                    cp = Counterparty(name=self.counterparty or "Unknown", invoice_number=self.invoice_number if self.invoice_number.strip() else None)
+                    async with DI.get_master_service() as master_service:
+                        await master_service.save_counterparty(cp)
+                         
+                if self.clear_on_submit:
+                    self.description = ""
+                    self.counterparty = ""
+                    self.invoice_number = ""
+                    self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
+                    self.register_master = False
+                 
+                # Clear OCR state
+                yield await ocr_state.clear_upload_state()
+                 
+                # Trigger list reload
+                from .list import JournalListState
+                list_state = await self.get_state(JournalListState)
+                await list_state.load_entries()
+                 
+                self.is_processing = False
+                yield rx.toast("登録しました！")
+                 
+            except Exception as e:
+                logger.error("Error submitting journal entry", error=str(e), exc_info=True)
+                self.is_processing = False
+                yield rx.toast(f"エラーが発生しました: {str(e)}")
+                return
+                
         except Exception as e:
-            logger.error("Error submitting journal entry", error=str(e), exc_info=True)
-            yield rx.window_alert(f"エラーが発生しました: {str(e)}")
-            return
-        finally:
+            logger.error("Unexpected error in submit", error=str(e), exc_info=True)
             self.is_processing = False
-            yield
+            yield rx.toast(f"予期せぬエラーが発生しました: {str(e)}")
 
     async def clear_form(self):
         """Clear all inputs in the journal entry form."""
+        self.is_processing = False
         self.transaction_date = date.today().isoformat()
         self.description = ""
         self.counterparty = ""
