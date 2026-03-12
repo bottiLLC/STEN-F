@@ -1,5 +1,6 @@
 import reflex as rx
-from ...view_models.journal_state import JournalState
+from ...view_models.journal.list import JournalListState
+from ...view_models.journal.master import JournalMasterState
 
 def render_journal_list() -> rx.Component:
     return rx.vstack(
@@ -8,22 +9,22 @@ def render_journal_list() -> rx.Component:
             rx.text("期間:", font_weight="bold"),
             rx.input(
                 type="date",
-                value=JournalState.filter_start_date,
-                on_change=JournalState.set_filter_start_date,
+                value=JournalListState.filter_start_date,
+                on_change=JournalListState.set_filter_start_date,
                 width="150px"
             ),
             rx.text("〜"),
             rx.input(
                 type="date",
-                value=JournalState.filter_end_date,
-                on_change=JournalState.set_filter_end_date,
+                value=JournalListState.filter_end_date,
+                on_change=JournalListState.set_filter_end_date,
                 width="150px"
             ),
-            rx.button("検索", on_click=JournalState.load_entries, size="2"),
+            rx.button("検索", on_click=JournalListState.load_entries, size="2"),
             rx.button(
                 rx.icon("download", size=16),
                 "CSV",
-                on_click=JournalState.export_csv,
+                on_click=JournalListState.export_csv,
                 size="2",
                 variant="outline"
             ),
@@ -40,8 +41,8 @@ def render_journal_list() -> rx.Component:
             rx.spacer(),
             rx.checkbox(
                 "削除済を表示", 
-                checked=JournalState.show_deleted, 
-                on_change=JournalState.toggle_show_deleted
+                checked=JournalListState.show_deleted, 
+                on_change=JournalListState.toggle_show_deleted
             ),
             width="100%",
             align_items="center",
@@ -51,7 +52,7 @@ def render_journal_list() -> rx.Component:
         ),
         rx.vstack(
             rx.foreach(
-                JournalState.journal_entries,
+                JournalListState.journal_entries,
                 lambda t: rx.vstack(
                     # Card Container
                     rx.vstack(
@@ -83,7 +84,7 @@ def render_journal_list() -> rx.Component:
                                      "証憑",
                                      size="1",
                                      variant="soft",
-                                     on_click=lambda: JournalState.download_evidence(t.id)
+                                     on_click=lambda: JournalListState.download_evidence(t.id)
                                  )
                              ),
                              rx.cond(
@@ -95,7 +96,7 @@ def render_journal_list() -> rx.Component:
                                      color_scheme="red",
                                      variant="outline",
                                      size="1",
-                                     on_click=lambda: JournalState.delete_entry(t.id)
+                                     on_click=lambda: JournalListState.delete_entry(t.id)
                                  )
                              ),
                              width="100%",
@@ -116,7 +117,7 @@ def render_journal_list() -> rx.Component:
                                 rx.foreach(
                                     t.lines,
                                     lambda tx_line: rx.table.row(
-                                        rx.table.cell(JournalState.account_label_map[tx_line.account_id]),
+                                        rx.table.cell(JournalMasterState.account_label_map[tx_line.account_id]),
                                         rx.table.cell(rx.cond(tx_line.debit > 0, tx_line.debit.to_string(), ""), align="right"),
                                         rx.table.cell(rx.cond(tx_line.credit > 0, tx_line.credit.to_string(), ""), align="right"),
                                     )

@@ -1,5 +1,5 @@
 import reflex as rx
-from ...view_models.journal_state import JournalState
+from ...view_models.journal.ocr import JournalOCRState
 
 def render_ocr_upload_area() -> rx.Component:
     return rx.vstack(
@@ -29,9 +29,9 @@ def render_ocr_upload_area() -> rx.Component:
         ),
         rx.hstack(
             rx.button(
-                rx.cond(JournalState.is_analyzing, "読み取り中...", "AIで読み取る"), 
-                on_click=JournalState.handle_upload(rx.upload_files("upload_receipt")),
-                disabled=JournalState.is_analyzing,
+                rx.cond(JournalOCRState.is_analyzing, "読み取り中...", "AIで読み取る"), 
+                on_click=JournalOCRState.handle_upload(rx.upload_files("upload_receipt")),
+                disabled=JournalOCRState.is_analyzing,
             ),
             rx.text(
                 "※ PDF, JPG, PNG対応. Gemini 3 Flash Preview使用", 

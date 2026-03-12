@@ -1,5 +1,6 @@
 import reflex as rx
-from ...view_models.journal_state import JournalState
+from ...view_models.journal.master import JournalMasterState
+from ...view_models.journal.form import JournalFormState
 from .ocr_upload import render_ocr_upload_area
 
 def render_journal_input() -> rx.Component:
@@ -16,8 +17,8 @@ def render_journal_input() -> rx.Component:
                 rx.text("取引日", weight="bold"),
                 rx.input(
                     type="date",
-                    value=JournalState.transaction_date,
-                    on_change=JournalState.set_transaction_date,
+                    value=JournalFormState.transaction_date,
+                    on_change=JournalFormState.set_transaction_date,
                     width="150px"
                 ),
             ),
@@ -32,24 +33,24 @@ def render_journal_input() -> rx.Component:
                         rx.select.content(
                              rx.select.group(
                                  rx.foreach(
-                                     JournalState.abstract_suggestions,
+                                     JournalFormState.abstract_suggestions,
                                      lambda s: rx.select.item(s, value=s)
                                  )
                              )
                         ),
-                        value=JournalState.description,
-                        on_change=JournalState.set_description,
+                        value=JournalFormState.description,
+                        on_change=JournalFormState.set_description,
                     ),
                     rx.input(
                         placeholder="取引内容を入力...",
-                        value=JournalState.description,
-                        on_change=JournalState.set_description,
+                        value=JournalFormState.description,
+                        on_change=JournalFormState.set_description,
                         width="400px",
                         list="abstract_suggestions_list" 
                     ),
                     rx.el.datalist(
                         rx.foreach(
-                            JournalState.abstract_suggestions,
+                            JournalFormState.abstract_suggestions,
                             lambda s: rx.el.option(value=s)
                         ),
                         id="abstract_suggestions_list"
@@ -59,8 +60,8 @@ def render_journal_input() -> rx.Component:
                     rx.text("取引先", weight="bold"),
                     rx.input(
                         placeholder="取引先名...",
-                        value=JournalState.counterparty,
-                        on_change=JournalState.set_counterparty,
+                        value=JournalFormState.counterparty,
+                        on_change=JournalFormState.set_counterparty,
                         width="200px"
                     ),
                 ),
@@ -68,8 +69,8 @@ def render_journal_input() -> rx.Component:
                     rx.text("登録番号", weight="bold"),
                     rx.input(
                          placeholder="T + 13桁の半角数字",
-                         value=JournalState.invoice_number,
-                         on_change=JournalState.set_invoice_number,
+                         value=JournalFormState.invoice_number,
+                         on_change=JournalFormState.set_invoice_number,
                          width="200px"
                     ),
                 ),
@@ -87,18 +88,18 @@ def render_journal_input() -> rx.Component:
         # Dynamic Lines
         rx.vstack(
             rx.foreach(
-                JournalState.lines,
+                JournalFormState.lines,
                 lambda line, i: rx.hstack(
                     rx.select.root(
                         rx.select.trigger(placeholder="勘定科目...", width="250px"),
                         rx.select.content(
                             rx.cond(
-                                JournalState.frequent_select_items,
+                                JournalMasterState.frequent_select_items,
                                 rx.fragment(
                                     rx.select.group(
                                         rx.select.label("よく使う科目"),
                                         rx.foreach(
-                                            JournalState.frequent_select_items,
+                                            JournalMasterState.frequent_select_items,
                                             lambda item: rx.select.item(item[1], value=item[0])
                                         )
                                     ),
@@ -106,7 +107,7 @@ def render_journal_input() -> rx.Component:
                                     rx.select.group(
                                         rx.select.label("その他の科目"),
                                         rx.foreach(
-                                            JournalState.other_select_items,
+                                            JournalMasterState.other_select_items,
                                             lambda item: rx.select.item(item[1], value=item[0])
                                         )
                                     )
@@ -114,35 +115,35 @@ def render_journal_input() -> rx.Component:
                                 # Fallback if no frequent items (clean state)
                                 rx.select.group(
                                     rx.foreach(
-                                        JournalState.other_select_items,
+                                        JournalMasterState.other_select_items,
                                         lambda item: rx.select.item(item[1], value=item[0])
                                     )
                                 )
                             )
                         ),
                         value=line["account_id"],
-                        on_change=lambda val: JournalState.update_line_account(i, val),
+                        on_change=lambda val: JournalFormState.update_line_account(i, val),
                     ),
                     rx.input(
                         placeholder="借方金額",
                         type="number",
                         value=line["debit"].to_string(),
-                        on_change=lambda val: JournalState.update_line(i, "debit", val),
+                        on_change=lambda val: JournalFormState.update_line(i, "debit", val),
                         width="150px"
                     ),
                     rx.input(
                         placeholder="貸方金額",
                         type="number",
                         value=line["credit"].to_string(),
-                         on_change=lambda val: JournalState.update_line(i, "credit", val),
+                         on_change=lambda val: JournalFormState.update_line(i, "credit", val),
                         width="150px"
                     ),
                     rx.button(
                         rx.icon("trash-2", size=18),
                         color_scheme="red",
                         variant="ghost",
-                        on_click=lambda: JournalState.remove_line(i),
-                        disabled=JournalState.lines.length() <= 1
+                        on_click=lambda: JournalFormState.remove_line(i),
+                        disabled=JournalFormState.lines.length() <= 1
                     ),
                     width="100%",
                     align_items="center",
@@ -152,7 +153,7 @@ def render_journal_input() -> rx.Component:
             spacing="3"
         ),
 
-        rx.button("+ 行を追加", on_click=JournalState.add_line, variant="outline"),
+        rx.button("+ 行を追加", on_click=JournalFormState.add_line, variant="outline"),
         
         rx.divider(),
 
@@ -160,13 +161,13 @@ def render_journal_input() -> rx.Component:
         rx.hstack(
             rx.checkbox(
                 "取引先マスタに登録/更新する",
-                checked=JournalState.register_master,
-                on_change=JournalState.set_register_master
+                checked=JournalFormState.register_master,
+                on_change=JournalFormState.set_register_master
             ),
             rx.checkbox(
                 "連続して登録する（入力内容を保持）",
-                checked=JournalState.continuous_entry,
-                on_change=JournalState.set_continuous_entry
+                checked=JournalFormState.continuous_entry,
+                on_change=JournalFormState.set_continuous_entry
             ),
             spacing="5"
         ),
@@ -174,23 +175,23 @@ def render_journal_input() -> rx.Component:
         rx.hstack(
             rx.button(
                 "クリア",
-                on_click=JournalState.clear_form,
+                on_click=JournalFormState.clear_form,
                 size="3",
                 variant="outline",
                 color_scheme="gray",
                 width="120px",
-                disabled=JournalState.is_processing,
+                disabled=JournalFormState.is_processing,
             ),
             rx.button(
                 rx.cond(
-                    JournalState.is_processing,
+                    JournalFormState.is_processing,
                     rx.spinner(size="2"),
                     "登録する",
                 ),
-                on_click=JournalState.submit,
+                on_click=JournalFormState.submit,
                 size="3",
                 width="200px",
-                disabled=JournalState.is_processing,
+                disabled=JournalFormState.is_processing,
             ),
             spacing="5",
         ),

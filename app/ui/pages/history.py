@@ -1,6 +1,6 @@
 import reflex as rx
 from ..layout import layout
-from ..view_models.journal_state import JournalState
+from ..view_models.journal import JournalCoordinatorState
 from ..components.journal.list_view import render_journal_list
 
 def history_page() -> rx.Component:
@@ -32,7 +32,7 @@ def history_page() -> rx.Component:
             ),
 
             # Make sure state builds up correctly when this page is loaded directly
-            on_mount=[JournalState.on_mount_journal_page],
+            on_mount=[JournalCoordinatorState.on_mount_journal],
             spacing="5",
             padding="2em",
             width="100%",

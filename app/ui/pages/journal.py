@@ -1,6 +1,6 @@
 import reflex as rx
 from ..layout import layout
-from ..view_models.journal_state import JournalState
+from ..view_models.journal import JournalCoordinatorState
 from ..components.journal.input_form import render_journal_input
 from ..components.journal.list_view import render_journal_list
 
@@ -23,10 +23,10 @@ def journal_page() -> rx.Component:
                     value="list"
                 ),
                 default_value="input",
-                on_change=JournalState.handle_tab_change
+                on_change=JournalCoordinatorState.handle_tab_change
             ),
 
-            on_mount=[JournalState.on_mount_journal_page],
+            on_mount=[JournalCoordinatorState.on_mount_journal],
             spacing="5",
             padding="2em",
             width="100%",
