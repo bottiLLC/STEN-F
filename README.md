@@ -3,172 +3,153 @@
 # STEN-F
 
 ![Compliance](https://img.shields.io/badge/Compliance-Dencho_Act_%26_Invoice_System-blue)
-
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/Python-3.13+-yellow.svg)](https://www.python.org/)
 [![Reflex](https://img.shields.io/badge/Reflex-0.6.7+-bf40bf.svg)](https://reflex.dev/)
 
-**STEN-F** は、既存のクラウド会計ソフト（SaaS）による「データの囲い込み」と「貧相な日本のDX」からベンチャー企業を救うべく開発された、エンジニア主導の経理・会計アプリケーションです。
+**STEN-F** は、既存のクラウド会計ソフト（SaaS）による「データの囲い込み」や「貧弱なAPIエコシステム」から開発者・ベンチャー企業を解き放つために開発された、エンジニア主導のOSS経理・会計アプリケーションです。
 
-**Pure Python Web Framework (Reflex)** をベースに構築されており、仕訳入力から決算書の作成までをシンプルかつ効率的に行えます。
-データは全てローカル（または自前の管理下）にあるSQLiteに保存され、あなたがその所有権を完全に掌握できます。
+最先端の **Pure Python Web Framework (Reflex)** と **Clean Architecture** を基盤に構築されており、仕訳入力から決算書の作成までをシンプルかつ強固に行えます。財務データはすべてローカル（または自社管理下）のSQLiteに保存され、所有権をあなたが完全に掌握できます。
 
-## Philosophy (行動指針)
+---
+
+## 🏴 Philosophy (行動指針)
+
 0.  **This is your Stengun.** これはステンガンだ。シンプルでタフな勝つための武器だ。（[ステン短機関銃](https://ja.wikipedia.org/wiki/%E3%82%B9%E3%83%86%E3%83%B3%E7%9F%AD%E6%A9%9F%E9%96%A2%E9%8A%83)）
-1.  **Of course it's free** この程度のもの、当然無料だ。
+1.  **Of course it's free:** この程度の経理ソフト、当然無料だ。
 2.  **No Vendor Lock-in:** 財務データは人質ではない。いつでも生のSQLでアクセス可能であるべきだ。
-3.  **Local First:** ネットワークが切れても経理は止まらない。
-4.  **Don't pay for apps, pay for AI:** 金を払うならアプリ代ではなく、AIによる推論（OCR・自動仕訳）に対して払うべきだ。
+3.  **Local First:** ネットワークが切れても、あなたの経理業務と会社の数字は止まらない。
+4.  **Don't pay for apps, pay for AI:** お金を払うなら「毎月のソフト利用料」ではなく、あなたの業務を真に爆速化する「AIによる推論（OCR・自動仕訳）」に対して払うべきだ。
 
-## 主な機能
+---
 
-*   **期首残高（BS）入力機能**: 法人の期首残高（資産・負債・純資産）を貸借一致のバリデーション付きで安全かつ簡単に登録可能。
-*   **高速な仕訳入力**: 貸方・借方を選択し、キーボード操作主体のUIでスピーディに取引を入力。
-*   **電子帳簿保存法 & インボイス制度対応**:
-    *   **論理削除 (Soft Delete)**: 仕訳の修正・削除履歴を完全に保持し、監査証跡を残します。
-    *   **T番号管理**: 取引先ごとの適格請求書発行事業者登録番号（T番号）を管理。
-    *   **証憑保存**: レシートや請求書のPDF/画像を取引に紐づけて保存可能（非同期保存）。
-*   **洗練されたマスタ管理**:
-    *   編集フォームが常に表示され、煩わしいモーダル遷移を排除。
-    *   法人情報、取引先の柔軟な管理。
-    *   **会計年度管理 & 期末処理**: 既存年度の名称変更（インライン編集）および、次期名称を動的に指定可能な安全な「年度締め」機能（次年度繰越・ステータスロック）を実装。
-*   **レポート機能**:
-    *   合計残高試算表 (Trial Balance)
-    *   財務諸表（貸借対照表、損益計算書）
-    *   総勘定元帳（ドリルダウン可能）
-*   **決算報告書出力**: 監査にも対応可能な形式のPDF決算報告書をワンクリックで生成（**完全非同期オフロード対応**により出力中もUIがフリーズしません）。
-*   **AI OCR (Beta)**:
-    *   **Google Gemini 3 Flash Preview** を採用（最先端の非同期API統合）。
-    *   **Self-Healing QA & Resilient API**: ネットワーク一時的エラーに対する自動リトライ機能（`@resilient_api_call`）を実装。
-    *   **Native PDF Support**: PDFは画像変換せず、Geminiのネイティブ機能で直接解析（高精度）。
-    *   **Smart Image Optimization**: 画像は自動で最適化（最大2000px / 200dpi）し、トークン節約と精度向上を両立。
-    *   **Smart Counterparty Matching**: OCR結果の店舗名をマスタ登録済みの取引先と自動照合。
-    *   **Nested Tax Breakdown**: 複雑な税区分（8%/10%の混在など）も正確に構造化して読み取り。
-    *   **Async Processing**: 完全なる非同期処理により、アップロードや推論中も操作をブロックしません。
-*   **完全日本語対応**: UIおよび出力帳票は全て日本語にローカライズ済み。
+## ⚡ 主な機能 (Key Features)
 
-## 技術スタック
+### 経理・会計の基本機能
+*   **高速な仕訳入力**: 貸方・借方を直感的に選択し、キーボード操作主体のUIでスピーディに入力。
+*   **「別タブ」アプローチ**: 仕訳入力を止めることなく、いつでも「別タブ」で仕訳履歴・過去データの検索やCSV出力が可能な設計。
+*   **期首残高（BS）入力**: 法人の期首残高（資産・負債・純資産）を貸借一致のバリデーション付きで安全登録。
+*   **年度締め機能**: 既存年度の名称変更（インライン編集）および、次期名称を動的に指定可能な安全な「年度締め」（次年度繰越・ステータスロック機能）。
+*   **セーフガード**: 締めた「CLOSED」な会計年度に対する追加入力のブロックや、自動バリデーション機能。
 
-*   **言語**: Python 3.13+
-*   **UIフレームワーク**: **Reflex** (Pure Python Web App)
-*   **データベース**: SQLite (via **SQLAlchemy 2.0 Async** + aiosqlite)
-*   **AI/LLM**: Google GenAI SDK (Gemini 3 Flash Preview)
-*   **データ検証**: **Pydantic V2** (Strict Config)
-*   **非同期I/O**: aiofiles
-*   **PDF生成**: ReportLab
-*   **テスト**: Pytest + Asyncio + AsyncExitStack
-*   **アーキテクチャ**: Clean Architecture (Layered Architecture) with Dependency Injection
+### 監査・電子帳簿保存法 & インボイス制度対応
+*   **論理削除 (Soft Delete)**: 一度登録した仕訳の修正・削除履歴を完全にデータベース上に保持し、監査証跡（Audit Trail）を残します。
+*   **T番号管理**: 取引先ごとの適格請求書発行事業者登録番号（インボイスT番号）をシステム内で統合管理できます。
+*   **証憑の永久保存**: レシートや請求書のPDF/画像を取引データのトランザクションに紐づけて保存可能。
 
-## ディレクトリ構造
+### レポート・出力 (Reporting)
+*   合計残高試算表 (Trial Balance) / 財務諸表（貸借対照表、損益計算書）
+*   総勘定元帳（指定期間でのドリルダウン対応）
+*   **決算報告書 PDF 生成**: 非同期タスク処理 (Offloading) により、長大なPDF書類を出力している最中も、UIが一切フリーズしません。
+
+### 🤖 AI OCR 機能 (Powered by Google Gemini / OpenAI)
+最新の Google Gemini Native API (`client.aio`) および OpenAI Responses API v2.3 に準拠した強靭なAI推論モデルを組み込んでいます。
+*   **Native PDF Support (Gemini 3 Flash)**: PDFを画像に変換する手間なく、Geminiのネイティブ機能で直接高精度に解析・仕訳化。
+*   **Smart Image Optimization**: 自動画像リサイズ機能（トークン節約と精度向上の両立）。
+*   **Smart Counterparty Matching**: AIが読み取った店舗名と、マスタ上の既存取引先・T番号を自動で照合。
+*   **Self-Healing QA & Resilient API**: インターネットが瞬断した際のエラーもシステム側で一時吸収し、自動リトライを行う `@resilient_api_call` の採用。
+
+---
+
+## 🏗 技術スタック & アーキテクチャ
+
+*   **Language**: Python 3.13+ (100% Pure Python)
+*   **Package Manager**: `uv` (Fast & Deterministic virtual environment)
+*   **UI Framework**: Reflex 0.6.7+
+*   **Database**: SQLite via **SQLAlchemy 2.0 Async** (`aiosqlite`)
+*   **Data Validation**: **Pydantic V2** (Strict Config)
+*   **Testing**: Pytest + Asyncio + AsyncExitStack
+
+### Clean Architecture & Independent SubStates
+STEN-Fのバックエンドはクリーンアーキテクチャに基づき、ドメイン・インフラ・アプリケーションレイヤーを厳重に分離しています。
+UI側の状態管理（View Model）においては肥大化（神クラス化）を防ぐため、Reflexのベストプラクティスである「Independent SubStates パターン」を採用。
+機能ごとに `app/ui/view_models/journal/` ディレクトリ配下等へ `FormState`, `MasterState`, `OCRState`, `ListState` と独立・直交化して分割し、高い保守性を保っています。
 
 ```text
 STEN-F/
 ├── app/
 │   ├── app.py              # Reflex Entry Point
-│   ├── domain/             # ドメインモデル (厳格なPydantic V2)・リポジトリIF
-│   ├── infrastructure/     # インフラ層 (DB接続, Gemini API, FileSystem, Repo実装)
-│   ├── application/        # アプリケーションロジック (Async Service)
-│   ├── ui/                 # UI層 (Reflex Pages)
-│   │   ├── pages/          # 画面ルーティング
-│   │   ├── components/     # 機能ごとのモジュール群 (master/, reports/, journal/ 等)
-│   │   ├── view_models/    # Reflex State (UIとドメインの仲介処理)
-│   │   └── layout.py       # 共通ベースレイアウト
-│   ├── config.py           # グローバル設定
-│   └── core/               # コア機能 (Logger, Error Resilience 等)
-├── tests/                  # テストコード (Pytest Async)
-├── bookkeeping.db          # データベースファイル
-├── pytest.ini              # テスト設定ファイル
-├── requirements.txt        # 依存ライブラリ
-└── README.md               # 本ファイル
+│   ├── config.py           # 環境変数 (Pydantic Settings)
+│   ├── core/               # コアモジュール (Logger, API Resilience 等)
+│   ├── domain/             # ドメイン層 (Pydantic V2 Models)
+│   ├── infrastructure/     # インフラ層 (AI/DBリポジトリ実装)
+│   ├── application/        # ユースケース・サービス層
+│   └── ui/                 # UIレイヤー
+│       ├── pages/          # 各画面ごとのルーティング
+│       ├── components/     # 再利用可能な部品 (Sidebar, Modals 等)
+│       └── view_models/    # Reflex State (分離されたSubState構成群)
+├── tests/                  # Pytest 自動テスト環境
+├── bookkeeping.db          # データベース (デフォルト設定時ローカル保存)
+└── uv.lock / pyproject.toml# パッケージ管理
 ```
 
-## セットアップ手順
+---
 
-### 1. 必須環境
-*   Python 3.13 以上
-*   Git
+## 🚀 セットアップと起動手順
 
-### 2. インストール
-リポジトリをクローンし、`uv` を用いて環境を構築します。
+開発および動作には Python 3.13+ および `uv` が必要です。仮想環境の構築もすべて `uv` に任せ、非常に高速に初期セットアップが終わります。
 
+### 1. インストール
+リポジトリをクローンし、`uv sync` で依存パッケージを一括インストールします。
 ```bash
 git clone https://github.com/bottiLLC/STEN-F.git
 cd STEN-F
 uv sync
 ```
 
-### 3. 環境設定 (.env)
-ルートディレクトリに `.env` ファイルを作成し、必要な環境変数を設定してください。
-サンプル (`.env.sample`) をコピーして使用できます。
-
+### 2. 環境設定 (.env)
+ルートディレクトリに `.env` ファイルを作成し、APIキー等を設定します（初期の `.env.sample` を複製してください）。
 ```ini
-# Database (Default)
+# Database Connection
 DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 
-# Optional: AI Features (Google Gemini)
+# API Keys for AI features 
 # GOOGLE_API_KEY=AIzaSy...
+# OPENAI_API_KEY=sk-proj...
 ```
 
-### 4. 起動
-以下のコマンドでアプリケーションを起動するか、各OS用の起動スクリプトを使用できます。
-
-**コマンドで起動する場合:**
+### 3. アプリケーションの起動
+`uv run` を経由して Reflex 開発サーバーを立ち上げます。
 ```bash
 uv run reflex run
 ```
+もしWindowsやmacOSをご利用の場合、設定後、ディレクトリ直下の `start.bat` または `start.command`（※要chmod実行権限付与）を**ダブルクリックするだけ**でも簡単にサーバーが起動します。
+起動後、ブラウザで自動的に `http://localhost:3000` にアクセスされます。
 
-**ダブルクリックで起動する場合:**
-*   **Windows**: `start.bat` をダブルクリックして実行します。
-*   **macOS**: `start.command` をダブルクリックして実行します。
-    *   ※初回のみ、ターミナルで `chmod +x start.command` を実行して権限を付与してください。
-
-ブラウザが自動的に開き、アプリケーションが表示されます (`http://localhost:3000`)。
-
-### 5. テスト実行
-品質担保のため、以下のコマンドで非同期テストを実行できます。
-
+### 4. テスト実行
 ```bash
 uv run pytest
 ```
 
-## 運用・保守 (Operations & Maintenance)
+---
 
-### バックアップとリカバリ (Backup & Recovery)
+## 🧰 運用・保守・リカバリ (Ops & Maintenance)
 
-STEN-Fはすべてのデータをローカル（自前）環境で管理するため、確実なデータ保護体制をご自身で構築可能です。
-万が一のトラブル（ハードウェアの故障や誤操作によるデータ損失など）に備え、以下の手順で定期的なバックアップとリカバリを実施してください。
+SaaS に依存せずローカルで一元管理されるため、**あなた自身がデータを完全にコントロール** できます。
+不測の事態（PCの紛失、ハードディスクの故障、誤操作など）に備え、以下のファイル・フォルダを定期的に「外部・クラウドストレージ」などにバックアップしてください。
 
-#### 1. バックアップ手順 (Backup)
-以下のファイルおよびディレクトリを定期的に安全な場所（外部ドライブ、USBメモリ、クラウドストレージ等）にコピーして保管してください。
-*   `bookkeeping.db` : 全ての財務データ、仕訳履歴、各種設定・マスタ情報が記録されたデータベースファイルです。（**最重要**）
-*   `uploaded_files/` : 日々のやり取りでアップロード・紐付けした証憑（レシートや請求書のPDF・画像等）が保存されるディレクトリです。
-*   `.env` : AI機能等で使用するAPIキーやデータベースのパス等が記載された独自の環境設定ファイルです。※ `storage/` フォルダが存在する場合はそちらもバックアップしてください。
+### ✅ バックアップ対象 (Backup Targets)
+1.  `bookkeeping.db` : 全ての仕訳データ、財務履歴、設定類が記録された魂のファイル。（**最重要**）
+2.  `uploaded_files/` : 日々のやり取りでアップロードし、各仕訳に紐付けられた証憑（レシートや請求書）。
+3.  `.env` : 外部APIキーなどを含む機微な環境設定ファイル。
+*(STEN-FのUI上にある「システム」タブからも、即座に対応ファイルのZIP出力が可能です)*
 
-#### 2. リカバリ手段・手順 (Recovery)
-PCの機種変更・移行時や、不測のデータ破損から完全にシステム状態を復旧させる場合の手順です。
+### 🔄 リカバリ手順 (Full Recovery)
+新しいPCなどにシステムを完全復旧させる手順は以下の通りです。
+1. 新しいPCなどで上記セットアップ手順（Git Clone ～ `uv sync`）を完了させる。
+2. STEN-Fプログラムが完全に**停止している**状態を作る。
+3. 事前にバックアップしておいた上記3つのデータ（`.db`, `.env`, `uploaded_files/`）を、新しいプロジェクトフォルダ直下へ上書きコピーする。
+4. アプリケーション (`uv run reflex run`) を起動し、取引履歴と各種レシートが正常に読み込めているか確認する。
 
-1. **復旧先の準備**: 新しいPCまたは復旧先にて、本READMEの「[セットアップ手順](#セットアップ手順)」(1〜2番) に従い、STEN-Fリポジトリのクローンと `uv sync` による初期環境構築を行ってください。
-2. **システムの停止**: Reflexアプリケーション（コマンド、または起動バッチ）が確実に停止している状態を作ります。
-3. **バックアップデータの復元**: 事前にバックアップしておいた以下のデータを、STEN-Fの**ルートディレクトリ直下**へそのまま上書きコピー（復元）してください。
-    *   `bookkeeping.db` ファイル
-    *   `uploaded_files/` フォルダ全体（および `storage/` フォルダがあれば同様に）
-    *   `.env` ファイル
-4. **動作確認**: 全ての復元が完了した後、通常通りにアプリケーションを起動 (`uv run reflex run` または `start.bat` 等) し、過去の仕訳データやアップロードされた証憑ファイルが正しく展開されるか確認します。完全に一致していればリカバリ完了です。
+---
 
-## ライセンス (License)
+## 📜 ライセンス制限 (License - GPLv3)
+
 Copyright (c) 2026 Botti LLC (Contract LLC Bocchi)
 
-本ソフトウェアは GNU General Public License v3.0 (GPLv3) の下で公開されています。
+本ソフトウェアは **GNU General Public License v3.0 (GPLv3)** の下で公開されています。
+*   **目的を問わず無料**で自由に使用および改変が可能です。
+*   **【重要】コピーレフトの義務**: あなたが本ソフトウェア（あるいは一部を改変した派生物）を再配布する場合、またはネットワークサービスとして外部に機能提供する場合、**そのソースコード全体を同様にGPLv3の下で一般公開する義務**が生じます。
 
-あなたは以下の権利を有します：
-
-*   **使用の自由**: 目的を問わず、本ソフトウェアを使用すること。
-*   **研究と改変の自由**: 本ソフトウェアのソースコードを研究し、自分のニーズに合わせて改変すること。
-*   **再配布の自由**: 本ソフトウェアのコピーを（改変の有無に関わらず）再配布すること。
-
-**【重要】制約事項（コピーレフト）**: もしあなたが本ソフトウェア（またはその改変版）を再配布する場合、あるいはネットワーク経由でサービスとして提供する場合、そのソースコード全体をGPLv3の下で公開する義務が生じます。これにより、このソフトウェアの自由は下流のユーザーに対しても永久に保証されます。
-
-詳細については、リポジトリに含まれる `LICENSE` ファイル、または [GNU General Public License](https://www.gnu.org/licenses/gpl-3.0.html) を参照してください。
-
-## 免責事項 (Disclaimer)
-本ソフトウェアは「現状のまま」提供され、明示または黙示を問わず、いかなる保証も行われません。本ソフトウェアの使用によって生じた、いかなる損害（データの損失、業務の中断、税務申告の誤りなど）についても、作者および著作権者は責任を負いません。ご利用は自己責任でお願いします。
+OSSエコシステム還元へのご協力をよろしくお願いします。
+詳細や完全な条項については、ソースコード内の `LICENSE` ファイルを参照してください。
