@@ -30,6 +30,7 @@ def sidebar() -> rx.Component:
             rx.heading("STEN-F", color="white", size="6", margin_bottom="2em"),
             rx.vstack(
                 sidebar_item("仕訳入力", "notebook-pen", "/"),
+                sidebar_item("仕訳履歴", "history", "/history"),
                 sidebar_item("期首BS入力", "scale", "/opening_bs"),
                 sidebar_item("マスタ管理", "database", "/master"),
                 sidebar_item("レポート", "chart-bar", "/reports"),

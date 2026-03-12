@@ -27,6 +27,16 @@ def render_journal_list() -> rx.Component:
                 size="2",
                 variant="outline"
             ),
+            rx.link(
+                rx.button(
+                    rx.icon("external-link", size=16),
+                    "別タブで開く",
+                    size="2",
+                    variant="outline"
+                ),
+                href="/history",
+                is_external=True
+            ),
             rx.spacer(),
             rx.checkbox(
                 "削除済を表示", 
