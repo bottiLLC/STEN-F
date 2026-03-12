@@ -141,9 +141,15 @@ def render_journal_list() -> rx.Component:
                     width="100%",
                 )
             ),
-            width="100%",
-            spacing="3"
         ),
+        
+        # Periodic polling for global state updates (every 5 seconds)
+        rx.moment(
+            interval=5000,
+            on_change=JournalListState.check_for_updates,
+            display="none"
+        ),
+        
         spacing="6",
         width="100%"
     )

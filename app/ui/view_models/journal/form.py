@@ -186,10 +186,16 @@ class JournalFormState(JournalState):
                 # Clear OCR state
                 yield await ocr_state.clear_upload_state()
                  
-                # Trigger list reload
+                # Trigger list reload locally
                 from .list import JournalListState
                 list_state = await self.get_state(JournalListState)
                 await list_state.load_entries()
+                 
+                # Trigger global cross-session reload for other tabs
+                import time
+                import app.ui.view_models.journal.list as list_module
+                list_module.GLOBAL_JOURNAL_UPDATE_TIME = time.time()
+                list_state._local_last_update = list_module.GLOBAL_JOURNAL_UPDATE_TIME
                  
                 self.is_processing = False
                 yield rx.toast("登録しました！")

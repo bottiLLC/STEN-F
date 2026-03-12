@@ -6,6 +6,9 @@ from app.ui.di import DI
 from core.logging import logger
 from .base import JournalState
 
+# Global module-level var to share state across sessions
+GLOBAL_JOURNAL_UPDATE_TIME: float = 0.0
+
 class JournalListState(JournalState):
     """State for viewing and managing the list of journal entries."""
     
@@ -14,6 +17,17 @@ class JournalListState(JournalState):
     
     filter_start_date: str = ""
     filter_end_date: str = ""
+    
+    _local_last_update: float = 0.0
+
+    async def check_for_updates(self):
+        """Polls global state to see if a reload is necessary."""
+        global GLOBAL_JOURNAL_UPDATE_TIME
+        
+        # If the global timestamp is newer, meaning another tab successfully submitted a form
+        if GLOBAL_JOURNAL_UPDATE_TIME > self._local_last_update:
+            self._local_last_update = GLOBAL_JOURNAL_UPDATE_TIME
+            await self.load_entries()
 
     async def toggle_show_deleted(self):
         self.show_deleted = not self.show_deleted
@@ -46,6 +60,13 @@ class JournalListState(JournalState):
             try:
                 await service.delete_entry(entry_id)
                 await self.load_entries()
+                
+                # Trigger global update signal
+                global GLOBAL_JOURNAL_UPDATE_TIME
+                import time
+                GLOBAL_JOURNAL_UPDATE_TIME = time.time()
+                self._local_last_update = GLOBAL_JOURNAL_UPDATE_TIME
+                
                 return rx.toast("削除しました。")
             except Exception as e:
                 return rx.window_alert(f"削除エラー: {e}")
