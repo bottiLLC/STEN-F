@@ -44,7 +44,9 @@ class JournalOCRState(JournalState):
                 receipt_data = await ocr_service.extract_receipt_data(upload_data, file_type, acc_options, cp_options)
                 
                 if receipt_data:
-                    await self._apply_ocr_result(receipt_data)
+                    alert_event = await self._apply_ocr_result(receipt_data)
+                    if alert_event:
+                         yield alert_event
                     
                     if receipt_data.is_registered_merchant:
                         yield rx.toast(f"登録済みの取引先「{receipt_data.merchant_name}」と一致しました。", duration=5000, close_button=True)
@@ -101,4 +103,4 @@ class JournalOCRState(JournalState):
         """Called by FormState on submit/clear to clear OCR files."""
         self._uploaded_file_data = None
         self._uploaded_filename = None
-        yield rx.clear_selected_files("upload_receipt")
+        return rx.clear_selected_files("upload_receipt")

@@ -180,7 +180,7 @@ class JournalFormState(JournalState):
                  self.register_master = False
              
              # Clear OCR state
-             await ocr_state.clear_upload_state()
+             yield await ocr_state.clear_upload_state()
              
              # Trigger list reload
              from .list import JournalListState
@@ -210,4 +210,4 @@ class JournalFormState(JournalState):
         # Clear OCR State
         from .ocr import JournalOCRState
         ocr_state = await self.get_state(JournalOCRState)
-        await ocr_state.clear_upload_state()
+        yield await ocr_state.clear_upload_state()
