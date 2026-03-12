@@ -9,6 +9,33 @@ class JournalService:
         self.repository = repository
         self.log = logger.bind(service="JournalService")
 
+    async def _validate_transaction_date(self, transaction_date: date):
+        """
+        取引日付が現在OPENな会計年度の範囲内か検証する。
+        """
+        from app.ui.di import DI
+        async with DI.get_master_service() as master_service:
+            fys = await master_service.get_fiscal_years()
+            
+        open_fys = [fy for fy in fys if fy.status == "OPEN"]
+        
+        if not open_fys:
+            # If there are no OPEN fiscal years, we might want to restrict entirely or warn.
+            # Assuming strict compliance: must have an OPEN year.
+            raise ValueError("現在「OPEN」ステータスの会計年度が存在しません。")
+            
+        # Check if the date falls in ANY of the completely OPEN years
+        is_valid = False
+        for fy in open_fys:
+            if fy.start_date <= transaction_date <= fy.end_date:
+                is_valid = True
+                break
+                
+        if not is_valid:
+            # For a better error message, list the open periods
+            periods = ", ".join([f"{fy.start_date.strftime('%Y/%m/%d')}〜{fy.end_date.strftime('%Y/%m/%d')}" for fy in open_fys])
+            raise ValueError(f"指定された日付は、現在「OPEN」な会計年度の範囲外です。\n(入力可能範囲: {periods})")
+
     async def add_journal_entry(self, transaction: Transaction):
         context_log = self.log.bind(
             date=transaction.date.isoformat(),
@@ -17,6 +44,8 @@ class JournalService:
         )
         
         try:
+            await self._validate_transaction_date(transaction.date)
+            
             context_log.info("Adding new journal entry")
             tx_id = await self.repository.add_transaction(transaction)
             await self.repository.commit() # Unit of Work Commit
@@ -108,6 +137,8 @@ class JournalService:
             description=transaction.description
         )
         try:
+            await self._validate_transaction_date(transaction.date)
+            
             context_log.info("Updating journal entry")
             success = await self.repository.update_transaction(transaction)
             if success:

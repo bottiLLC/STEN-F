@@ -17,10 +17,23 @@ async def test_journal_entry_update_flow(container):
         # Wait, reading code: `saved_txs = await journal_service.get_entries` line 55.
         # So ledger_service is unused. Removing to be clean.
     
-        # 1. Setup Data: Get Accounts
+        # 1. Setup Data: Get Accounts and Setup Fiscal Year
         accounts = await master_service.get_accounts()
         acc1 = accounts[0]
         acc2 = accounts[1]
+        
+        # Setup OPEN fiscal year spanning today
+        from domain.models.fiscal_year import FiscalYear
+        import datetime
+        today = date.today()
+        fy = FiscalYear(
+            name="Test FY",
+            start_date=today - datetime.timedelta(days=30),
+            end_date=today + datetime.timedelta(days=330),
+            status="OPEN"
+        )
+        await master_service.save_fiscal_year(fy)
+
         
         # 2. Add New Transaction
         tx = Transaction(

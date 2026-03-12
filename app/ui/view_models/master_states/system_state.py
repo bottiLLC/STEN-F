@@ -46,6 +46,6 @@ class SystemState(rx.State):
         service = DI.get_backup_service()
         try:
              saved_path = await service.create_backup(self.backup_path)
-             yield rx.window_alert(f"バックアップが完了しました！\n保存場所: {saved_path}")
+             yield rx.window_alert(f"データベースと設定ファイル(.env)のバックアップが完了しました！\n保存場所: {saved_path}")
         except Exception as e:
              yield rx.window_alert(f"エラーが発生しました: {str(e)}")
