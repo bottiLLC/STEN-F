@@ -32,7 +32,7 @@ class JournalCoordinatorState(JournalState):
                     # Sort descending safely across None issues
                     open_fys = [fy for fy in fys if fy.status == "OPEN"]
                     if open_fys:
-                        open_fys.sort(key=lambda x: x.period_number, reverse=True)
+                        open_fys.sort(key=lambda x: x.period_number or 0, reverse=True)
                         latest = open_fys[0]
                         list_state.filter_start_date = latest.start_date.isoformat()
                         list_state.filter_end_date = latest.end_date.isoformat()

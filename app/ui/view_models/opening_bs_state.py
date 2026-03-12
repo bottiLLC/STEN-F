@@ -118,10 +118,10 @@ class OpeningBSState(rx.State):
                     # 進行中の期を優先、なければ一番新しいものを取得
                     open_fys = [fy for fy in fys if fy.status == "OPEN"]
                     if open_fys:
-                        open_fys.sort(key=lambda x: x.period_number, reverse=True)
+                        open_fys.sort(key=lambda x: x.period_number or 0, reverse=True)
                         return open_fys[0].start_date
                     else:
-                        fys.sort(key=lambda x: x.period_number, reverse=True)
+                        fys.sort(key=lambda x: x.period_number or 0, reverse=True)
                         return fys[0].start_date
         except Exception as e:
             logger.error("Failed to fetch fiscal year start date", error=str(e))
