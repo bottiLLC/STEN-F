@@ -33,3 +33,5 @@ Thumbs.db
 
 # Backup
 .git_bak/
+frontend.zip
+backend.zip
