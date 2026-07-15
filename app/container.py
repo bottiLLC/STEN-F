@@ -18,7 +18,7 @@ from typing import AsyncGenerator
 from infrastructure.db.session import AsyncSessionLocal
 from infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository
 from infrastructure.repositories.master_repository_impl import SQLAlchemyMasterRepository
-from infrastructure.external.ocr_service import GoogleOCRService
+from infrastructure.external.ocr_service import OpenAIOCRService
 from infrastructure.external.file_service import LocalFileService
 from application.services.ledger_service import LedgerService
 from application.services.master_service import MasterService
@@ -83,8 +83,8 @@ class Container:
             service = FiscalYearService(master_service, ledger_service, journal_service)
             yield service
 
-    def get_ocr_service(self) -> GoogleOCRService:
-        return GoogleOCRService()
+    def get_ocr_service(self) -> OpenAIOCRService:
+        return OpenAIOCRService()
 
     def get_file_service(self) -> LocalFileService:
         return LocalFileService()

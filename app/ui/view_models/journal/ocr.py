@@ -14,7 +14,6 @@
 
 import reflex as rx
 from typing import List, Optional
-from core.logging import logger
 from app.ui.di import DI
 from .base import JournalState
 from .master import JournalMasterState

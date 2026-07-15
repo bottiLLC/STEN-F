@@ -14,25 +14,22 @@
 
 import os
 import json
-import io 
-from typing import Optional
+import io
+import base64
+from typing import Optional, Any
 from PIL import Image
-from google import genai
-from google.genai import types
-from dotenv import load_dotenv
+import fitz  # PyMuPDF
+from decimal import Decimal, ROUND_HALF_UP
+from openai import AsyncOpenAI, APIError
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 from core.logging import logger
-from core.resilience import resilient_api_call
-
 # Re-using the Pydantic model for internal data transfer
 from domain.models.receipt import ReceiptData
 
-
-
-class GoogleOCRService:
+class OpenAIOCRService:
     def __init__(self):
-        load_dotenv()
-        self.log = logger.bind(service="GoogleOCRService")
+        self.log = logger.bind(service="OpenAIOCRService")
 
     async def extract_receipt_data(self, file_bytes: bytes, file_type: str, account_list: list[str] = None, counterparty_list: list[str] = None) -> Optional[ReceiptData]:
         from app.ui.di import DI
@@ -42,27 +39,36 @@ class GoogleOCRService:
             
         # Fallback to .env for backward compatibility / local development
         if not api_key:
-            api_key = os.getenv("GOOGLE_API_KEY", os.getenv("OPENAI_API_KEY"))
+            api_key = os.getenv("OPENAI_API_KEY")
             
         if not api_key:
             self.log.error("API Key not configured.")
-            raise ValueError("システム設定画面からAI連携用のAPIキー（OpenAIまたはGemini）を登録してください。")
+            raise ValueError("システム設定画面からAI連携用のAPIキー（OpenAI）を登録してください。")
             
         # Determine MIME type first
-        mime_type = "image/jpeg" # Default
+        mime_type = "image/jpeg"  # Default
         if file_type.lower() == "pdf":
-            mime_type = "application/pdf"
+            try:
+                # PDFの場合は最初のページをPNG画像にレンダリングする
+                doc = fitz.open(stream=file_bytes, filetype="pdf")
+                if len(doc) > 0:
+                    page = doc.load_page(0)
+                    pix = page.get_pixmap(dpi=200)
+                    file_bytes = pix.tobytes("png")
+                    mime_type = "image/png"
+                else:
+                    raise ValueError("PDF file is empty")
+            except Exception as e:
+                self.log.error("PDF page rendering failed", error=str(e))
+                raise ValueError("PDFファイルの読み込みに失敗しました。") from e
         elif file_type.lower() in ["png", "jpg", "jpeg"]:
              mime_type = f"image/{file_type.lower()}"
              if mime_type == "image/jpg": 
                  mime_type = "image/jpeg"
 
-        # Optimize image if needed (PDFs are passed through)
-        optimized_bytes, final_mime_type = self._optimize_for_gemini(file_bytes, mime_type)
-        
-        image_part = types.Part.from_bytes(data=optimized_bytes, mime_type=final_mime_type)
-
-
+        # Optimize image size/DPI
+        optimized_bytes, final_mime_type = self._optimize_image(file_bytes, mime_type)
+        base64_image = base64.b64encode(optimized_bytes).decode('utf-8')
 
         # Format counterparty list for prompt
         cp_list_str = ""
@@ -85,29 +91,28 @@ Extract the following fields into a valid JSON object:
 Return ONLY the raw JSON object without markdown formatting.
 """
         
-        client = genai.Client(api_key=api_key)
+        client = AsyncOpenAI(api_key=api_key)
         try:
             # Step 1: Raw Extraction
-            response = await self._call_gemini_api(client, sys_instruct, image_part)
+            response_text = await self._call_openai_api(client, sys_instruct, base64_image, final_mime_type)
             
-            if not response.text:
-                raise ValueError("Empty response from Gemini")
+            if not response_text:
+                raise ValueError("Empty response from OpenAI")
 
-            data = json.loads(response.text)
+            data = json.loads(response_text)
             # Safely create ReceiptData ignoring extra fields if LLM hallucinates them
             receipt = ReceiptData(**{k: v for k, v in data.items() if k in ReceiptData.model_fields})
             
             # Step 2: Journal Template (Dictionary) Matching
-            from app.ui.di import DI
             async with DI.get_master_service() as master_service:
                 # Normalize OCR result and check against counterparty list
                 if counterparty_list and receipt.merchant_name:
                      norm_ocr = self._normalize_name(receipt.merchant_name)
                      for registered_name in counterparty_list:
-                         if norm_ocr == self._normalize_name(registered_name):
-                             receipt.merchant_name = registered_name
-                             receipt.is_registered_merchant = True
-                             break
+                          if norm_ocr == self._normalize_name(registered_name):
+                              receipt.merchant_name = registered_name
+                              receipt.is_registered_merchant = True
+                              break
                 
                 if receipt.merchant_name:
                     template = await master_service.get_counterparty_by_keyword(receipt.merchant_name)
@@ -146,10 +151,10 @@ Return ONLY the raw JSON object without markdown formatting.
   "description": "摘要文（例：〇〇代として）"
 }}
 """
-                fallback_response = await self._call_gemini_fallback(client, sys_instruct_fallback)
+                fallback_response_text = await self._call_openai_fallback(client, sys_instruct_fallback)
                 
-                if fallback_response.text:
-                    fallback_data = json.loads(fallback_response.text)
+                if fallback_response_text:
+                    fallback_data = json.loads(fallback_response_text)
                     accounts_db = await master_service.get_accounts()
                     
                     def find_acc_id(name):
@@ -167,46 +172,78 @@ Return ONLY the raw JSON object without markdown formatting.
                     
             return self._validate_receipt(receipt)
 
+        except APIError as e:
+            self.log.error("OpenAI API Error", error=str(e))
+            raise ValueError(f"OpenAI API エラーが発生しました: {e.message}") from e
         except ValueError as e:
             self.log.error("Configuration Error", error=str(e))
             raise e
         except Exception as e:
-            self.log.error("Failed to extract receipt data", error=str(e), exc_info=True)
+            self.log.exception("Failed to extract receipt data", error=str(e))
             return None
-        finally:
-            pass # The new google genai SDK does not require or support explicit closing of the async client.
 
-    @resilient_api_call(max_retries=3, base_delay=0.5)
-    async def _call_gemini_api(self, client, sys_instruct, image_part):
-        return await client.aio.models.generate_content(
-            model="gemini-3.1-flash-lite-preview", 
-            contents=[
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=sys_instruct),
-                        image_part
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=True)
+    async def _call_openai_api(self, client: AsyncOpenAI, sys_instruct: str, base64_image: str, mime_type: str) -> str:
+        from app.config import settings
+        model = settings.OPENAI_DEFAULT_MODEL
+        effort = settings.OPENAI_REASONING_EFFORT
+        
+        self.log.info("call_openai_api_start", model=model, reasoning_effort=effort)
+        
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": sys_instruct},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{base64_image}"
+                            }
+                        }
                     ]
-                )
+                }
             ],
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                max_output_tokens=8192,
-                response_mime_type="application/json",
-            )
-        )
+            "response_format": {"type": "json_object"}
+        }
+        
+        if model.startswith("o") or "5.6" in model:
+            payload["reasoning_effort"] = effort
+        else:
+            payload["temperature"] = 0.0
 
-    @resilient_api_call(max_retries=3, base_delay=0.5)
-    async def _call_gemini_fallback(self, client, sys_instruct_fallback):
-        return await client.aio.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
-            contents=[sys_instruct_fallback],
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                response_mime_type="application/json",
-            )
-        )
+        response = await client.chat.completions.create(**payload)
+        result = response.choices[0].message.content or ""
+        self.log.info("call_openai_api_success")
+        return result
 
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=True)
+    async def _call_openai_fallback(self, client: AsyncOpenAI, sys_instruct_fallback: str) -> str:
+        from app.config import settings
+        model = settings.OPENAI_DEFAULT_MODEL
+        effort = settings.OPENAI_REASONING_EFFORT
+        
+        self.log.info("call_openai_fallback_start", model=model, reasoning_effort=effort)
+        
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "user", "content": sys_instruct_fallback}
+            ],
+            "response_format": {"type": "json_object"}
+        }
+        
+        if model.startswith("o") or "5.6" in model:
+            payload["reasoning_effort"] = effort
+        else:
+            payload["temperature"] = 0.0
+
+        response = await client.chat.completions.create(**payload)
+        result = response.choices[0].message.content or ""
+        self.log.info("call_openai_fallback_success")
+        return result
 
     def _normalize_name(self, name: str) -> str:
         """
@@ -253,12 +290,14 @@ Return ONLY the raw JSON object without markdown formatting.
                 calc_total_excl += excl_amt
                 
                 # Check rate consistency per item
-                rate_val = 0.10 if "10" in item.tax_rate else 0.08 if "8" in item.tax_rate else 0.0
-                if rate_val > 0 and excl_amt > 0:
-                     expected_tax = int(excl_amt * rate_val)
-                     # Allow +/- 1 mismatch
-                     if abs(expected_tax - tax_amt) > 1:
-                         messages.append(f"消費税計算不整合 ({item.tax_rate}: 対象{excl_amt}, 税額{tax_amt})")
+                rate_str = "0.10" if "10" in item.tax_rate else "0.08" if "8" in item.tax_rate else "0.00"
+                if rate_str != "0.00" and excl_amt > 0:
+                      excl_dec = Decimal(str(excl_amt))
+                      rate_dec = Decimal(rate_str)
+                      expected_tax = int((excl_dec * rate_dec).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+                      # Allow +/- 1 mismatch
+                      if abs(expected_tax - tax_amt) > 1:
+                          messages.append(f"消費税計算不整合 ({item.tax_rate}: 対象{excl_amt}, 税額{tax_amt})")
 
         # Check Aggregated Totals
         if data.total_tax_amount is not None and abs(calc_total_tax - data.total_tax_amount) > 1:
@@ -273,7 +312,7 @@ Return ONLY the raw JSON object without markdown formatting.
             if abs(calc_grand_total - data.total_amount_incl_tax) > 1:
                  # Only flag if components are present
                  if (data.total_amount_excl_tax or 0) > 0:
-                     messages.append(f"支払合計不整合 (計算値:{calc_grand_total}, OCR値:{data.total_amount_incl_tax})")
+                      messages.append(f"支払合計不整合 (計算値:{calc_grand_total}, OCR値:{data.total_amount_incl_tax})")
 
         # 2. Date Validation
         if data.transaction_date:
@@ -292,7 +331,7 @@ Return ONLY the raw JSON object without markdown formatting.
             if match:
                 data.invoice_registration_number = match.group(1)
             else:
-                messages.append(f"インボイス番号の形式が不正です: {data.invoice_registration_number}")
+                 messages.append(f"インボイス番号の形式が不正です: {data.invoice_registration_number}")
 
         # 4. Aggregation works
         if messages:
@@ -302,30 +341,15 @@ Return ONLY the raw JSON object without markdown formatting.
 
         return data
 
-    def _optimize_for_gemini(self, file_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
+    def _optimize_image(self, file_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
         """
-        PDFはそのまま、画像はデカすぎたら圧縮して返す最適化処理
+        PDFはすでに変換済みのため画像のみ。長辺2000px以内、DPIが大きすぎる場合はリサイズして軽量化する。
         """
-        # PDFなら即パス
-        if mime_type == "application/pdf":
-            return file_bytes, mime_type
-
-        # ここから画像処理
         try:
-            # The original code used io.BytesIO and PIL.Image without local imports.
-            # Assuming these are imported globally or the instruction implies removing their usage.
-            # As per the instruction to "Remove the local imports", and since no local import statements exist,
-            # no changes are made to the usage of io.BytesIO and Image.open within this method.
-            # If the intent was to remove their usage, the code would break.
-            # Therefore, faithfully interpreting "remove local imports" means no lines are removed here.
             with Image.open(io.BytesIO(file_bytes)) as img:
-                # 現在のDPIを取得（無い場合はNoneになる）
                 current_dpi = img.info.get('dpi')
-                
-                # APIに投げる時の限界サイズ（長辺2000pxあればレシートの文字は余裕で読める）
                 max_pixels = 2000 
                 
-                # 「DPIが200より大きい」または「長辺が2000pxを超えている」なら圧縮発動
                 needs_compression = False
                 if current_dpi and current_dpi[0] > 200:
                     needs_compression = True
@@ -333,24 +357,14 @@ Return ONLY the raw JSON object without markdown formatting.
                     needs_compression = True
 
                 if needs_compression:
-                    # アスペクト比を保ったまま縮小（サムネイル化）
                     img.thumbnail((max_pixels, max_pixels), Image.Resampling.LANCZOS)
-                    
-                    # JPEG保存のためにRGBモードに変換（透過PNGなどを防ぐ）
-                    if img.mode in ("RGBA", "P"):
-                        img = img.convert("RGB")
-                        
+                    processed_img: Any = img.convert("RGB") if img.mode in ("RGBA", "P") else img
                     output = io.BytesIO()
-                    # ここでDPIを200に上書きし、画質85%で圧縮してバイナリ化
-                    img.save(output, format="JPEG", dpi=(200, 200), quality=85)
-                    
-                    # 圧縮成功。MIMEタイプもJPEGに更新して返す
+                    processed_img.save(output, format="JPEG", dpi=(200, 200), quality=85)
                     return output.getvalue(), "image/jpeg"
                 
-                # 圧縮条件に引っかからなかった（小さくて軽い）場合はそのまま返す
                 return file_bytes, mime_type
 
         except Exception as e:
-            # 万が一Pillowで開けない変なファイルが来たら、元のデータをそのまま投げる（フェイルセーフ）
-            self.log.warning("Image optimization failed", error=str(e))
+            self.log.warning("Image optimization failed, sending raw bytes", error=str(e))
             return file_bytes, mime_type

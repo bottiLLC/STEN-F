@@ -20,6 +20,7 @@ from domain.models.counterparty import Counterparty
 from domain.models.abstract import Abstract
 from app.ui.di import DI
 from core.logging import logger
+from core.utils import normalize_amount
 from .base import JournalState
 
 class JournalFormState(JournalState):
@@ -89,10 +90,7 @@ class JournalFormState(JournalState):
 
     def update_line(self, index: int, field: str, value: Any):
         if field in ["debit", "credit"]:
-            try:
-                val = int(value)
-            except (ValueError, TypeError):
-                val = 0
+            val = normalize_amount(value)
             self.lines[index][field] = val
         else:
             self.lines[index][field] = value

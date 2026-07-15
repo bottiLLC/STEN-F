@@ -12,8 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import reflex as rx
-from typing import List, Dict, Any
+from typing import List, Dict
 from domain.models.account import Account
 from domain.models.abstract import Abstract
 from app.ui.di import DI

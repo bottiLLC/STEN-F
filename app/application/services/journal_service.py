@@ -15,6 +15,7 @@
 from datetime import date
 from typing import List, Dict
 from core.logging import logger
+from core.utils import normalize_amount
 from domain.models.transaction import Transaction, TransactionLine
 from domain.interfaces.i_ledger_repository import ILedgerRepository
 
@@ -110,29 +111,23 @@ class JournalService:
         
         # 借方入力分の処理
         for acc_id_str, val_str in debit_balances.items():
-            try:
-                val = int(val_str)
-                if val > 0:
-                    lines.append(TransactionLine(
-                        account_id=int(acc_id_str),
-                        debit=val,
-                        credit=0
-                    ))
-            except ValueError:
-                pass
+            val = normalize_amount(val_str)
+            if val > 0:
+                lines.append(TransactionLine(
+                    account_id=int(acc_id_str),
+                    debit=val,
+                    credit=0
+                ))
 
         # 貸方入力分の処理
         for acc_id_str, val_str in credit_balances.items():
-            try:
-                val = int(val_str)
-                if val > 0:
-                    lines.append(TransactionLine(
-                        account_id=int(acc_id_str),
-                        debit=0,
-                        credit=val
-                    ))
-            except ValueError:
-                pass
+            val = normalize_amount(val_str)
+            if val > 0:
+                lines.append(TransactionLine(
+                    account_id=int(acc_id_str),
+                    debit=0,
+                    credit=val
+                ))
 
         if not lines:
             raise ValueError("入力された金額がありません。")

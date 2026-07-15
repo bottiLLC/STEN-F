@@ -94,7 +94,7 @@ class BackupService:
         if env_path.exists() and env_path.is_file():
             try:
                 shutil.copy2(env_path, backup_subdir / ".env")
-            except Exception as e:
+            except Exception:
                 # 必須ではないがエラーは報告するか、無視するか。ここでは継続するがログには残したい
                 # print関数は使えないため、無視して進める。
                 pass

@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     # External APIs
     GOOGLE_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
+    OPENAI_DEFAULT_MODEL: str = "GPT-5.6-Luna"
+    OPENAI_REASONING_EFFORT: str = "medium"
 
     # App Metadata
     APP_TITLE: str = "STEN-F"

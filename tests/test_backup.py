@@ -13,10 +13,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import pytest
-import shutil
-import asyncio
 from pathlib import Path
-from unittest.mock import patch
 
 from app.infrastructure.external.backup_service import BackupService
 from app.config import settings

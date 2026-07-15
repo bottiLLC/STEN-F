@@ -17,6 +17,7 @@ from typing import List, Dict
 from datetime import date
 from domain.models.account import AccountType
 from core.logging import logger
+from core.utils import normalize_amount
 from ..di import DI
 
 class OpeningBSState(rx.State):
@@ -95,10 +96,7 @@ class OpeningBSState(rx.State):
         total = 0
         for val_str in self.debit_balances.values():
             if val_str:
-                try:
-                    total += int(val_str)
-                except ValueError:
-                    pass
+                total += normalize_amount(val_str)
         return total
 
     @rx.var
@@ -107,10 +105,7 @@ class OpeningBSState(rx.State):
         total = 0
         for val_str in self.credit_balances.values():
             if val_str:
-                try:
-                    total += int(val_str)
-                except ValueError:
-                    pass
+                total += normalize_amount(val_str)
         return total
 
     @rx.var

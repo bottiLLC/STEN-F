@@ -12,13 +12,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from app.infrastructure.external.ocr_service import GoogleOCRService
+from app.infrastructure.external.ocr_service import OpenAIOCRService
 from app.domain.models.receipt import ReceiptData, TaxBreakdownItem
 
 class TestOCRValidation:
     
     def setup_method(self):
-        self.service = GoogleOCRService()
+        self.service = OpenAIOCRService()
 
     def test_valid_receipt(self):
         # 1000 + 100 (10%) = 1100
@@ -96,3 +96,24 @@ class TestOCRValidation:
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
         assert "インボイス番号の形式が不正です" in validated.error_message
+
+    def test_normalize_amount(self):
+        from app.core.utils import normalize_amount
+        assert normalize_amount("1,000") == 1000
+        assert normalize_amount("１０００") == 1000
+        assert normalize_amount("1000.5") == 1001
+        assert normalize_amount("1000.4") == 1000
+        assert normalize_amount(None) == 0
+        assert normalize_amount("invalid") == 0
+
+    def test_decimal_rounding_half_up(self):
+        data = ReceiptData(
+            tax_breakdown=[
+                TaxBreakdownItem(tax_rate="8%", tax_amount=3, amount_excl_tax=37)
+            ],
+            total_tax_amount=3,
+            total_amount_excl_tax=37,
+            total_amount_incl_tax=40
+        )
+        validated = self.service._validate_receipt(data)
+        assert validated.needs_manual_review is False
