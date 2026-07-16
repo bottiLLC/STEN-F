@@ -1250,7 +1250,7 @@ dependencies = [
     { name = "tenacity" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "black" },
     { name = "hypothesis" },
@@ -1268,29 +1268,32 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "alembic", specifier = ">=1.14.1" },
-    { name = "black", marker = "extra == 'dev'", specifier = ">=25.1.0" },
     { name = "google-genai", specifier = ">=1.2.0" },
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100.0" },
-    { name = "isort", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.15.0" },
     { name = "openai", specifier = ">=1.63.2" },
     { name = "pandas", specifier = ">=3.0.1" },
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "pydantic-settings", specifier = ">=2.8.0" },
     { name = "pymupdf", specifier = ">=1.25.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.4" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.25.3" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "reflex", specifier = ">=0.6.8" },
     { name = "reportlab", specifier = ">=4.3.1" },
-    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0" },
     { name = "sqlalchemy", specifier = ">=2.0.38" },
     { name = "structlog", specifier = ">=25.1.0" },
     { name = "tenacity", specifier = ">=9.1.0" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=25.1.0" },
+    { name = "hypothesis", specifier = ">=6.100.0" },
+    { name = "isort", specifier = ">=6.0.0" },
+    { name = "mypy", specifier = ">=1.15.0" },
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "pytest-asyncio", specifier = ">=0.25.3" },
+    { name = "pytest-mock", specifier = ">=3.14.0" },
+    { name = "respx", specifier = ">=0.21.0" },
+    { name = "ruff", specifier = ">=0.9.0" },
+]
 
 [[package]]
 name = "structlog"

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import Column, Integer, String, Date, ForeignKey, DateTime, Boolean
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 load_dotenv()
 
@@ -27,7 +27,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 class AccountTable(Base):
     __tablename__ = 'accounts'

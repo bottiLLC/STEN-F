@@ -31,7 +31,7 @@ class OpenAIOCRService:
     def __init__(self):
         self.log = logger.bind(service="OpenAIOCRService")
 
-    async def extract_receipt_data(self, file_bytes: bytes, file_type: str, account_list: list[str] = None, counterparty_list: list[str] = None) -> Optional[ReceiptData]:
+    async def extract_receipt_data(self, file_bytes: bytes, file_type: str, account_list: list[str] | None = None, counterparty_list: list[str] | None = None) -> Optional[ReceiptData]:
         from app.ui.di import DI
         async with DI.get_master_service() as ms:
             system_settings = await ms.get_system_settings()
@@ -190,7 +190,7 @@ Return ONLY the raw JSON object without markdown formatting.
         
         self.log.info("call_openai_api_start", model=model, reasoning_effort=effort)
         
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [
                 {
@@ -227,7 +227,7 @@ Return ONLY the raw JSON object without markdown formatting.
         
         self.log.info("call_openai_fallback_start", model=model, reasoning_effort=effort)
         
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [
                 {"role": "user", "content": sys_instruct_fallback}

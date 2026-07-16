@@ -25,7 +25,7 @@ class FiscalYearService:
         self.journal_service = journal_service
         self.log = logger.bind(service="FiscalYearService")
 
-    async def close_fiscal_year(self, fiscal_year_id: int, next_fy_name: str = None):
+    async def close_fiscal_year(self, fiscal_year_id: int, next_fy_name: str | None = None):
         context_log = self.log.bind(fy_id=fiscal_year_id)
         try:
             context_log.info("Starting fiscal year closing process")

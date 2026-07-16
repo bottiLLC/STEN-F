@@ -83,7 +83,6 @@ async def test_frequent_accounts_manual_wiring(test_session):
     session.add_all([acc_a, acc_b, acc_c, acc_d, acc_cash])
     await session.flush()
     
-    id_a, id_b, id_c, id_d = acc_a.id, acc_b.id, acc_c.id, acc_d.id
     id_cash = acc_cash.id
     
     # Mocking MasterService for validation

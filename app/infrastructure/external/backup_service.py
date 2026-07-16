@@ -81,7 +81,8 @@ class BackupService:
                     shutil.copy2(fallback_db_path, dest_db_path)
                     
                     wal_path = Path(str(fallback_db_path) + "-wal")
-                    if wal_path.exists(): shutil.copy2(wal_path, backup_subdir / f"{fallback_db_path.name}-wal")
+                    if wal_path.exists():
+                        shutil.copy2(wal_path, backup_subdir / f"{fallback_db_path.name}-wal")
                     
                     db_copied = True
                 except Exception as e:
