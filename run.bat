@@ -8,6 +8,16 @@ echo ===================================================
 
 cd /d "%~dp0"
 
+:: uv コマンドの存在チェック
+where uv >nul 2>nul
+if !errorlevel! neq 0 (
+    echo [ERROR] uv コマンドが見つかりません。
+    echo [ERROR] Astral-sh の uv がインストールされ、環境変数 PATH に通っているか確認してください。
+    echo [ERROR] インストール手順については公式ドキュメントを参照してください。
+    pause
+    exit /b 1
+)
+
 :: .venv の存在チェックと初期化
 if not exist ".venv" (
     echo [INFO] 仮想環境（.venv）が見つかりません。初期設定を開始します...
