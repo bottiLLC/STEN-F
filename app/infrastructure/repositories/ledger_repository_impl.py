@@ -18,10 +18,10 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from domain.interfaces.i_ledger_repository import ILedgerRepository
-from domain.models.account import Account
-from domain.models.transaction import Transaction, TransactionLine
-from infrastructure.db.models import AccountTable, TransactionTable, TransactionLineTable
+from app.domain.interfaces.i_ledger_repository import ILedgerRepository
+from app.domain.models.account import Account
+from app.domain.models.transaction import Transaction, TransactionLine
+from app.infrastructure.db.models import AccountTable, TransactionTable, TransactionLineTable
 
 class SQLAlchemyLedgerRepository(ILedgerRepository):
     def __init__(self, session: AsyncSession):
@@ -43,7 +43,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         stmt = select(TransactionTable)
         
         if include_relationships:
-            from infrastructure.db.models import TransactionLineTable
+            from app.infrastructure.db.models import TransactionLineTable
             stmt = stmt.options(selectinload(TransactionTable.lines).selectinload(TransactionLineTable.account))
         else:
             stmt = stmt.options(selectinload(TransactionTable.lines))
@@ -229,7 +229,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         Returns a list of dictionaries with account_id, total_debit, and total_credit.
         """
         # 1. Get FY Dates
-        from infrastructure.db.models import FiscalYearTable
+        from app.infrastructure.db.models import FiscalYearTable
         stmt = select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id)
         result = await self.session.execute(stmt)
         fy = result.scalar_one_or_none()
@@ -261,8 +261,8 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         ]
 
     async def get_fiscal_year(self, fiscal_year_id: int):
-        from infrastructure.db.models import FiscalYearTable
-        from domain.models.fiscal_year import FiscalYear
+        from app.infrastructure.db.models import FiscalYearTable
+        from app.domain.models.fiscal_year import FiscalYear
         
         stmt = select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id)
         result = await self.session.execute(stmt)

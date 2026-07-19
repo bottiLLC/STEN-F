@@ -13,11 +13,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import reflex as rx
-import os
+import structlog
+from app.config import settings
 from app.ui.di import DI
 
+log = structlog.get_logger()
+
 class SystemState(rx.State):
-    backup_path: str = os.path.abspath("./backups")
+    backup_path: str = str((settings.PROJECT_ROOT / "backups").resolve())
     ai_api_key: str = ""
     is_saving_key: bool = False
 
@@ -35,7 +38,7 @@ class SystemState(rx.State):
                 self.ai_api_key = settings.ai_api_key or ""
         except Exception as e:
             # First-time loading might fail if the DB isn't strictly seeded
-            print(f"Failed to load system settings: {e}")
+            log.warning("Failed to load system settings", error=str(e))
 
     async def save_api_key(self):
         """OpenAI APIキーを保存する"""

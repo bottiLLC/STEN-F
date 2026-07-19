@@ -13,10 +13,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from datetime import timedelta
-from core.logging import logger
-from domain.models.account import AccountType
-from domain.models.transaction import Transaction, TransactionLine
-from domain.models.fiscal_year import FiscalYear
+from app.core.logging import logger
+from app.domain.models.account import AccountType
+from app.domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.fiscal_year import FiscalYear
 
 class FiscalYearService:
     def __init__(self, master_service, ledger_service, journal_service):

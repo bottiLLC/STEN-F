@@ -15,9 +15,9 @@
 import reflex as rx
 from typing import List
 from datetime import date
-from domain.models.transaction import Transaction
+from app.domain.models.transaction import Transaction
 from app.ui.di import DI
-from core.logging import logger
+from app.core.logging import logger
 from .base import JournalState
 
 # Global module-level var to share state across sessions

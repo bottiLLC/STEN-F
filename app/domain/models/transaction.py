@@ -57,6 +57,6 @@ class Transaction(BaseModel):
         return self
 
 # Fix for forward reference 'Account'
-from domain.models.account import Account  # noqa: E402
+from app.domain.models.account import Account  # noqa: E402
 TransactionLine.model_rebuild()
 Transaction.model_rebuild()

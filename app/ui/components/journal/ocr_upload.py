@@ -48,7 +48,7 @@ def render_ocr_upload_area() -> rx.Component:
                 disabled=JournalOCRState.is_analyzing,
             ),
             rx.text(
-                "※ PDF, JPG, PNG対応. Gemini 3 Flash Preview使用", 
+                "※ PDF, JPG, PNG対応. OpenAIを使用します", 
                 font_size="0.8em", 
                 color="gray"
             ),

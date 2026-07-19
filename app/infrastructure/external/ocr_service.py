@@ -12,7 +12,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 import json
 import io
 import base64
@@ -23,9 +22,10 @@ from decimal import Decimal, ROUND_HALF_UP
 from openai import AsyncOpenAI, APIError
 from tenacity import retry, wait_exponential, stop_after_attempt
 
-from core.logging import logger
+from app.config import settings
+from app.core.logging import logger
 # Re-using the Pydantic model for internal data transfer
-from domain.models.receipt import ReceiptData
+from app.domain.models.receipt import ReceiptData
 
 class OpenAIOCRService:
     def __init__(self):
@@ -37,9 +37,9 @@ class OpenAIOCRService:
             system_settings = await ms.get_system_settings()
             api_key = system_settings.ai_api_key
             
-        # Fallback to .env for backward compatibility / local development
+        # Fallback to config settings (which reads from .env)
         if not api_key:
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = settings.OPENAI_API_KEY
             
         if not api_key:
             self.log.error("API Key not configured.")

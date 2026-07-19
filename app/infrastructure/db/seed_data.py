@@ -14,7 +14,7 @@
 
 from sqlalchemy.future import select
 from app.infrastructure.db.session import AsyncSessionLocal
-from core.logging import logger
+from app.core.logging import logger
 from app.domain.models.account import Account, AccountType
 
 DEFAULT_ACCOUNTS = [

@@ -13,8 +13,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from typing import List, Dict
-from domain.models.account import Account
-from domain.models.abstract import Abstract
+from app.domain.models.account import Account
+from app.domain.models.abstract import Abstract
 from app.ui.di import DI
 from .base import JournalState
 

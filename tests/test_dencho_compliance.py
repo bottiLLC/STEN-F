@@ -14,8 +14,8 @@
 
 import pytest
 import datetime
-from domain.models.transaction import Transaction, TransactionLine
-from domain.models.counterparty import Counterparty
+from app.domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.counterparty import Counterparty
 # from app.container import Container (Removed, using fixture)
 
 @pytest.mark.asyncio

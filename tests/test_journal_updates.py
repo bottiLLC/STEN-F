@@ -14,7 +14,7 @@
 
 import pytest
 from datetime import date
-from domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.transaction import Transaction, TransactionLine
 
 @pytest.mark.asyncio
 async def test_journal_entry_update_flow(container):
@@ -37,7 +37,7 @@ async def test_journal_entry_update_flow(container):
         acc2 = accounts[1]
         
         # Setup OPEN fiscal year spanning today
-        from domain.models.fiscal_year import FiscalYear
+        from app.domain.models.fiscal_year import FiscalYear
         import datetime
         today = date.today()
         fy = FiscalYear(

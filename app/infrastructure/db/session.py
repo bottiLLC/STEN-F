@@ -12,22 +12,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from pathlib import Path
-from dotenv import load_dotenv
+from app.config import settings
 
-load_dotenv()
-
-# Default DB Path (Parent of app)
-# Calculate path relative to THIS file: app/infrastructure/db/session.py -> app/infrastructure/db/ -> app/infrastructure/ -> app/ -> STEN-F/
-DEFAULT_DB_PATH = Path(__file__).parents[3] / "data" / "sten_f.db"
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
+DATABASE_URL = settings.DATABASE_URL
+assert DATABASE_URL is not None
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 
 async def init_db():
-    from infrastructure.db.models import Base
+    from app.infrastructure.db.models import Base
     # Ensure the directory exists before creating the database
     if "sqlite" in DATABASE_URL:
         db_path = DATABASE_URL.split("///")[-1]

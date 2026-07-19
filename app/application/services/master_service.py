@@ -12,16 +12,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from core.logging import logger
-from domain.interfaces.i_master_repository import IMasterRepository
-from domain.models.corporation import Corporation
-from domain.models.fiscal_year import FiscalYear
-from domain.models.account import Account
-from domain.models.abstract import Abstract
-from domain.models.counterparty import Counterparty
-from domain.models.system import SystemSettings
+from app.core.logging import logger
+from app.domain.interfaces.i_master_repository import IMasterRepository
+from app.domain.models.corporation import Corporation
+from app.domain.models.fiscal_year import FiscalYear
+from app.domain.models.account import Account
+from app.domain.models.abstract import Abstract
+from app.domain.models.counterparty import Counterparty
+from app.domain.models.system import SystemSettings
 
-from domain.interfaces.i_ledger_repository import ILedgerRepository
+from app.domain.interfaces.i_ledger_repository import ILedgerRepository
 
 class MasterService:
     def __init__(self, repository: IMasterRepository, ledger_repository: ILedgerRepository = None):

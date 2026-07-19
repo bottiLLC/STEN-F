@@ -14,7 +14,7 @@
 
 from typing import List
 from pydantic import BaseModel, ConfigDict
-from domain.models.account import AccountType
+from app.domain.models.account import AccountType
 # Ideally Domain Entity. Let's define a simple one or use dict for now to save time, 
 # but for Clean Arch we should have Domain Entity.
 # I'll define a minimal FiscalYear in this file or minimal struct.

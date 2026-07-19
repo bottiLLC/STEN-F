@@ -17,15 +17,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from domain.interfaces.i_master_repository import IMasterRepository
-from domain.models.corporation import Corporation
-from domain.models.fiscal_year import FiscalYear
-from domain.models.account import Account
-from domain.models.abstract import Abstract
-from domain.models.counterparty import Counterparty
-from domain.models.system import SystemSettings
+from app.domain.interfaces.i_master_repository import IMasterRepository
+from app.domain.models.corporation import Corporation
+from app.domain.models.fiscal_year import FiscalYear
+from app.domain.models.account import Account
+from app.domain.models.abstract import Abstract
+from app.domain.models.counterparty import Counterparty
+from app.domain.models.system import SystemSettings
 
-from infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable, SystemTable
+from app.infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable, SystemTable
 
 class SQLAlchemyMasterRepository(IMasterRepository):
     def __init__(self, session: AsyncSession):

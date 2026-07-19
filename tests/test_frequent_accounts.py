@@ -27,16 +27,11 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker  # no
 
 # Ensure app is in path
 from pathlib import Path  # noqa: E402
-import sys  # noqa: E402
-app_dir = str(Path(__file__).parent.parent / "app")
-sys.path.append(app_dir)
-
 # Import App Modules
-# Assuming 'app' is in path, we can import directly
-from infrastructure.db.models import Base, AccountTable  # noqa: E402
-from infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository  # noqa: E402
-from application.services.journal_service import JournalService  # noqa: E402
-from domain.models.transaction import Transaction, TransactionLine  # noqa: E402
+from app.infrastructure.db.models import Base, AccountTable  # noqa: E402
+from app.infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository  # noqa: E402
+from app.application.services.journal_service import JournalService  # noqa: E402
+from app.domain.models.transaction import Transaction, TransactionLine  # noqa: E402
 
 # Test Config
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -88,7 +83,7 @@ async def test_frequent_accounts_manual_wiring(test_session):
     # Mocking MasterService for validation
     mock_master_service = AsyncMock()
     
-    from domain.models.fiscal_year import FiscalYear
+    from app.domain.models.fiscal_year import FiscalYear
     import datetime
     today = date.today()
     mock_master_service.get_fiscal_years.return_value = [

@@ -15,8 +15,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 from datetime import date
-from domain.models.transaction import Transaction
-from domain.models.account import Account
+from app.domain.models.transaction import Transaction
+from app.domain.models.account import Account
 
 class ILedgerRepository(ABC):
     @abstractmethod

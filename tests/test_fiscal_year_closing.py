@@ -15,10 +15,10 @@
 import pytest
 from datetime import date
 from sqlalchemy import delete
-from domain.models.account import Account, AccountType
-from domain.models.transaction import Transaction, TransactionLine
-from domain.models.fiscal_year import FiscalYear
-from infrastructure.db.models import AccountTable, TransactionTable, TransactionLineTable, FiscalYearTable
+from app.domain.models.account import Account, AccountType
+from app.domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.fiscal_year import FiscalYear
+from app.infrastructure.db.models import AccountTable, TransactionTable, TransactionLineTable, FiscalYearTable
 
 @pytest.mark.asyncio
 async def test_fiscal_year_closing_flow(container):

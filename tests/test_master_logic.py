@@ -13,9 +13,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import pytest
-from domain.models.counterparty import Counterparty
-from domain.models.account import Account, AccountType
-from domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.counterparty import Counterparty
+from app.domain.models.account import Account, AccountType
+from app.domain.models.transaction import Transaction, TransactionLine
 from datetime import date
 
 @pytest.mark.asyncio

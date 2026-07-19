@@ -12,28 +12,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
-import sys
 import pytest
 
-# Ensure 'v2/app' is in python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../app')))
-
-from container import Container
+from app.container import Container
 
 @pytest.fixture(scope="function")
 async def container():
     """Provides a Container instance for each test function."""
     # Initialize DB schema for in-memory DB or fresh test DB
-    from infrastructure.db.session import init_db
+    from app.infrastructure.db.session import init_db
     await init_db()
     
     c = Container()
     
     # SEED DATA
-    from domain.models.corporation import Corporation
-    from domain.models.account import Account, AccountType
-    from domain.models.fiscal_year import FiscalYear
+    from app.domain.models.corporation import Corporation
+    from app.domain.models.account import Account, AccountType
+    from app.domain.models.fiscal_year import FiscalYear
     from datetime import date
     
     # 0. Seed Data using Scoped Service

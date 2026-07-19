@@ -12,18 +12,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 from sqlalchemy.ext.asyncio import create_async_engine
-from pathlib import Path
-from dotenv import load_dotenv
 from sqlalchemy import Column, Integer, String, Date, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import DeclarativeBase, relationship
+from app.config import settings
 
-load_dotenv()
-
-# Default DB Path (Parent of v2) → Project Root
-DEFAULT_DB_PATH = Path(__file__).parents[3] / "bookkeeping.db"
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
+DATABASE_URL = settings.DATABASE_URL
+assert DATABASE_URL is not None
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 

@@ -15,9 +15,9 @@
 import reflex as rx
 from typing import List, Dict
 from datetime import date
-from domain.models.account import AccountType
-from core.logging import logger
-from core.utils import normalize_amount
+from app.domain.models.account import AccountType
+from app.core.logging import logger
+from app.core.utils import normalize_amount
 from ..di import DI
 
 class OpeningBSState(rx.State):

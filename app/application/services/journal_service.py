@@ -14,10 +14,10 @@
 
 from datetime import date
 from typing import List, Dict
-from core.logging import logger
-from core.utils import normalize_amount
-from domain.models.transaction import Transaction, TransactionLine
-from domain.interfaces.i_ledger_repository import ILedgerRepository
+from app.core.logging import logger
+from app.core.utils import normalize_amount
+from app.domain.models.transaction import Transaction, TransactionLine
+from app.domain.interfaces.i_ledger_repository import ILedgerRepository
 
 class JournalService:
     def __init__(self, repository: ILedgerRepository):

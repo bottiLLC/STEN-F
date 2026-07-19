@@ -37,6 +37,14 @@ class JournalCoordinatorState(JournalState):
     
     async def on_mount_journal(self):
         """Called when Journal Entry or History pages are mounted."""
+        # Run seeding if necessary
+        from app.infrastructure.db.seed_data import seed_accounts
+        from app.core.logging import logger
+        try:
+            await seed_accounts()
+        except Exception as e:
+            logger.error("Startup Seeding Error", error=str(e), exc_info=True)
+
         # Load master data
         master_state = await self.get_state(JournalMasterState)
         await master_state.load_accounts()

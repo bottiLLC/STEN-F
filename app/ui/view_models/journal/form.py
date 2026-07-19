@@ -15,12 +15,12 @@
 import reflex as rx
 from typing import List, Dict, Any
 from datetime import date
-from domain.models.transaction import Transaction, TransactionLine
-from domain.models.counterparty import Counterparty
-from domain.models.abstract import Abstract
+from app.domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.counterparty import Counterparty
+from app.domain.models.abstract import Abstract
 from app.ui.di import DI
-from core.logging import logger
-from core.utils import normalize_amount
+from app.core.logging import logger
+from app.core.utils import normalize_amount
 from .base import JournalState
 
 class JournalFormState(JournalState):

@@ -14,9 +14,9 @@
 
 import pytest
 from datetime import date
-from domain.models.transaction import Transaction, TransactionLine
-from domain.models.account import AccountType
-from domain.models.fiscal_year import FiscalYear
+from app.domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.account import AccountType
+from app.domain.models.fiscal_year import FiscalYear
 
 @pytest.mark.asyncio
 class TestSystemIntegration:

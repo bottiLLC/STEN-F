@@ -15,15 +15,15 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from infrastructure.db.session import AsyncSessionLocal
-from infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository
-from infrastructure.repositories.master_repository_impl import SQLAlchemyMasterRepository
-from infrastructure.external.ocr_service import OpenAIOCRService
-from infrastructure.external.file_service import LocalFileService
-from application.services.ledger_service import LedgerService
-from application.services.master_service import MasterService
-from application.services.journal_service import JournalService
-from application.services.fiscal_year_service import FiscalYearService
+from app.infrastructure.db.session import AsyncSessionLocal
+from app.infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository
+from app.infrastructure.repositories.master_repository_impl import SQLAlchemyMasterRepository
+from app.infrastructure.external.ocr_service import OpenAIOCRService
+from app.infrastructure.external.file_service import LocalFileService
+from app.application.services.ledger_service import LedgerService
+from app.application.services.master_service import MasterService
+from app.application.services.journal_service import JournalService
+from app.application.services.fiscal_year_service import FiscalYearService
 
 class Container:
     """
@@ -90,11 +90,11 @@ class Container:
         return LocalFileService()
 
     def get_pdf_service(self):
-        from infrastructure.external.pdf_service import PDFService
+        from app.infrastructure.external.pdf_service import PDFService
         return PDFService()
 
     def get_backup_service(self):
-        from infrastructure.external.backup_service import BackupService
+        from app.infrastructure.external.backup_service import BackupService
         return BackupService()
 
 # Global instance

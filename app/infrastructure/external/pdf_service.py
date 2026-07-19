@@ -20,9 +20,9 @@ from reportlab.pdfbase import pdfmetrics
 from datetime import date
 import io
 
-from config import settings
-from domain.models.corporation import Corporation
-from domain.models.financial_report import FinancialReport
+from app.config import settings
+from app.domain.models.corporation import Corporation
+from app.domain.models.financial_report import FinancialReport
 
 class PDFService:
     @staticmethod

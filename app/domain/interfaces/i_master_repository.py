@@ -14,12 +14,12 @@
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from domain.models.corporation import Corporation
-from domain.models.fiscal_year import FiscalYear
-from domain.models.account import Account
-from domain.models.abstract import Abstract
-from domain.models.counterparty import Counterparty
-from domain.models.system import SystemSettings
+from app.domain.models.corporation import Corporation
+from app.domain.models.fiscal_year import FiscalYear
+from app.domain.models.account import Account
+from app.domain.models.abstract import Abstract
+from app.domain.models.counterparty import Counterparty
+from app.domain.models.system import SystemSettings
 
 class IMasterRepository(ABC):
     # System Settings

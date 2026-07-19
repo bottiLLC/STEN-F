@@ -23,7 +23,7 @@ def render_system_tab() -> rx.Component:
         
         rx.vstack(
              rx.text("AI API連携設定", weight="bold"),
-             rx.text("OpenAI または Gemini (Gemini Desktop等) のAPIキーを設定します。システムは画像読み取りやLLM推論にこのキーを使用します。", size="2", color="gray"),
+             rx.text("OpenAIのAPIキーを設定します。システムは画像読み取りやLLM推論にこのキーを使用します。", size="2", color="gray"),
              rx.input(
                  value=SystemState.ai_api_key,
                  on_change=SystemState.set_ai_api_key,

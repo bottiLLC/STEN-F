@@ -13,20 +13,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import reflex as rx
-import asyncio
-from core.logging import logger
 from .pages.journal import journal_page
 from .pages.master import master_page
 from .pages.reports import reports_page
 from .pages.opening_bs import opening_bs_page
 from .pages.history import history_page
-from app.infrastructure.db.seed_data import seed_accounts
-
-# Run seeding on startup
-try:
-    asyncio.run(seed_accounts())
-except Exception as e:
-    logger.error("Startup Seeding Error", error=str(e), exc_info=True)
 
 app = rx.App(
     theme=rx.theme(

@@ -14,7 +14,7 @@
 
 import pytest
 from datetime import date
-from domain.models.transaction import Transaction, TransactionLine
+from app.domain.models.transaction import Transaction, TransactionLine
 
 @pytest.mark.asyncio
 async def test_journal_service_flow(container):
@@ -62,7 +62,7 @@ async def test_journal_service_flow(container):
 async def test_master_service_flow(container):
     async with container.master_service_scope() as service:
         # Test Corporation Save/Get
-        from domain.models.corporation import Corporation
+        from app.domain.models.corporation import Corporation
         corp = Corporation(name="Test Corp Updated")
         await service.save_corporation(corp)
         

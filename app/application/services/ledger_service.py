@@ -14,10 +14,10 @@
 
 from typing import List
 import pandas as pd
-from core.logging import logger
-from domain.interfaces.i_ledger_repository import ILedgerRepository
-from domain.models.financial_report import TrialBalanceRow
-from domain.models.account import AccountType
+from app.core.logging import logger
+from app.domain.interfaces.i_ledger_repository import ILedgerRepository
+from app.domain.models.financial_report import TrialBalanceRow
+from app.domain.models.account import AccountType
 
 class LedgerService:
     def __init__(self, repository: ILedgerRepository):
