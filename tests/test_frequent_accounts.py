@@ -25,8 +25,6 @@ import pytest  # noqa: E402
 from datetime import date  # noqa: E402
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker  # noqa: E402
 
-# Ensure app is in path
-from pathlib import Path  # noqa: E402
 # Import App Modules
 from app.infrastructure.db.models import Base, AccountTable  # noqa: E402
 from app.infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository  # noqa: E402
