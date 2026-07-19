@@ -14,7 +14,7 @@
 
 from datetime import date, datetime
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 
 
 class TransactionLine(BaseModel):
@@ -59,6 +59,14 @@ class Transaction(BaseModel):
                 f"Unbalanced Transaction: Debit({total_debit}) != Credit({total_credit})"
             )
         return self
+
+    @field_validator("invoice_number", mode="before")
+    @classmethod
+    def clean_invoice_number(cls, v: Optional[str]) -> Optional[str]:
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            return v_stripped if v_stripped else None
+        return v
 
 
 # Fix for forward reference 'Account'

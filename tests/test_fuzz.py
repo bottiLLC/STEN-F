@@ -67,6 +67,7 @@ def test_fuzz_invoice_format(inv_num: str):
     ]
 
     is_valid_format = re.match(r"^T[0-9]{13}$", inv_num) is not None
+    is_empty_or_whitespace = inv_num.strip() == ""
 
     if is_valid_format:
         # Valid format, should succeed
@@ -77,6 +78,15 @@ def test_fuzz_invoice_format(inv_num: str):
             invoice_number=inv_num,
         )
         assert tx.invoice_number == inv_num
+    elif is_empty_or_whitespace:
+        # Empty or whitespace should be cleansed to None and succeed
+        tx = Transaction(
+            date=date.today(),
+            description="Invoice formatting fuzz",
+            lines=lines,
+            invoice_number=inv_num,
+        )
+        assert tx.invoice_number is None
     else:
         # Invalid format, must raise ValidationError
         with pytest.raises(ValidationError):

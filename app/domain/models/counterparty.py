@@ -13,7 +13,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Counterparty(BaseModel):
@@ -28,3 +28,11 @@ class Counterparty(BaseModel):
     description_template: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    @field_validator("invoice_number", mode="before")
+    @classmethod
+    def clean_invoice_number(cls, v: Optional[str]) -> Optional[str]:
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            return v_stripped if v_stripped else None
+        return v
