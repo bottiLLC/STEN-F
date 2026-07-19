@@ -1,6 +1,6 @@
 [project]
 name = "sten-f"
-version = "1.0.0"
+version = "1.1.0"
 description = "STEN-F: Simple Tough Effective Next-generation Finance app"
 authors = [
     {name = "Botti LLC", email = "botti@example.com"},
