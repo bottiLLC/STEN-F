@@ -15,24 +15,25 @@
 import reflex as rx
 from typing import List, Dict
 from datetime import date
+import structlog
 from app.domain.models.account import AccountType
-from app.core.logging import logger
 from app.core.utils import normalize_amount
 from ..di import DI
 
+log = structlog.get_logger()
+
+
 class OpeningBSState(rx.State):
     """State for the Opening Balance Sheet entry page."""
-    
+
     # 貸借対照表 (B/S) 全科目
     bs_accounts: List[Dict[str, str]] = []
-    
+
     # 科目IDをキーにした残高の辞書
     debit_balances: Dict[str, str] = {}
     credit_balances: Dict[str, str] = {}
-    
+
     is_loading: bool = False
-
-
 
     async def load_accounts(self):
         self.is_loading = True
@@ -40,7 +41,7 @@ class OpeningBSState(rx.State):
         try:
             async with DI.get_master_service() as service:
                 all_accounts = await service.get_accounts()
-                
+
                 # B/S科目のみ抽出（PL科目は除外）
                 allowed_types = [
                     AccountType.CURRENT_ASSET,
@@ -48,31 +49,37 @@ class OpeningBSState(rx.State):
                     AccountType.DEFERRED_ASSET,
                     AccountType.CURRENT_LIABILITY,
                     AccountType.FIXED_LIABILITY,
-                    AccountType.EQUITY
+                    AccountType.EQUITY,
                 ]
-                
+
                 filtered_accounts = [
-                    acc for acc in all_accounts 
-                    if acc.type in allowed_types
+                    acc for acc in all_accounts if acc.type in allowed_types
                 ]
-                
+
                 self.bs_accounts = [
-                    {"id": str(a.id), "code": a.code, "name": a.name, "type": a.type.value}
-                    for a in filtered_accounts 
+                    {
+                        "id": str(a.id),
+                        "code": a.code,
+                        "name": a.name,
+                        "type": a.type.value,
+                    }
+                    for a in filtered_accounts
                 ]
-                
+
                 # Sort by code
                 self.bs_accounts.sort(key=lambda x: x["code"])
-                
+
                 # Initialize balances map if not exists
                 for acc in filtered_accounts:
                     if str(acc.id) not in self.debit_balances:
                         self.debit_balances[str(acc.id)] = ""
                     if str(acc.id) not in self.credit_balances:
                         self.credit_balances[str(acc.id)] = ""
-                        
+
         except Exception as e:
-            logger.error("Failed to load accounts for Opening BS", error=str(e), exc_info=True)
+            log.error(
+                "Failed to load accounts for Opening BS", error=str(e), exc_info=True
+            )
             yield rx.window_alert("勘定科目の読み込みに失敗しました。")
         finally:
             self.is_loading = False
@@ -133,27 +140,29 @@ class OpeningBSState(rx.State):
                         fys.sort(key=lambda x: x.period_number or 0, reverse=True)
                         return fys[0].start_date
         except Exception as e:
-            logger.error("Failed to fetch fiscal year start date", error=str(e))
-            
+            log.error("Failed to fetch fiscal year start date", error=str(e))
+
         return None
 
     async def submit(self):
         """期首残高として仕訳を登録する"""
         if not self.is_balanced:
             return rx.window_alert("貸借が一致していません。")
-            
+
         opening_date = await self.get_fiscal_start_date()
         if not opening_date:
-            return rx.window_alert("会計年度が設定されていません。「マスタ管理」から会計年度を登録してください。")
+            return rx.window_alert(
+                "会計年度が設定されていません。「マスタ管理」から会計年度を登録してください。"
+            )
 
         try:
             async with DI.get_journal_service() as service:
                 await service.register_opening_balance(
                     opening_date=opening_date,
                     debit_balances=self.debit_balances,
-                    credit_balances=self.credit_balances
+                    credit_balances=self.credit_balances,
                 )
-                
+
             # Clear form safely for Reflex reactivity
             cleared_debits = self.debit_balances.copy()
             cleared_credits = self.credit_balances.copy()
@@ -162,9 +171,9 @@ class OpeningBSState(rx.State):
                 cleared_credits[acc_id] = ""
             self.debit_balances = cleared_debits
             self.credit_balances = cleared_credits
-                
+
             return rx.toast("期首残高を登録しました！", duration=3000)
-            
+
         except Exception as e:
-            logger.error("Failed to submit opening BS", error=str(e), exc_info=True)
+            log.error("Failed to submit opening BS", error=str(e), exc_info=True)
             return rx.window_alert(f"登録エラーが発生しました: {str(e)}")

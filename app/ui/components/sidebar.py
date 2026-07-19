@@ -15,6 +15,7 @@
 import reflex as rx
 from ..styles import sidebar_style, sidebar_text_color, sidebar_hover_bg
 
+
 def sidebar_item(text: str, icon: str, url: str) -> rx.Component:
     """Sidebar navigation item."""
     return rx.link(
@@ -36,6 +37,7 @@ def sidebar_item(text: str, icon: str, url: str) -> rx.Component:
         width="100%",
         text_decoration="none",
     )
+
 
 def sidebar() -> rx.Component:
     """The sidebar component."""

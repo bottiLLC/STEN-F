@@ -16,6 +16,7 @@ import reflex as rx
 from .components.sidebar import sidebar
 from .styles import content_style
 
+
 def layout(content: rx.Component) -> rx.Component:
     """The main app layout with sidebar and content area."""
     return rx.box(

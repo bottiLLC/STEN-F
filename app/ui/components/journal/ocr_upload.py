@@ -15,6 +15,7 @@
 import reflex as rx
 from ...view_models.journal.ocr import JournalOCRState
 
+
 def render_ocr_upload_area() -> rx.Component:
     return rx.vstack(
         rx.text("AI-OCR (証憑読み取り)", weight="bold"),
@@ -29,7 +30,7 @@ def render_ocr_upload_area() -> rx.Component:
                 rx.text(
                     "または、ここにファイルをドラッグ＆ドロップ",
                     font_size="0.8em",
-                    color="gray"
+                    color="gray",
                 ),
             ),
             id="upload_receipt",
@@ -39,24 +40,26 @@ def render_ocr_upload_area() -> rx.Component:
         ),
         rx.foreach(
             rx.selected_files("upload_receipt"),
-            lambda f: rx.text(f, font_size="0.8em", color="gray")
+            lambda f: rx.text(f, font_size="0.8em", color="gray"),
         ),
         rx.hstack(
             rx.button(
-                rx.cond(JournalOCRState.is_analyzing, "読み取り中...", "AIで読み取る"), 
-                on_click=JournalOCRState.handle_upload(rx.upload_files("upload_receipt")),
+                rx.cond(JournalOCRState.is_analyzing, "読み取り中...", "AIで読み取る"),
+                on_click=JournalOCRState.handle_upload(
+                    rx.upload_files("upload_receipt")
+                ),
                 disabled=JournalOCRState.is_analyzing,
             ),
             rx.text(
-                "※ PDF, JPG, PNG対応. OpenAIを使用します", 
-                font_size="0.8em", 
-                color="gray"
+                "※ PDF, JPG, PNG対応. OpenAIを使用します",
+                font_size="0.8em",
+                color="gray",
             ),
-            align_items="center"
+            align_items="center",
         ),
         padding="1em",
         border="1px solid #e0e0e0",
         border_radius="8px",
         width="600px",
-        bg="#f8f9fa"
+        bg="#f8f9fa",
     )

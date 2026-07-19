@@ -25,7 +25,15 @@ from app.domain.models.abstract import Abstract
 from app.domain.models.counterparty import Counterparty
 from app.domain.models.system import SystemSettings
 
-from app.infrastructure.db.models import CorporationTable, FiscalYearTable, AccountTable, AbstractTable, CounterpartyTable, SystemTable
+from app.infrastructure.db.models import (
+    CorporationTable,
+    FiscalYearTable,
+    AccountTable,
+    AbstractTable,
+    CounterpartyTable,
+    SystemTable,
+)
+
 
 class SQLAlchemyMasterRepository(IMasterRepository):
     def __init__(self, session: AsyncSession):
@@ -50,21 +58,18 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         stmt = select(SystemTable).limit(1)
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
-        
+
         if existing:
             existing.ai_api_key = settings.ai_api_key
             await self.session.commit()
             await self.session.refresh(existing)
             return SystemSettings.model_validate(existing)
         else:
-            new_settings = SystemTable(
-                ai_api_key=settings.ai_api_key
-            )
+            new_settings = SystemTable(ai_api_key=settings.ai_api_key)
             self.session.add(new_settings)
             await self.session.commit()
             await self.session.refresh(new_settings)
             return SystemSettings.model_validate(new_settings)
-
 
     # --- Corporation ---
     async def get_corporation(self) -> Optional[Corporation]:
@@ -78,7 +83,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         stmt = select(CorporationTable).limit(1)
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
-        
+
         if existing:
             existing.name = corp.name
             existing.address = corp.address
@@ -92,7 +97,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
                 name=corp.name,
                 address=corp.address,
                 representative_name=corp.representative_name,
-                representative_title=corp.representative_title
+                representative_title=corp.representative_title,
             )
             self.session.add(new_corp)
             await self.session.commit()
@@ -125,13 +130,13 @@ class SQLAlchemyMasterRepository(IMasterRepository):
                 existing.period_number = fy.period_number
                 await self.session.commit()
                 return FiscalYear.model_validate(existing)
-        
+
         new_fy = FiscalYearTable(
             name=fy.name,
             start_date=fy.start_date,
             end_date=fy.end_date,
             status=fy.status,
-            period_number=fy.period_number
+            period_number=fy.period_number,
         )
         self.session.add(new_fy)
         await self.session.commit()
@@ -162,16 +167,16 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             if existing:
                 existing.code = account.code
                 existing.name = account.name
-                existing.type = account.type.value # Store as string
+                existing.type = account.type.value  # Store as string
                 existing.description = account.description
                 await self.session.commit()
                 return Account.model_validate(existing)
-                
+
         new_acc = AccountTable(
             code=account.code,
             name=account.name,
             type=account.type.value,
-            description=account.description
+            description=account.description,
         )
         self.session.add(new_acc)
         await self.session.commit()
@@ -208,18 +213,15 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             stmt = select(AbstractTable).where(AbstractTable.id == abstract.id)
             result = await self.session.execute(stmt)
             existing = result.scalar_one_or_none()
-            
+
             if existing:
                 existing.account_id = abstract.account_id
                 existing.text = abstract.text
                 await self.session.commit()
                 await self.session.refresh(existing)
                 return Abstract.model_validate(existing)
-            
-        new_abs = AbstractTable(
-            account_id=abstract.account_id,
-            text=abstract.text
-        )
+
+        new_abs = AbstractTable(account_id=abstract.account_id, text=abstract.text)
         self.session.add(new_abs)
         await self.session.commit()
         await self.session.refresh(new_abs)
@@ -238,36 +240,44 @@ class SQLAlchemyMasterRepository(IMasterRepository):
     # --- Counterparty ---
     async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
         existing = None
-        
+
         # 1. Check by ID if provided (Update Mode)
         if counterparty.id:
-            stmt = select(CounterpartyTable).where(CounterpartyTable.id == counterparty.id)
+            stmt = select(CounterpartyTable).where(
+                CounterpartyTable.id == counterparty.id
+            )
             result = await self.session.execute(stmt)
             existing = result.scalar_one_or_none()
-            
+
         # 2. If no ID (or not found), Check for Duplicates (Insert Mode)
         else:
             # Check by invoice_number if present
             if counterparty.invoice_number:
-                stmt = select(CounterpartyTable).where(CounterpartyTable.invoice_number == counterparty.invoice_number)
+                stmt = select(CounterpartyTable).where(
+                    CounterpartyTable.invoice_number == counterparty.invoice_number
+                )
                 result = await self.session.execute(stmt)
                 existing = result.scalar_one_or_none()
-            
+
             # Check by name if still not found
             if not existing and counterparty.name:
-                stmt = select(CounterpartyTable).where(CounterpartyTable.name == counterparty.name)
+                stmt = select(CounterpartyTable).where(
+                    CounterpartyTable.name == counterparty.name
+                )
                 result = await self.session.execute(stmt)
                 existing = result.scalar_one_or_none()
-            
+
         if existing:
             existing.name = counterparty.name
             existing.name_kana = counterparty.name_kana
             # Handle empty string as None for invoice
-            existing.invoice_number = counterparty.invoice_number if counterparty.invoice_number else None
+            existing.invoice_number = (
+                counterparty.invoice_number if counterparty.invoice_number else None
+            )
             existing.debit_account_id = counterparty.debit_account_id
             existing.credit_account_id = counterparty.credit_account_id
             existing.description_template = counterparty.description_template
-            
+
             await self.session.commit()
             await self.session.refresh(existing)
             return Counterparty.model_validate(existing)
@@ -275,10 +285,12 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             new_cp = CounterpartyTable(
                 name=counterparty.name,
                 name_kana=counterparty.name_kana,
-                invoice_number=counterparty.invoice_number if counterparty.invoice_number else None,
+                invoice_number=counterparty.invoice_number
+                if counterparty.invoice_number
+                else None,
                 debit_account_id=counterparty.debit_account_id,
                 credit_account_id=counterparty.credit_account_id,
-                description_template=counterparty.description_template
+                description_template=counterparty.description_template,
             )
             self.session.add(new_cp)
             await self.session.commit()
@@ -291,9 +303,11 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         return [Counterparty.model_validate(r) for r in result.scalars().all()]
 
     async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]:
-        stmt = select(CounterpartyTable).where(
-            CounterpartyTable.name.ilike(f"%{keyword}%")
-        ).limit(1)
+        stmt = (
+            select(CounterpartyTable)
+            .where(CounterpartyTable.name.ilike(f"%{keyword}%"))
+            .limit(1)
+        )
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
         return Counterparty.model_validate(row) if row else None

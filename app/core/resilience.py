@@ -20,16 +20,21 @@ from openai import APIError as OpenAPIError
 
 log = structlog.get_logger()
 
-def resilient_api_call(max_retries=3, base_delay=1.0, exceptions=(OpenAPIError, Exception)):
+
+def resilient_api_call(
+    max_retries=3, base_delay=1.0, exceptions=(OpenAPIError, Exception)
+):
     """
     Decorator for adding resilience to asynchronous API calls.
     Retries the operation upon encountering specific exceptions using exponential backoff (via tenacity).
     If all retries fail, it logs a stack trace and explicitly fails.
     """
+
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             try:
+
                 def before_sleep(retry_state):
                     log.warning(
                         "API call failed, retrying...",
@@ -37,7 +42,7 @@ def resilient_api_call(max_retries=3, base_delay=1.0, exceptions=(OpenAPIError, 
                         attempt=retry_state.attempt_number,
                         max_retries=max_retries,
                         error=str(retry_state.outcome.exception()),
-                        delay=retry_state.next_action.sleep
+                        delay=retry_state.next_action.sleep,
                     )
 
                 async for attempt in tenacity.AsyncRetrying(
@@ -45,7 +50,7 @@ def resilient_api_call(max_retries=3, base_delay=1.0, exceptions=(OpenAPIError, 
                     stop=stop_after_attempt(max_retries),
                     reraise=True,
                     retry=retry_if_exception_type(exceptions),
-                    before_sleep=before_sleep
+                    before_sleep=before_sleep,
                 ):
                     with attempt:
                         return await func(*args, **kwargs)
@@ -56,8 +61,10 @@ def resilient_api_call(max_retries=3, base_delay=1.0, exceptions=(OpenAPIError, 
                     function=func.__name__,
                     max_retries=max_retries,
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
                 raise
+
         return wrapper
+
     return decorator

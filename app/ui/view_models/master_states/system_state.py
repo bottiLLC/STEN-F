@@ -19,6 +19,7 @@ from app.ui.di import DI
 
 log = structlog.get_logger()
 
+
 class SystemState(rx.State):
     backup_path: str = str((settings.PROJECT_ROOT / "backups").resolve())
     ai_api_key: str = ""
@@ -26,7 +27,7 @@ class SystemState(rx.State):
 
     def set_backup_path(self, path: str):
         self.backup_path = path
-        
+
     def set_ai_api_key(self, api_key: str):
         self.ai_api_key = api_key
 
@@ -50,7 +51,7 @@ class SystemState(rx.State):
                 settings = await service.get_system_settings()
                 settings.ai_api_key = self.ai_api_key
                 await service.save_system_settings(settings)
-                
+
             yield rx.toast.success("AI設定が保存されました。")
         except Exception as e:
             yield rx.window_alert(f"保存エラー: {str(e)}")
@@ -62,7 +63,9 @@ class SystemState(rx.State):
         """Create a database backup."""
         service = DI.get_backup_service()
         try:
-             saved_path = await service.create_backup(self.backup_path)
-             yield rx.window_alert(f"データベースと設定ファイル(.env)のバックアップが完了しました！\n保存場所: {saved_path}")
+            saved_path = await service.create_backup(self.backup_path)
+            yield rx.window_alert(
+                f"データベースと設定ファイル(.env)のバックアップが完了しました！\n保存場所: {saved_path}"
+            )
         except Exception as e:
-             yield rx.window_alert(f"エラーが発生しました: {str(e)}")
+            yield rx.window_alert(f"エラーが発生しました: {str(e)}")

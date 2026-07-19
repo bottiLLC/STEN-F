@@ -17,9 +17,10 @@ from typing import List, Optional
 from app.domain.models.counterparty import Counterparty
 from app.ui.di import DI
 
+
 class CounterpartyState(rx.State):
     counterparties: List[Counterparty] = []
-    
+
     # Form State
     cp_id: Optional[int] = None
     cp_name: str = ""
@@ -28,15 +29,26 @@ class CounterpartyState(rx.State):
     cp_debit_account_id: str = ""
     cp_credit_account_id: str = ""
     cp_description_template: str = ""
-    
-    cp_account_options: List[List[str]] = [] # [[value, label]]
 
-    def set_cp_name(self, v: str): self.cp_name = v
-    def set_cp_name_kana(self, v: str): self.cp_name_kana = v
-    def set_cp_invoice_number(self, v: str): self.cp_invoice_number = v
-    def set_cp_debit_account_id(self, v: str): self.cp_debit_account_id = v
-    def set_cp_credit_account_id(self, v: str): self.cp_credit_account_id = v
-    def set_cp_description_template(self, v: str): self.cp_description_template = v
+    cp_account_options: List[List[str]] = []  # [[value, label]]
+
+    def set_cp_name(self, v: str):
+        self.cp_name = v
+
+    def set_cp_name_kana(self, v: str):
+        self.cp_name_kana = v
+
+    def set_cp_invoice_number(self, v: str):
+        self.cp_invoice_number = v
+
+    def set_cp_debit_account_id(self, v: str):
+        self.cp_debit_account_id = v
+
+    def set_cp_credit_account_id(self, v: str):
+        self.cp_credit_account_id = v
+
+    def set_cp_description_template(self, v: str):
+        self.cp_description_template = v
 
     def toggle_counterparty_selection(self, cp: Counterparty, checked: bool):
         if checked:
@@ -50,8 +62,12 @@ class CounterpartyState(rx.State):
         self.cp_name = cp.name
         self.cp_name_kana = cp.name_kana or ""
         self.cp_invoice_number = cp.invoice_number or ""
-        self.cp_debit_account_id = str(cp.debit_account_id) if cp.debit_account_id else ""
-        self.cp_credit_account_id = str(cp.credit_account_id) if cp.credit_account_id else ""
+        self.cp_debit_account_id = (
+            str(cp.debit_account_id) if cp.debit_account_id else ""
+        )
+        self.cp_credit_account_id = (
+            str(cp.credit_account_id) if cp.credit_account_id else ""
+        )
         self.cp_description_template = cp.description_template or ""
 
     def clear_counterparty_form(self):
@@ -63,8 +79,6 @@ class CounterpartyState(rx.State):
         self.cp_credit_account_id = ""
         self.cp_description_template = ""
 
-
-
     async def save_counterparty_data(self):
         async with DI.get_master_service() as service:
             try:
@@ -73,9 +87,13 @@ class CounterpartyState(rx.State):
                     name=self.cp_name,
                     name_kana=self.cp_name_kana,
                     invoice_number=self.cp_invoice_number,
-                    debit_account_id=int(self.cp_debit_account_id) if self.cp_debit_account_id else None,
-                    credit_account_id=int(self.cp_credit_account_id) if self.cp_credit_account_id else None,
-                    description_template=self.cp_description_template
+                    debit_account_id=int(self.cp_debit_account_id)
+                    if self.cp_debit_account_id
+                    else None,
+                    credit_account_id=int(self.cp_credit_account_id)
+                    if self.cp_credit_account_id
+                    else None,
+                    description_template=self.cp_description_template,
                 )
                 await service.save_counterparty(cp)
                 await self.load_counterparties()
@@ -85,7 +103,7 @@ class CounterpartyState(rx.State):
                 return rx.window_alert(f"エラー: {e}")
 
     async def delete_counterparty_data(self):
-        if not self.cp_id: 
+        if not self.cp_id:
             return
         async with DI.get_master_service() as service:
             try:
@@ -102,6 +120,6 @@ class CounterpartyState(rx.State):
             self.counterparties = await service.get_counterparties()
             accounts = await service.get_accounts()
             # [[value, label]]
-            self.cp_account_options = [[str(a.id), f"{a.code}: {a.name}"] for a in accounts]
-
-
+            self.cp_account_options = [
+                [str(a.id), f"{a.code}: {a.name}"] for a in accounts
+            ]

@@ -21,7 +21,12 @@ from sqlalchemy.orm import selectinload
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
 from app.domain.models.account import Account
 from app.domain.models.transaction import Transaction, TransactionLine
-from app.infrastructure.db.models import AccountTable, TransactionTable, TransactionLineTable
+from app.infrastructure.db.models import (
+    AccountTable,
+    TransactionTable,
+    TransactionLineTable,
+)
+
 
 class SQLAlchemyLedgerRepository(ILedgerRepository):
     def __init__(self, session: AsyncSession):
@@ -36,31 +41,42 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         rows = result.scalars().all()
         return [Account.model_validate(row) for row in rows]
 
-    async def get_transactions(self, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False, include_relationships: bool = False) -> List[Transaction]:
+    async def get_transactions(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        include_deleted: bool = False,
+        include_relationships: bool = False,
+    ) -> List[Transaction]:
         """
         Retrieves transactions with optional date filtering and deletion status.
         """
         stmt = select(TransactionTable)
-        
+
         if include_relationships:
             from app.infrastructure.db.models import TransactionLineTable
-            stmt = stmt.options(selectinload(TransactionTable.lines).selectinload(TransactionLineTable.account))
+
+            stmt = stmt.options(
+                selectinload(TransactionTable.lines).selectinload(
+                    TransactionLineTable.account
+                )
+            )
         else:
             stmt = stmt.options(selectinload(TransactionTable.lines))
-        
+
         if not include_deleted:
             stmt = stmt.where(TransactionTable.is_deleted.is_(False))
-        
+
         if start_date:
             stmt = stmt.where(TransactionTable.date >= start_date)
         if end_date:
             stmt = stmt.where(TransactionTable.date <= end_date)
-            
+
         stmt = stmt.order_by(TransactionTable.date, TransactionTable.id)
-        
+
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-        
+
         # Mapping to Domain Models
         domain_txs = []
         for row in rows:
@@ -70,40 +86,52 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                     id=tx_line.id,
                     account_id=tx_line.account_id,
                     debit=tx_line.debit,
-                    credit=tx_line.credit
+                    credit=tx_line.credit,
                 )
                 if include_relationships and tx_line.account:
                     line_domain.account = Account.model_validate(tx_line.account)
                 lines.append(line_domain)
 
-            domain_txs.append(Transaction(
-                id=row.id,
-                date=row.date,
-                description=row.description or "",
-                lines=lines,
-                is_deleted=row.is_deleted,
-                deleted_at=row.deleted_at,
-                counterparty=row.counterparty,
-                invoice_number=row.invoice_number,
-                evidence_path=row.evidence_path
-            ))
+            domain_txs.append(
+                Transaction(
+                    id=row.id,
+                    date=row.date,
+                    description=row.description or "",
+                    lines=lines,
+                    is_deleted=row.is_deleted,
+                    deleted_at=row.deleted_at,
+                    counterparty=row.counterparty,
+                    invoice_number=row.invoice_number,
+                    evidence_path=row.evidence_path,
+                )
+            )
         return domain_txs
 
-    async def get_transactions_by_account(self, account_id: int, start_date: Optional[date] = None, end_date: Optional[date] = None, include_deleted: bool = False) -> List[Transaction]:
+    async def get_transactions_by_account(
+        self,
+        account_id: int,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        include_deleted: bool = False,
+    ) -> List[Transaction]:
         """
         Retrieves transactions involving a specific account.
         """
         # 1. Get Transaction IDs associated with this account
-        stmt_ids = select(TransactionLineTable.transaction_id).join(TransactionTable).where(TransactionLineTable.account_id == account_id)
-        
+        stmt_ids = (
+            select(TransactionLineTable.transaction_id)
+            .join(TransactionTable)
+            .where(TransactionLineTable.account_id == account_id)
+        )
+
         if not include_deleted:
             stmt_ids = stmt_ids.where(TransactionTable.is_deleted.is_(False))
 
         stmt_ids = stmt_ids.distinct()
-        
+
         result_ids = await self.session.execute(stmt_ids)
         tx_ids = result_ids.scalars().all()
-        
+
         if not tx_ids:
             return []
 
@@ -114,15 +142,15 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             .options(selectinload(TransactionTable.lines))
             .order_by(TransactionTable.date, TransactionTable.id)
         )
-        
+
         if start_date:
             stmt = stmt.where(TransactionTable.date >= start_date)
         if end_date:
             stmt = stmt.where(TransactionTable.date <= end_date)
-            
+
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-        
+
         # Mapping to Domain Models
         domain_txs = []
         for row in rows:
@@ -131,22 +159,24 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                     id=tx_line.id,
                     account_id=tx_line.account_id,
                     debit=tx_line.debit,
-                    credit=tx_line.credit
-                ) for tx_line in row.lines
+                    credit=tx_line.credit,
+                )
+                for tx_line in row.lines
             ]
-            domain_txs.append(Transaction(
-                id=row.id,
-                date=row.date,
-                description=row.description or "",
-                lines=lines,
-                is_deleted=row.is_deleted,
-                deleted_at=row.deleted_at,
-                counterparty=row.counterparty,
-                invoice_number=row.invoice_number,
-                evidence_path=row.evidence_path
-            ))
+            domain_txs.append(
+                Transaction(
+                    id=row.id,
+                    date=row.date,
+                    description=row.description or "",
+                    lines=lines,
+                    is_deleted=row.is_deleted,
+                    deleted_at=row.deleted_at,
+                    counterparty=row.counterparty,
+                    invoice_number=row.invoice_number,
+                    evidence_path=row.evidence_path,
+                )
+            )
         return domain_txs
-
 
     async def add_transaction(self, transaction: Transaction) -> int:
         db_tx = TransactionTable(
@@ -155,60 +185,70 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             is_deleted=False,
             counterparty=transaction.counterparty,
             invoice_number=transaction.invoice_number,
-            evidence_path=transaction.evidence_path
+            evidence_path=transaction.evidence_path,
         )
         self.session.add(db_tx)
-        await self.session.flush() # to get ID
-        
+        await self.session.flush()  # to get ID
+
         for line in transaction.lines:
             db_line = TransactionLineTable(
                 transaction_id=db_tx.id,
                 account_id=line.account_id,
                 debit=line.debit,
-                credit=line.credit
+                credit=line.credit,
             )
             self.session.add(db_line)
-            
+
         # No Commit here! Unit of Work pattern requires Service to commit.
         return db_tx.id
 
     async def update_transaction(self, transaction: Transaction) -> bool:
-        stmt = select(TransactionTable).where(TransactionTable.id == transaction.id).options(selectinload(TransactionTable.lines))
+        stmt = (
+            select(TransactionTable)
+            .where(TransactionTable.id == transaction.id)
+            .options(selectinload(TransactionTable.lines))
+        )
         result = await self.session.execute(stmt)
         db_tx = result.scalar_one_or_none()
-        
+
         if not db_tx:
             return False
-            
+
         # Update Header
         db_tx.date = transaction.date
         db_tx.description = transaction.description
         db_tx.counterparty = transaction.counterparty
         db_tx.invoice_number = transaction.invoice_number
-        if transaction.evidence_path: # Only update if provided? Or always? Assuming overwrite.
-             db_tx.evidence_path = transaction.evidence_path
-             
+        if (
+            transaction.evidence_path
+        ):  # Only update if provided? Or always? Assuming overwrite.
+            db_tx.evidence_path = transaction.evidence_path
+
         # Update Lines (Replace strategy)
         # Clear existing lines
         db_tx.lines = []
-        
+
         # Add new lines
         for line in transaction.lines:
             db_line = TransactionLineTable(
                 transaction_id=db_tx.id,
                 account_id=line.account_id,
                 debit=line.debit,
-                credit=line.credit
+                credit=line.credit,
             )
-            # No session.add needed if appended to relationship? 
+            # No session.add needed if appended to relationship?
             # SQLAlchemy handles it if appended to db_tx.lines
             # But let's be explicit with list assignment above or append.
             db_tx.lines.append(db_line)
-            
+
         return True
 
     async def has_transactions_for_account(self, account_id: int) -> bool:
-        stmt = select(TransactionLineTable).where(TransactionLineTable.account_id == account_id).limit(1)
+        stmt = (
+            select(TransactionLineTable)
+            .where(TransactionLineTable.account_id == account_id)
+            .limit(1)
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
@@ -230,40 +270,44 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         """
         # 1. Get FY Dates
         from app.infrastructure.db.models import FiscalYearTable
+
         stmt = select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id)
         result = await self.session.execute(stmt)
         fy = result.scalar_one_or_none()
         if not fy:
             return []
-            
+
         # 2. Aggregation
-        stmt = (
+        agg_stmt = (
             select(
                 TransactionLineTable.account_id,
                 func.sum(TransactionLineTable.debit).label("total_debit"),
-                func.sum(TransactionLineTable.credit).label("total_credit")
+                func.sum(TransactionLineTable.credit).label("total_credit"),
             )
-            .join(TransactionTable, TransactionTable.id == TransactionLineTable.transaction_id)
+            .join(
+                TransactionTable,
+                TransactionTable.id == TransactionLineTable.transaction_id,
+            )
             .where(TransactionTable.date >= fy.start_date)
             .where(TransactionTable.date <= fy.end_date)
             .where(TransactionTable.is_deleted.is_(False))
             .group_by(TransactionLineTable.account_id)
         )
-        
-        result = await self.session.execute(stmt)
+
+        result = await self.session.execute(agg_stmt)
         return [
             {
                 "account_id": row.account_id,
                 "total_debit": row.total_debit or 0,
-                "total_credit": row.total_credit or 0
-            } 
+                "total_credit": row.total_credit or 0,
+            }
             for row in result.all()
         ]
 
     async def get_fiscal_year(self, fiscal_year_id: int):
         from app.infrastructure.db.models import FiscalYearTable
         from app.domain.models.fiscal_year import FiscalYear
-        
+
         stmt = select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id)
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
@@ -291,12 +335,15 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         """
         stmt = (
             select(TransactionLineTable.account_id)
-            .join(TransactionTable, TransactionTable.id == TransactionLineTable.transaction_id)
+            .join(
+                TransactionTable,
+                TransactionTable.id == TransactionLineTable.transaction_id,
+            )
             .where(TransactionTable.is_deleted.is_(False))
             .group_by(TransactionLineTable.account_id)
             .order_by(func.count(TransactionLineTable.account_id).desc())
             .limit(limit)
         )
-        
+
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

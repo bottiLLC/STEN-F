@@ -17,16 +17,17 @@ from typing import List, Optional
 from app.domain.models.account import Account, AccountType
 from app.ui.di import DI
 
+
 class AccountState(rx.State):
     accounts: List[Account] = []
-    
+
     # Form State
     acc_id: Optional[int] = None
     acc_code: str = ""
     acc_name: str = ""
     acc_type: str = AccountType.CURRENT_ASSET.label
     acc_desc: str = ""
-    
+
     @rx.var
     def account_labels(self) -> List[str]:
         return [f"{a.code}: {a.name}" for a in self.accounts]
@@ -34,10 +35,17 @@ class AccountState(rx.State):
     # Options for Select
     acc_type_options: List[str] = [t.label for t in AccountType]
 
-    def set_acc_code(self, v: str): self.acc_code = v
-    def set_acc_name(self, v: str): self.acc_name = v
-    def set_acc_type(self, v: str): self.acc_type = v
-    def set_acc_desc(self, v: str): self.acc_desc = v
+    def set_acc_code(self, v: str):
+        self.acc_code = v
+
+    def set_acc_name(self, v: str):
+        self.acc_name = v
+
+    def set_acc_type(self, v: str):
+        self.acc_type = v
+
+    def set_acc_desc(self, v: str):
+        self.acc_desc = v
 
     def select_account_by_id(self, acc_id: int):
         target = next((a for a in self.accounts if a.id == acc_id), None)
@@ -63,11 +71,12 @@ class AccountState(rx.State):
                     code=self.acc_code,
                     name=self.acc_name,
                     type=AccountType.from_label(self.acc_type),
-                    description=self.acc_desc
+                    description=self.acc_desc,
                 )
                 await service.save_account(new_acc)
                 self.accounts = await service.get_accounts()
                 from .counterparty_state import CounterpartyState
+
                 cp_state = await self.get_state(CounterpartyState)
                 await cp_state.load_counterparties()
 
@@ -82,6 +91,7 @@ class AccountState(rx.State):
                 await service.delete_account(acc_id)
                 self.accounts = await service.get_accounts()
                 from .counterparty_state import CounterpartyState
+
                 cp_state = await self.get_state(CounterpartyState)
                 await cp_state.load_counterparties()
 

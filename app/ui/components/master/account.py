@@ -16,6 +16,7 @@ import reflex as rx
 from ...view_models.master_states.account_state import AccountState
 from app.ui.styles import master_form_style
 
+
 def render_account_tab() -> rx.Component:
     return rx.vstack(
         rx.heading("勘定科目編集", size="4"),
@@ -30,7 +31,7 @@ def render_account_tab() -> rx.Component:
                                 rx.table.column_header_cell("コード"),
                                 rx.table.column_header_cell("名称"),
                                 rx.table.column_header_cell("区分"),
-                                rx.table.column_header_cell("操作"), 
+                                rx.table.column_header_cell("操作"),
                             )
                         ),
                         rx.table.body(
@@ -45,14 +46,18 @@ def render_account_tab() -> rx.Component:
                                             "編集",
                                             size="1",
                                             variant="soft",
-                                            on_click=lambda: AccountState.select_account_by_id(acc.id),
-                                            white_space="nowrap"
+                                            on_click=lambda: (
+                                                AccountState.select_account_by_id(
+                                                    acc.id
+                                                )
+                                            ),
+                                            white_space="nowrap",
                                         )
                                     ),
-                                )
+                                ),
                             )
                         ),
-                        width="100%"
+                        width="100%",
                     ),
                     type="always",
                     scrollbars="vertical",
@@ -63,43 +68,61 @@ def render_account_tab() -> rx.Component:
             # Right: Form
             rx.vstack(
                 rx.heading(
-                    rx.cond(AccountState.acc_id, "科目編集", "新規作成"), 
-                    size="4"
+                    rx.cond(AccountState.acc_id, "科目編集", "新規作成"), size="4"
                 ),
-                rx.button("新規作成モード (クリア)", on_click=AccountState.clear_account_form, variant="outline", size="1"),
-                
+                rx.button(
+                    "新規作成モード (クリア)",
+                    on_click=AccountState.clear_account_form,
+                    variant="outline",
+                    size="1",
+                ),
                 rx.text("コード"),
-                rx.input(value=AccountState.acc_code, on_change=AccountState.set_acc_code, width="100%"),
-                
+                rx.input(
+                    value=AccountState.acc_code,
+                    on_change=AccountState.set_acc_code,
+                    width="100%",
+                ),
                 rx.text("科目名"),
-                rx.input(value=AccountState.acc_name, on_change=AccountState.set_acc_name, width="100%"),
-                
+                rx.input(
+                    value=AccountState.acc_name,
+                    on_change=AccountState.set_acc_name,
+                    width="100%",
+                ),
                 rx.text("区分"),
                 rx.select(
                     AccountState.acc_type_options,
                     value=AccountState.acc_type,
                     on_change=AccountState.set_acc_type,
-                    width="100%"
+                    width="100%",
                 ),
-
                 rx.text("説明"),
-                rx.input(value=AccountState.acc_desc, on_change=AccountState.set_acc_desc, width="100%"),
-
+                rx.input(
+                    value=AccountState.acc_desc,
+                    on_change=AccountState.set_acc_desc,
+                    width="100%",
+                ),
                 rx.hstack(
                     rx.button("保存", on_click=AccountState.save_account, flex="1"),
                     rx.cond(
-                         AccountState.acc_id,
-                         rx.button("削除", on_click=lambda: AccountState.delete_account(AccountState.acc_id), color_scheme="red", variant="soft", flex="1"),
+                        AccountState.acc_id,
+                        rx.button(
+                            "削除",
+                            on_click=lambda: AccountState.delete_account(
+                                AccountState.acc_id
+                            ),
+                            color_scheme="red",
+                            variant="soft",
+                            flex="1",
+                        ),
                     ),
                     width="100%",
-                    spacing="2"
+                    spacing="2",
                 ),
-                
-                **dict(master_form_style, width="40%")
+                **dict(master_form_style, width="40%"),
             ),
             spacing="4",
             width="100%",
-            align_items="start"
+            align_items="start",
         ),
-        width="100%"
+        width="100%",
     )

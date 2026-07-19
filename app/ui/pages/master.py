@@ -22,11 +22,11 @@ from ..components.master.abstract import render_abstract_tab
 from ..components.master.counterparty_tab import render_counterparty_tab
 from ..components.master.system import render_system_tab
 
+
 def master_page() -> rx.Component:
     return layout(
         rx.vstack(
             rx.heading("マスタ管理", size="8"),
-            
             rx.tabs.root(
                 rx.tabs.list(
                     rx.tabs.trigger("法人設定", value="corporation"),
@@ -37,38 +37,23 @@ def master_page() -> rx.Component:
                     rx.tabs.trigger("システム", value="system"),
                 ),
                 rx.tabs.content(
-                    render_corporation_tab(),
-                    value="corporation",
-                    padding_top="1em"
+                    render_corporation_tab(), value="corporation", padding_top="1em"
                 ),
                 rx.tabs.content(
-                    render_fiscal_year_tab(),
-                    value="fiscal_year",
-                    padding_top="1em"
+                    render_fiscal_year_tab(), value="fiscal_year", padding_top="1em"
                 ),
                 rx.tabs.content(
-                    render_account_tab(),
-                    value="account",
-                    padding_top="1em"
+                    render_account_tab(), value="account", padding_top="1em"
                 ),
                 rx.tabs.content(
-                    render_counterparty_tab(),
-                    value="counterparty",
-                    padding_top="1em"
+                    render_counterparty_tab(), value="counterparty", padding_top="1em"
                 ),
                 rx.tabs.content(
-                    render_abstract_tab(),
-                    value="abstract",
-                    padding_top="1em"
+                    render_abstract_tab(), value="abstract", padding_top="1em"
                 ),
-                rx.tabs.content(
-                    render_system_tab(),
-                    value="system",
-                    padding_top="1em"
-                ),
+                rx.tabs.content(render_system_tab(), value="system", padding_top="1em"),
                 default_value="corporation",
             ),
-            
             spacing="5",
             padding="2em",
             on_mount=MasterState.load_all,

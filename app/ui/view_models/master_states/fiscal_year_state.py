@@ -18,9 +18,10 @@ from typing import List
 from app.domain.models.fiscal_year import FiscalYear
 from app.ui.di import DI
 
+
 class FiscalYearState(rx.State):
     fiscal_years: List[FiscalYear] = []
-    
+
     # Form State
     new_fy_name: str = ""
     new_fy_period: int = 1
@@ -28,21 +29,23 @@ class FiscalYearState(rx.State):
     new_fy_end: str = date.today().isoformat()
     new_fy_status: str = "OPEN"
 
-    def set_new_fy_name(self, v: str): 
+    def set_new_fy_name(self, v: str):
         self.new_fy_name = v
-        
-    def set_new_fy_period(self, v: str): 
-        try: 
+
+    def set_new_fy_period(self, v: str):
+        try:
             self.new_fy_period = int(v)
-        except ValueError: 
+        except ValueError:
             pass
-            
-    def set_new_fy_start(self, v: str): 
+
+    def set_new_fy_start(self, v: str):
         self.new_fy_start = v
-        
-    def set_new_fy_end(self, v: str): 
+
+    def set_new_fy_end(self, v: str):
         self.new_fy_end = v
-    def set_new_fy_status(self, v: str): self.new_fy_status = v
+
+    def set_new_fy_status(self, v: str):
+        self.new_fy_status = v
 
     async def save_fiscal_year(self):
         async with DI.get_master_service() as service:
@@ -52,7 +55,7 @@ class FiscalYearState(rx.State):
                     period_number=self.new_fy_period,
                     start_date=date.fromisoformat(self.new_fy_start),
                     end_date=date.fromisoformat(self.new_fy_end),
-                    status=self.new_fy_status
+                    status=self.new_fy_status,
                 )
                 await service.create_fiscal_year(new_fy)
                 self.fiscal_years = await service.get_fiscal_years()
@@ -81,7 +84,7 @@ class FiscalYearState(rx.State):
 
     def toggle_close_dialog(self):
         self.show_close_dialog = not self.show_close_dialog
-        
+
     def set_next_fy_name_input(self, v: str):
         self.next_fy_name_input = v
 
@@ -102,12 +105,16 @@ class FiscalYearState(rx.State):
         yield
         try:
             async with DI.get_fiscal_year_service() as service:
-                await service.close_fiscal_year(self.target_close_fy_id, next_fy_name=self.next_fy_name_input)
-            
+                await service.close_fiscal_year(
+                    self.target_close_fy_id, next_fy_name=self.next_fy_name_input
+                )
+
             # Reload the list
             async with DI.get_master_service() as m_service:
                 self.fiscal_years = await m_service.get_fiscal_years()
-            yield rx.window_alert("期末処理が完了し、次年度の期首残高（開始仕訳）を登録しました！")
+            yield rx.window_alert(
+                "期末処理が完了し、次年度の期首残高（開始仕訳）を登録しました！"
+            )
             return
         except Exception as e:
             yield rx.window_alert(f"期末処理エラー: {e}")

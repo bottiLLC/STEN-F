@@ -16,6 +16,7 @@ import pytest
 from datetime import date
 from app.domain.models.transaction import Transaction, TransactionLine
 
+
 @pytest.mark.asyncio
 async def test_journal_service_flow(container):
     """
@@ -24,7 +25,6 @@ async def test_journal_service_flow(container):
     """
     # 1. Use the new scoped container
     async with container.journal_service_scope() as service:
-        
         # 2. Need valid Account IDs. Use Master Service to fetch seeded accounts.
         async with container.master_service_scope() as master_service:
             # Fixture seeds accounts, so they should exist.
@@ -32,23 +32,23 @@ async def test_journal_service_flow(container):
             assert len(accounts) >= 2, "Seeding failed? Need at least 2 accounts."
             acc1 = accounts[0]
             acc2 = accounts[1]
-            
+
         # 3. Create a Transaction
         tx = Transaction(
             date=date.today(),
             description="Test Transaction",
             lines=[
-                TransactionLine(account_id=acc1.id, debit=1000, credit=0), 
-                TransactionLine(account_id=acc2.id, debit=0, credit=1000)
+                TransactionLine(account_id=acc1.id, debit=1000, credit=0),
+                TransactionLine(account_id=acc2.id, debit=0, credit=1000),
             ],
             counterparty="Test Client",
-            invoice_number="T1234567890123"
+            invoice_number="T1234567890123",
         )
 
         # 4. Add
         tx_id = await service.add_journal_entry(tx)
         assert tx_id is not None
-        
+
         # 5. Fetch
         entries = await service.get_entries()
         assert len(entries) >= 1
@@ -58,13 +58,15 @@ async def test_journal_service_flow(container):
         assert saved_tx.invoice_number == "T1234567890123"
         assert saved_tx.lines[0].debit == 1000
 
+
 @pytest.mark.asyncio
 async def test_master_service_flow(container):
     async with container.master_service_scope() as service:
         # Test Corporation Save/Get
         from app.domain.models.corporation import Corporation
+
         corp = Corporation(name="Test Corp Updated")
         await service.save_corporation(corp)
-        
+
         saved = await service.get_corporation()
         assert saved.name == "Test Corp Updated"

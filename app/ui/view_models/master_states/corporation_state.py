@@ -17,19 +17,27 @@ from typing import Optional
 from app.domain.models.corporation import Corporation
 from app.ui.di import DI
 
+
 class CorporationState(rx.State):
     corporation: Optional[Corporation] = None
-    
+
     # Form State
     corp_name: str = ""
     corp_address: str = ""
     corp_rep_title: str = ""
     corp_rep_name: str = ""
-    
-    def set_corp_name(self, v: str): self.corp_name = v
-    def set_corp_address(self, v: str): self.corp_address = v
-    def set_corp_rep_title(self, v: str): self.corp_rep_title = v
-    def set_corp_rep_name(self, v: str): self.corp_rep_name = v
+
+    def set_corp_name(self, v: str):
+        self.corp_name = v
+
+    def set_corp_address(self, v: str):
+        self.corp_address = v
+
+    def set_corp_rep_title(self, v: str):
+        self.corp_rep_title = v
+
+    def set_corp_rep_name(self, v: str):
+        self.corp_rep_name = v
 
     async def save_corporation(self):
         async with DI.get_master_service() as service:
@@ -41,7 +49,7 @@ class CorporationState(rx.State):
                     name=self.corp_name,
                     address=self.corp_address,
                     representative_title=self.corp_rep_title,
-                    representative_name=self.corp_rep_name
+                    representative_name=self.corp_rep_name,
                 )
                 await service.save_corporation(new_corp)
                 self.corporation = await service.get_corporation()

@@ -16,12 +16,13 @@ import sys
 import structlog
 import logging
 
+
 def configure_logging():
     """
     Configure structured logging using structlog.
     Outputs JSON logs to stdout for better observability.
     """
-    
+
     # Configure standard logging to intercept standard library logs
     logging.basicConfig(
         format="%(message)s",
@@ -43,6 +44,7 @@ def configure_logging():
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
 
 # Create a globally accessible logger instance
 logger = structlog.get_logger()

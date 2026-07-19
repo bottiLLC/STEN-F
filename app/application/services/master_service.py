@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from app.core.logging import logger
+import structlog
 from app.domain.interfaces.i_master_repository import IMasterRepository
 from app.domain.models.corporation import Corporation
 from app.domain.models.fiscal_year import FiscalYear
@@ -23,11 +23,18 @@ from app.domain.models.system import SystemSettings
 
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
 
+log = structlog.get_logger()
+
+
 class MasterService:
-    def __init__(self, repository: IMasterRepository, ledger_repository: ILedgerRepository | None = None):
+    def __init__(
+        self,
+        repository: IMasterRepository,
+        ledger_repository: ILedgerRepository | None = None,
+    ):
         self.repository = repository
         self.ledger_repository = ledger_repository
-        self.log = logger.bind(service="MasterService")
+        self.log = log.bind(service="MasterService")
 
     # --- System Settings ---
     async def get_system_settings(self) -> SystemSettings:
@@ -38,7 +45,7 @@ class MasterService:
         saved = await self.repository.save_system_settings(settings)
         self.log.info("System Settings saved")
         return saved
-        
+
     # --- Corporation ---
     async def get_corporation(self) -> Corporation | None:
         return await self.repository.get_corporation()
@@ -63,7 +70,7 @@ class MasterService:
 
     async def create_fiscal_year(self, fy: FiscalYear):
         return await self.save_fiscal_year(fy)
-    
+
     async def delete_fiscal_year(self, fy_id: int):
         self.log.info("Deleting Fiscal Year", fy_id=fy_id)
         await self.repository.delete_fiscal_year(fy_id)
@@ -77,15 +84,22 @@ class MasterService:
         self.log.info("Saving Account", code=account.code, name=account.name)
         await self.repository.save_account(account)
         self.log.info("Account saved")
-    
+
     async def delete_account(self, account_id: int):
         self.log.info("Deleting Account", account_id=account_id)
-        
+
         if self.ledger_repository:
-            has_tx = await self.ledger_repository.has_transactions_for_account(account_id)
+            has_tx = await self.ledger_repository.has_transactions_for_account(
+                account_id
+            )
             if has_tx:
-                self.log.warning("Cannot delete account with existing transactions", account_id=account_id)
-                raise ValueError("この勘定科目は仕訳で使用されているため削除できません。")
+                self.log.warning(
+                    "Cannot delete account with existing transactions",
+                    account_id=account_id,
+                )
+                raise ValueError(
+                    "この勘定科目は仕訳で使用されているため削除できません。"
+                )
 
         await self.repository.delete_account(account_id)
         self.log.info("Account deleted")
@@ -93,11 +107,11 @@ class MasterService:
     async def initialize_default_accounts(self) -> int:
         """Initializes default accounts if they don't exist."""
         from domain.constants.default_accounts import DEFAULT_ACCOUNTS
-        
+
         self.log.info("Initializing default accounts")
         existing_accounts = await self.get_accounts()
         existing_codes = {acc.code for acc in existing_accounts}
-        
+
         count = 0
         for data in DEFAULT_ACCOUNTS:
             if data["code"] not in existing_codes:
@@ -105,11 +119,11 @@ class MasterService:
                     code=data["code"],
                     name=data["name"],
                     type=data["type"],
-                    description=data["description"]
+                    description=data["description"],
                 )
                 await self.save_account(new_acc)
                 count += 1
-        
+
         self.log.info("Default accounts initialized", count=count)
         return count
 
@@ -137,30 +151,39 @@ class MasterService:
 
     # Common legal entity strings (Kana) to remove for sorting
     LEGAL_ENTITY_KANA = [
-        "カブシキガイシャ", "カブシキカイシャ", "カ）", "（カ", 
-        "ユウゲンガイシャ", "ユウゲンカイシャ", "ユ）", "（ユ",
-        "ゴウドウガイシャ", "ド）", "（ド",
+        "カブシキガイシャ",
+        "カブシキカイシャ",
+        "カ）",
+        "（カ",
+        "ユウゲンガイシャ",
+        "ユウゲンカイシャ",
+        "ユ）",
+        "（ユ",
+        "ゴウドウガイシャ",
+        "ド）",
+        "（ド",
         "イッパンシャダンホウジン",
         "コウエキシャダンホウジン",
         "ガッコウホウジン",
         "シュウキョウホウジン",
         "イリョウホウジン",
         "シャカイフクシホウジン",
-        "トクテイヒエイリカツドウホウジン", # NPO
-        "　", " " # Spaces
+        "トクテイヒエイリカツドウホウジン",  # NPO
+        "　",
+        " ",  # Spaces
     ]
 
     async def get_counterparties(self) -> list[Counterparty]:
         cps = await self.repository.get_counterparties()
-        
+
         def sort_key(cp: Counterparty):
             # 1. Use kana if available, else name
             key = cp.name_kana if cp.name_kana else cp.name
-            
+
             # 2. Normalize: Remove common legal entity strings
             for word in self.LEGAL_ENTITY_KANA:
                 key = key.replace(word, "")
-                
+
             return key
 
         # Python's sort is stable
@@ -176,5 +199,3 @@ class MasterService:
         self.log.info("Deleting Counterparty", cp_id=cp_id)
         await self.repository.delete_counterparty(cp_id)
         self.log.info("Counterparty deleted")
-
-

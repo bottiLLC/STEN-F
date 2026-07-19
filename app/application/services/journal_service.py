@@ -14,64 +14,80 @@
 
 from datetime import date
 from typing import List, Dict
-from app.core.logging import logger
+import structlog
 from app.core.utils import normalize_amount
 from app.domain.models.transaction import Transaction, TransactionLine
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
 
+log = structlog.get_logger()
+
+
 class JournalService:
     def __init__(self, repository: ILedgerRepository):
         self.repository = repository
-        self.log = logger.bind(service="JournalService")
+        self.log = log.bind(service="JournalService")
 
     async def _validate_transaction_date(self, transaction_date: date):
         """
         取引日付が現在OPENな会計年度の範囲内か検証する。
         """
         from app.ui.di import DI
+
         async with DI.get_master_service() as master_service:
             fys = await master_service.get_fiscal_years()
-            
+
         open_fys = [fy for fy in fys if fy.status == "OPEN"]
-        
+
         if not open_fys:
             # If there are no OPEN fiscal years, we might want to restrict entirely or warn.
             # Assuming strict compliance: must have an OPEN year.
             raise ValueError("現在「OPEN」ステータスの会計年度が存在しません。")
-            
+
         # Check if the date falls in ANY of the completely OPEN years
         is_valid = False
         for fy in open_fys:
             if fy.start_date <= transaction_date <= fy.end_date:
                 is_valid = True
                 break
-                
+
         if not is_valid:
             # For a better error message, list the open periods
-            periods = ", ".join([f"{fy.start_date.strftime('%Y/%m/%d')}〜{fy.end_date.strftime('%Y/%m/%d')}" for fy in open_fys])
-            raise ValueError(f"指定された日付は、現在「OPEN」な会計年度の範囲外です。\n(入力可能範囲: {periods})")
+            periods = ", ".join(
+                [
+                    f"{fy.start_date.strftime('%Y/%m/%d')}〜{fy.end_date.strftime('%Y/%m/%d')}"
+                    for fy in open_fys
+                ]
+            )
+            raise ValueError(
+                f"指定された日付は、現在「OPEN」な会計年度の範囲外です。\n(入力可能範囲: {periods})"
+            )
 
     async def add_journal_entry(self, transaction: Transaction):
         context_log = self.log.bind(
             date=transaction.date.isoformat(),
             description=transaction.description,
-            line_count=len(transaction.lines)
+            line_count=len(transaction.lines),
         )
-        
+
         try:
             await self._validate_transaction_date(transaction.date)
-            
+
             context_log.info("Adding new journal entry")
             tx_id = await self.repository.add_transaction(transaction)
-            await self.repository.commit() # Unit of Work Commit
+            await self.repository.commit()  # Unit of Work Commit
             context_log.info("Journal entry added successfully", transaction_id=tx_id)
 
             # --- Auto-Learning for Counterparty Dictionary ---
             if transaction.counterparty:
                 from app.ui.di import DI
+
                 try:
                     async with DI.get_master_service() as master_service:
-                        existing_template = await master_service.get_counterparty_by_keyword(transaction.counterparty)
+                        existing_template = (
+                            await master_service.get_counterparty_by_keyword(
+                                transaction.counterparty
+                            )
+                        )
                         if not existing_template:
                             # Extract primary debit and primary credit from lines
                             debit_account_id = None
@@ -85,69 +101,73 @@ class JournalService:
                                 if line.credit > max_credit:
                                     max_credit = line.credit
                                     credit_account_id = line.account_id
-                                    
+
                             from domain.models.counterparty import Counterparty
+
                             new_template = Counterparty(
                                 name=transaction.counterparty,
                                 debit_account_id=debit_account_id,
                                 credit_account_id=credit_account_id,
-                                description_template=transaction.description
+                                description_template=transaction.description,
                             )
                             await master_service.save_counterparty(new_template)
-                            context_log.info("Auto-learned new counterparty rules", keyword=transaction.counterparty)
+                            context_log.info(
+                                "Auto-learned new counterparty rules",
+                                keyword=transaction.counterparty,
+                            )
                 except Exception as e:
-                    context_log.warning("Failed to auto-learn counterparty rules", error=str(e))
+                    context_log.warning(
+                        "Failed to auto-learn counterparty rules", error=str(e)
+                    )
 
             return tx_id
         except Exception as e:
             context_log.error("Failed to add journal entry", error=str(e))
             raise
 
-    async def register_opening_balance(self, opening_date: date, debit_balances: Dict[str, str], credit_balances: Dict[str, str]) -> int:
+    async def register_opening_balance(
+        self,
+        opening_date: date,
+        debit_balances: Dict[str, str],
+        credit_balances: Dict[str, str],
+    ) -> int:
         """
         期首残高の登録処理（UIから受け取った生辞書データからトランザクションエンティティを構築して保存する）
         """
         lines: List[TransactionLine] = []
-        
+
         # 借方入力分の処理
         for acc_id_str, val_str in debit_balances.items():
             val = normalize_amount(val_str)
             if val > 0:
-                lines.append(TransactionLine(
-                    account_id=int(acc_id_str),
-                    debit=val,
-                    credit=0
-                ))
+                lines.append(
+                    TransactionLine(account_id=int(acc_id_str), debit=val, credit=0)
+                )
 
         # 貸方入力分の処理
         for acc_id_str, val_str in credit_balances.items():
             val = normalize_amount(val_str)
             if val > 0:
-                lines.append(TransactionLine(
-                    account_id=int(acc_id_str),
-                    debit=0,
-                    credit=val
-                ))
+                lines.append(
+                    TransactionLine(account_id=int(acc_id_str), debit=0, credit=val)
+                )
 
         if not lines:
             raise ValueError("入力された金額がありません。")
 
         transaction = Transaction(
-            date=opening_date,
-            description="期首残高",
-            lines=lines
+            date=opening_date, description="期首残高", lines=lines
         )
-        
+
         return await self.add_journal_entry(transaction)
 
     async def update_journal_entry(self, transaction: Transaction) -> bool:
         context_log = self.log.bind(
-            transaction_id=transaction.id,
-            description=transaction.description
+            transaction_id=transaction.id, description=transaction.description
         )
         try:
             await self._validate_transaction_date(transaction.date)
-            
+
             context_log.info("Updating journal entry")
             success = await self.repository.update_transaction(transaction)
             if success:
@@ -161,50 +181,56 @@ class JournalService:
             context_log.error("Failed to update journal entry", error=str(e))
             raise
 
-    async def get_entries(self, start_date=None, end_date=None, include_deleted: bool = False):
+    async def get_entries(
+        self, start_date=None, end_date=None, include_deleted: bool = False
+    ):
         # Renamed get_journal_entries to get_entries to match Step 2567 signature?
         # Step 2567: async def get_entries(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Transaction]:
         # Step 2568: async def get_journal_entries(self): (No args)
         # I MUST match the original signature.
-        
+
         try:
             self.log.debug("Fetching journal entries")
             # Step 2567: return await self.repo.get_transactions(start_date, end_date)
-            entries = await self.repository.get_transactions(start_date, end_date, include_deleted=include_deleted)
+            entries = await self.repository.get_transactions(
+                start_date, end_date, include_deleted=include_deleted
+            )
             self.log.info("Fetched journal entries", count=len(entries))
             return entries
         except Exception as e:
             self.log.error("Failed to fetch journal entries", error=str(e))
             raise
 
-    async def add_journal_entry_with_evidence(self, transaction: Transaction, file_bytes: bytes, file_service) -> int:
+    async def add_journal_entry_with_evidence(
+        self, transaction: Transaction, file_bytes: bytes, file_service
+    ) -> int:
         context_log = self.log.bind(
             date=transaction.date.isoformat(),
             description=transaction.description,
-            counterparty=transaction.counterparty 
+            counterparty=transaction.counterparty,
         )
         try:
             context_log.info("Adding journal entry with evidence")
-            
+
             # 1. Add Transaction (Flush only)
             tx_id = await self.repository.add_transaction(transaction)
-            
+
             # 2. Save Evidence File
             # Calculate amount from lines for filename
             total_amount = sum(line.debit for line in transaction.lines)
             corp_name = transaction.counterparty or "Unknown"
-            
+
             evidence_path = await file_service.save_evidence_for_transaction(
                 file_bytes=file_bytes,
                 transaction_id=tx_id,
                 date_obj=transaction.date,
                 amount=total_amount,
-                corp_name=corp_name
+                corp_name=corp_name,
             )
-            
-            # 3. Update DB with path (This requires a way to update the specific field without full save? 
-            # Or since we have the object or ID, we can update it. 
-            # Ideally Repo has update method. 
+
+            # 3. Update DB with path (This requires a way to update the specific field without full save?
+            # Or since we have the object or ID, we can update it.
+            # Ideally Repo has update method.
             # For brevity/pragmatism in this flow, we can re-fetch or assume attached session object is live?
             # Actually, `add_transaction` flushes, so the object is in session identity map.
             # But we don't return the ORM object, we returned ID.
@@ -216,18 +242,22 @@ class JournalService:
             # We need an `update_evidence_path` method in repository, OR use raw SQL in service (bad), OR fetch-modify-flush.
             # Let's use fetch-modify mechanism or add specialized method.
             # Adding `update_evidence(id, path)` to interface is cleanest for this specific requirement.
-            # But let's check if we can easier way: 
+            # But let's check if we can easier way:
             # If we rely on SQLAlchemy session, we can fetch, modify, commit.
-            
-            # Let's add `update_evidence_path` to Repo for explicit clarity. 
+
+            # Let's add `update_evidence_path` to Repo for explicit clarity.
             # Or just use `add_transaction` creates it without path, then we fetch and update.
             # Let's assume we add `update_evidence_path` to ILedgerRepository.
             await self.repository.update_evidence_path(tx_id, evidence_path)
-            
+
             # 4. Commit
             await self.repository.commit()
-            
-            context_log.info("Journal entry with evidence added", transaction_id=tx_id, path=evidence_path)
+
+            context_log.info(
+                "Journal entry with evidence added",
+                transaction_id=tx_id,
+                path=evidence_path,
+            )
             return tx_id
 
         except Exception as e:
@@ -253,24 +283,34 @@ class JournalService:
         """
         import csv
         import io
-        
+
         try:
             # Fetch transactions with relationships
             transactions = await self.repository.get_transactions(
-                start_date=start_date, 
-                end_date=end_date, 
-                include_deleted=False, 
-                include_relationships=True
+                start_date=start_date,
+                end_date=end_date,
+                include_deleted=False,
+                include_relationships=True,
             )
-            
+
             output = io.StringIO()
             writer = csv.writer(output)
-            
+
             # Header
-            writer.writerow([
-                "取引日", "ID", "摘要", "取引先", "登録番号", "勘定科目コード", "勘定科目", "借方金額", "貸方金額"
-            ])
-            
+            writer.writerow(
+                [
+                    "取引日",
+                    "ID",
+                    "摘要",
+                    "取引先",
+                    "登録番号",
+                    "勘定科目コード",
+                    "勘定科目",
+                    "借方金額",
+                    "貸方金額",
+                ]
+            )
+
             for t in transactions:
                 # Common fields for all lines in this transaction
                 common = [
@@ -278,24 +318,26 @@ class JournalService:
                     t.id,
                     t.description,
                     t.counterparty or "",
-                    t.invoice_number or ""
+                    t.invoice_number or "",
                 ]
-                
+
                 for line in t.lines:
                     # Account might be loaded
                     account_code = line.account.code if line.account else ""
-                    account_name = line.account.name if line.account else f"ID:{line.account_id}"
-                    
+                    account_name = (
+                        line.account.name if line.account else f"ID:{line.account_id}"
+                    )
+
                     row = common + [
                         account_code,
                         account_name,
                         line.debit if line.debit > 0 else 0,
-                        line.credit if line.credit > 0 else 0
+                        line.credit if line.credit > 0 else 0,
                     ]
                     writer.writerow(row)
-                    
+
             return output.getvalue()
-            
+
         except Exception as e:
             self.log.error("Failed to export CSV", error=str(e))
             raise

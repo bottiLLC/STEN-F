@@ -15,8 +15,8 @@
 from app.infrastructure.external.ocr_service import OpenAIOCRService
 from app.domain.models.receipt import ReceiptData, TaxBreakdownItem
 
+
 class TestOCRValidation:
-    
     def setup_method(self):
         self.service = OpenAIOCRService()
 
@@ -29,7 +29,7 @@ class TestOCRValidation:
             total_tax_amount=100,
             total_amount_excl_tax=1000,
             total_amount_incl_tax=1100,
-            transaction_date="2023-10-01"
+            transaction_date="2023-10-01",
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is False
@@ -41,7 +41,7 @@ class TestOCRValidation:
             tax_breakdown=[
                 TaxBreakdownItem(tax_rate="10%", tax_amount=50, amount_excl_tax=1000)
             ],
-            total_amount_incl_tax=1050
+            total_amount_incl_tax=1050,
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
@@ -53,7 +53,7 @@ class TestOCRValidation:
             tax_breakdown=[
                 TaxBreakdownItem(tax_rate="10%", tax_amount=100, amount_excl_tax=1000)
             ],
-            total_tax_amount=200
+            total_tax_amount=200,
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
@@ -62,16 +62,14 @@ class TestOCRValidation:
     def test_grand_total_mismatch(self):
         # 1000 + 100 = 1100, but total_incl = 1200
         data = ReceiptData(
-            total_amount_excl_tax=1000,
-            total_tax_amount=100,
-            total_amount_incl_tax=1200
+            total_amount_excl_tax=1000, total_tax_amount=100, total_amount_incl_tax=1200
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is True
         assert "支払合計不整合" in validated.error_message
 
     def test_invalid_date(self):
-        data = ReceiptData(transaction_date="2023/10/01") # Not ISO
+        data = ReceiptData(transaction_date="2023/10/01")  # Not ISO
         validated = self.service._validate_receipt(data)
         assert validated.transaction_date is None
         assert validated.needs_manual_review is True
@@ -99,6 +97,7 @@ class TestOCRValidation:
 
     def test_normalize_amount(self):
         from app.core.utils import normalize_amount
+
         assert normalize_amount("1,000") == 1000
         assert normalize_amount("１０００") == 1000
         assert normalize_amount("1000.5") == 1001
@@ -113,7 +112,7 @@ class TestOCRValidation:
             ],
             total_tax_amount=3,
             total_amount_excl_tax=37,
-            total_amount_incl_tax=40
+            total_amount_incl_tax=40,
         )
         validated = self.service._validate_receipt(data)
         assert validated.needs_manual_review is False

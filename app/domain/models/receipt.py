@@ -15,16 +15,19 @@
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
 
+
 class TaxBreakdownItem(BaseModel):
     tax_rate: str
     tax_amount: Optional[int] = None
     amount_excl_tax: Optional[int] = None
-    model_config = ConfigDict(from_attributes=True, extra='forbid')
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
 
 class ReceiptData(BaseModel):
     """
     Domain model representing extracted receipt data.
     """
+
     merchant_name: Optional[str] = None
     transaction_date: Optional[str] = None
     total_amount_incl_tax: Optional[int] = None
@@ -32,17 +35,17 @@ class ReceiptData(BaseModel):
     tax_breakdown: Optional[List[TaxBreakdownItem]] = None
     total_tax_amount: Optional[int] = None
     total_amount_excl_tax: Optional[int] = None
-    
+
     # Internal fields for validation/UI
     confidence_score: float = 0.0
     needs_manual_review: bool = False
     is_registered_merchant: bool = False
     error_message: Optional[str] = None
-    
+
     # Hybrid Matching fields
     inferred_debit_account_id: Optional[str] = None
     inferred_credit_account_id: Optional[str] = None
     description: Optional[str] = None
     is_dictionary_matched: bool = False
 
-    model_config = ConfigDict(from_attributes=True, extra='forbid')
+    model_config = ConfigDict(from_attributes=True, extra="forbid")

@@ -14,6 +14,7 @@
 
 from app.container import container
 
+
 class DI:
     @staticmethod
     def get_journal_service():

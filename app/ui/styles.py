@@ -39,12 +39,12 @@ sidebar_style = {
     "position": "fixed",
     "left": "0",
     "top": "0",
-    "display": ["none", "none", "flex"], # Hide on mobile (breakpoint dependent)
+    "display": ["none", "none", "flex"],  # Hide on mobile (breakpoint dependent)
     "flex_direction": "column",
 }
 
 content_style = {
-    "padding_left": ["0", "0", "250px"], # Adjust for fixed sidebar
+    "padding_left": ["0", "0", "250px"],  # Adjust for fixed sidebar
     "padding_top": "2em",
     "padding_bottom": "2em",
     "background_color": primary_bg,

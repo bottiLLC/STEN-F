@@ -17,6 +17,7 @@ from ..layout import layout
 from ..view_models.journal import JournalCoordinatorState
 from ..components.journal.list_view import render_journal_list
 
+
 def history_page() -> rx.Component:
     """Standalone page for viewing journal history."""
     return layout(
@@ -30,21 +31,15 @@ def history_page() -> rx.Component:
                         rx.icon("notebook-pen", size=18),
                         "仕訳入力へ戻る",
                         size="3",
-                        variant="soft"
+                        variant="soft",
                     ),
                     href="/",
                 ),
                 width="100%",
-                align_items="center"
+                align_items="center",
             ),
-            
             # Re-use the existing list view component
-            rx.box(
-                render_journal_list(),
-                width="100%",
-                padding_top="1em"
-            ),
-
+            rx.box(render_journal_list(), width="100%", padding_top="1em"),
             # Make sure state builds up correctly when this page is loaded directly
             on_mount=[JournalCoordinatorState.on_mount_journal],
             spacing="5",

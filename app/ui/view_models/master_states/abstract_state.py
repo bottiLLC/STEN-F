@@ -19,16 +19,20 @@ from app.ui.di import DI
 
 from .account_state import AccountState
 
+
 class AbstractState(rx.State):
     abstracts: List[Abstract] = []
-    
+
     # Form State
     abs_id: Optional[int] = None
     abs_text: str = ""
-    abs_acc_label: str = "" 
-    
-    def set_abs_text(self, v: str): self.abs_text = v
-    def set_abs_acc_label(self, v: str): self.abs_acc_label = v
+    abs_acc_label: str = ""
+
+    def set_abs_text(self, v: str):
+        self.abs_text = v
+
+    def set_abs_acc_label(self, v: str):
+        self.abs_acc_label = v
 
     async def toggle_abstract_selection(self, abs_data: Abstract, checked: bool):
         if checked:
@@ -36,12 +40,14 @@ class AbstractState(rx.State):
             self.abs_text = abs_data.text
             if abs_data.account_name:
                 acc_state = await self.get_state(AccountState)
-                target_acc = next((a for a in acc_state.accounts if a.id == abs_data.account_id), None)
+                target_acc = next(
+                    (a for a in acc_state.accounts if a.id == abs_data.account_id), None
+                )
                 if target_acc:
                     self.abs_acc_label = f"{target_acc.code}: {target_acc.name}"
         else:
-             if self.abs_id == abs_data.id:
-                 self.clear_abstract_form()
+            if self.abs_id == abs_data.id:
+                self.clear_abstract_form()
 
     def clear_abstract_form(self):
         self.abs_id = None
@@ -54,16 +60,14 @@ class AbstractState(rx.State):
                 # Resolve account ID from label
                 acc_state = await self.get_state(AccountState)
                 acc_map = {f"{a.code}: {a.name}": a.id for a in acc_state.accounts}
-                
+
                 acc_id = acc_map.get(self.abs_acc_label)
-                
+
                 if not acc_id:
-                     return rx.window_alert("関連科目を選択してください。")
+                    return rx.window_alert("関連科目を選択してください。")
 
                 new_abs = Abstract(
-                    id=self.abs_id,
-                    account_id=acc_id, 
-                    text=self.abs_text
+                    id=self.abs_id, account_id=acc_id, text=self.abs_text
                 )
                 await service.save_abstract(new_abs)
                 self.abstracts = await service.get_abstracts()
@@ -73,7 +77,7 @@ class AbstractState(rx.State):
                 return rx.window_alert(f"エラー: {e}")
 
     async def delete_abstract_data(self):
-        if not self.abs_id: 
+        if not self.abs_id:
             return
         async with DI.get_master_service() as service:
             try:

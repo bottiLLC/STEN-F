@@ -60,7 +60,7 @@
 - **Database:** SQLAlchemy 2.0 Async (`aiosqlite`)
 - **Data Validation:** Pydantic V2 (`pydantic-settings` による strict configuration)
 - **Resilience:** `tenacity` (Retry), `structlog` (Structured Logging)
-- **QA Tooling:** `pytest`, `pytest-asyncio`, `hypothesis` (Fuzzing), `pytest-mock`, `respx`, `ruff`, `mypy`
+- **QA Tooling:** `pytest`, `pytest-asyncio`, `hypothesis` (Fuzzing), `pytest-mock`, `respx`, `pytest-cov` (Coverage), `ruff`, `mypy`
 
 ### クリーンアーキテクチャ (Clean Architecture)
 本アプリケーションは、外部フレームワーク（Reflex や SQLAlchemy）の変更に耐えうるよう、依存関係を厳格に制御したレイヤード構造をとっています。
@@ -93,6 +93,7 @@ app/
 - **パッケージインポートの完全絶対パス化:** モジュールの二重ロードによるシングルトンの崩壊や、起動方法の違いによる `ModuleNotFoundError` を防ぐため、すべてのインポートを `app.domain...` のように `app` パッケージを起点とした絶対パスに完全統一。
 - **起動時サイドエフェクトの排除:** インポート時にDBのシードが自動実行される危険な動作を廃止し、仕訳ページの `on_mount` ライフサイクルで初めて安全に `seed_accounts()` が呼び出される構造へ変更。
 - **ポータブルなパス解決:** storage パスやバックアップパスをカレントディレクトリ依存の相対パスから、Pydantic Settings が保持する `settings.PROJECT_ROOT` をベースとした絶対解決へ変更し、どの環境やディレクトリから起動しても正常に稼働するポータビリティを保証。
+- **静的解析（mypy/ruff）の完全準拠とCI/CDの強化:** 以前はUI層やインフラ層が `ignore_errors` で型チェックから除外されていましたが、これらを廃止しプロジェクト全体で完全な型安全性を確保。Reflex特有の型誤検知のみを `disable_error_code` で安全に除外し、一般的なバグは静的解析で事前検知可能に。また、CI/CDで `ruff format` の自動検証および `pytest-cov` によるテスト網羅率（カバレッジ80%以上）の測定・ガードレールを導入。
 
 ---
 
@@ -120,8 +121,8 @@ DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 OPENAI_API_KEY=sk-proj-...
 
 # OpenAI 推論設定 (カスタマイズする場合)
-OPENAI_DEFAULT_MODEL=GPT-5.6-Luna
-OPENAI_REASONING_EFFORT=medium
+OPENAI_DEFAULT_MODEL=gpt-5.6-terra
+OPENAI_REASONING_EFFORT=high
 ```
 
 ### 4. アプリケーションの起動
@@ -137,7 +138,11 @@ uv run reflex run
 
 ### 5. 自動テストの実行
 ```bash
-uv run pytest
+# 通常の回帰テスト（ファズテストを除外して実行し、カバレッジを測定）
+uv run pytest -v -m "not fuzz" --cov=app
+
+# Hypothesis によるファズテスト（ローカル実行専用）
+uv run pytest -v -m "fuzz"
 ```
 
 ---

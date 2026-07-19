@@ -7,8 +7,9 @@ from app.domain.models.financial_report import (
     FinancialReport,
     FinancialSection,
     TrialBalanceRow,
-    FiscalYear as ReportFiscalYear
+    FiscalYear as ReportFiscalYear,
 )
+
 
 def test_generate_annual_report_success():
     # 1. Prepare Mock Data
@@ -17,25 +18,21 @@ def test_generate_annual_report_success():
         name="テスト株式会社",
         address="東京都渋谷区1-1-1",
         representative_title="代表取締役",
-        representative_name="テスト太郎"
+        representative_name="テスト太郎",
     )
-    
+
     fy_model = FiscalYear(
         id=1,
         name="FY2026",
         start_date=date(2026, 1, 1),
         end_date=date(2026, 12, 31),
         status="OPEN",
-        period_number=10
+        period_number=10,
     )
-    
+
     # FinancialReport internally references a simplified FiscalYear model
-    report_fy = ReportFiscalYear(
-        id=1,
-        name="FY2026",
-        period_number=10
-    )
-    
+    report_fy = ReportFiscalYear(id=1, name="FY2026", period_number=10)
+
     # Helper to generate typical section
     def create_dummy_section(title, balance=1000):
         return FinancialSection(
@@ -50,17 +47,19 @@ def test_generate_annual_report_success():
                     credit_total=0,
                     balance=balance,
                     debit_balance=balance,
-                    credit_balance=0
+                    credit_balance=0,
                 )
             ],
-            total=balance
+            total=balance,
         )
 
     rpt = FinancialReport(
         fiscal_year=report_fy,
         current_assets=create_dummy_section("【流動資産】"),
         fixed_assets=create_dummy_section("【固定資産】"),
-        deferred_assets=create_dummy_section("【繰延資産】", balance=0), # deferred total 0 to cover condition
+        deferred_assets=create_dummy_section(
+            "【繰延資産】", balance=0
+        ),  # deferred total 0 to cover condition
         current_liabilities=create_dummy_section("【流動負債】"),
         fixed_liabilities=create_dummy_section("【固定負債】"),
         equity=create_dummy_section("【株主資本】"),
@@ -78,18 +77,18 @@ def test_generate_annual_report_success():
         operating_income=1500,
         ordinary_income=1550,
         income_before_tax=1550,
-        net_income=1550
+        net_income=1550,
     )
-    
+
     # 2. Execute
     pdf_bytes = PDFService.generate_annual_report(
         corp=corp,
         rpt=rpt,
         fy_full_obj=fy_model,
         report_date=date(2027, 2, 28),
-        audit_date=date(2027, 3, 10)
+        audit_date=date(2027, 3, 10),
     )
-    
+
     # 3. Assertions
     assert isinstance(pdf_bytes, bytes)
     assert len(pdf_bytes) > 0

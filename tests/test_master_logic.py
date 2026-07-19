@@ -18,40 +18,43 @@ from app.domain.models.account import Account, AccountType
 from app.domain.models.transaction import Transaction, TransactionLine
 from datetime import date
 
+
 @pytest.mark.asyncio
 class TestMasterLogic:
-    
     async def test_counterparty_lifecycle(self, container):
         """Test Create, Read, Update, Delete for Counterparty"""
         from contextlib import AsyncExitStack
+
         async with AsyncExitStack() as stack:
-            master_service = await stack.enter_async_context(container.master_service_scope())
-        
+            master_service = await stack.enter_async_context(
+                container.master_service_scope()
+            )
+
             # 1. Create
             cp = Counterparty(name="Logic Test Corp", invoice_number="T1111222233334")
             saved = await master_service.save_counterparty(cp)
             assert saved.id is not None
             assert saved.name == "Logic Test Corp"
-            
+
             # 2. Read (via list)
             cps = await master_service.get_counterparties()
             assert any(c.id == saved.id for c in cps)
-            
+
             # 3. Update
             saved.name = "Logic Test Corp Updated"
             updated = await master_service.save_counterparty(saved)
             assert updated.id == saved.id
             assert updated.name == "Logic Test Corp Updated"
-            
+
             # Verify Update in DB
             cps_after = await master_service.get_counterparties()
             target = next((c for c in cps_after if c.id == saved.id), None)
             assert target is not None
             assert target.name == "Logic Test Corp Updated"
-            
+
             # 4. Delete
             await master_service.delete_counterparty(saved.id)
-            
+
             # Verify Deletion
             cps_final = await master_service.get_counterparties()
             assert not any(c.id == saved.id for c in cps_final)
@@ -59,60 +62,69 @@ class TestMasterLogic:
     async def test_account_deletion_constraint(self, container):
         """Test that Account cannot be deleted if used in a Transaction"""
         from contextlib import AsyncExitStack
+
         async with AsyncExitStack() as stack:
-            master_service = await stack.enter_async_context(container.master_service_scope())
-            journal_service = await stack.enter_async_context(container.journal_service_scope())
-        
+            master_service = await stack.enter_async_context(
+                container.master_service_scope()
+            )
+            journal_service = await stack.enter_async_context(
+                container.journal_service_scope()
+            )
+
             # 1. Create a specific account for this test
-            acc = Account(code="999", name="Test Constraint", type=AccountType.SGA, description="For testing")
+            acc = Account(
+                code="999",
+                name="Test Constraint",
+                type=AccountType.SGA,
+                description="For testing",
+            )
             await master_service.save_account(acc)
-            
+
             accounts = await master_service.get_accounts()
             target_acc = next(a for a in accounts if a.code == "999")
-            
+
             # 2. Use it in a transaction
             tx = Transaction(
                 date=date.today(),
                 description="Constraint Test TX",
                 lines=[
                     TransactionLine(account_id=target_acc.id, debit=100, credit=0),
-                    # Need a balancing line, use default cash/sales or just another dummy? 
+                    # Need a balancing line, use default cash/sales or just another dummy?
                     # System doesn't strictly enforce balance at repo level yet, but good practice.
                     # Let's just use same account reversed for simplicity or fetching another.
-                    TransactionLine(account_id=target_acc.id, debit=0, credit=100)
-                ]
+                    TransactionLine(account_id=target_acc.id, debit=0, credit=100),
+                ],
             )
             await journal_service.add_journal_entry(tx)
-            
+
             # 3. Attempt to delete account -> Should Fail
             with pytest.raises(ValueError) as excinfo:
                 await master_service.delete_account(target_acc.id)
-            
-            assert "仕訳で使用されているため" in str(excinfo.value)
 
+            assert "仕訳で使用されているため" in str(excinfo.value)
 
     async def test_fiscal_year_deletion(self, container):
         """Test deletion of a fiscal year."""
         from app.domain.models.fiscal_year import FiscalYear
-        
+
         async with container.master_service_scope() as master_service:
             # 1. Create a Fiscal Year
             fy = FiscalYear(
                 name="Temp FY for delete",
                 start_date=date(2030, 1, 1),
                 end_date=date(2030, 12, 31),
-                status="OPEN"
+                status="OPEN",
             )
             saved = await master_service.save_fiscal_year(fy)
             assert saved.id is not None
-            
+
             # Verify exists
             fys = await master_service.get_fiscal_years()
             assert any(f.id == saved.id for f in fys)
-            
+
             # 2. Delete
             await master_service.delete_fiscal_year(saved.id)
-            
+
             # Verify deleted
             fys_after = await master_service.get_fiscal_years()
             assert not any(f.id == saved.id for f in fys_after)
@@ -120,31 +132,26 @@ class TestMasterLogic:
     async def test_abstract_lifecycle(self, container):
         """Test full lifecycle for Abstract settings including deletion."""
         from app.domain.models.abstract import Abstract
-        
+
         async with container.master_service_scope() as master_service:
             # Get an account id
             accounts = await master_service.get_accounts()
             acc = accounts[0]
-            
+
             # 1. Save
-            abs_data = Abstract(
-                account_id=acc.id,
-                text="会議費立替払い"
-            )
+            abs_data = Abstract(account_id=acc.id, text="会議費立替払い")
             saved = await master_service.save_abstract(abs_data)
             assert saved.id is not None
             assert saved.text == "会議費立替払い"
-            
+
             # Verify list contains saved item
             abstracts = await master_service.get_abstracts()
             assert any(a.id == saved.id for a in abstracts)
-            
+
             # 2. Delete
             # master_service has `delete_abstract`
             await master_service.delete_abstract(saved.id)
-            
+
             # Verify list does not contain deleted item
             abstracts_after = await master_service.get_abstracts()
             assert not any(a.id == saved.id for a in abstracts_after)
-
-

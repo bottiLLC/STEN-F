@@ -15,11 +15,15 @@
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class SystemSettings(BaseModel):
     """
     アプリケーション全体のシステム設定を管理するドメインモデル
     """
+
     id: Optional[int] = Field(None, description="Database ID")
-    ai_api_key: Optional[str] = Field(None, description="OpenAI API Key for AI operations")
-    
-    model_config = ConfigDict(from_attributes=True, extra='forbid')
+    ai_api_key: Optional[str] = Field(
+        None, description="OpenAI API Key for AI operations"
+    )
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")

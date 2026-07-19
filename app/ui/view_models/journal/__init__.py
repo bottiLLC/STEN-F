@@ -29,30 +29,36 @@ __all__ = [
     "JournalCoordinatorState",
 ]
 
+
+import structlog
+from app.infrastructure.db.seed_data import seed_accounts
+
+log = structlog.get_logger()
+
+
 class JournalCoordinatorState(JournalState):
     """
-    Orchestrates the Journal page module. 
+    Orchestrates the Journal page module.
     Handles top-level mount events to distribute loaded data to independent substates.
     """
-    
+
     async def on_mount_journal(self):
         """Called when Journal Entry or History pages are mounted."""
         # Run seeding if necessary
-        from app.infrastructure.db.seed_data import seed_accounts
-        from app.core.logging import logger
+
         try:
             await seed_accounts()
         except Exception as e:
-            logger.error("Startup Seeding Error", error=str(e), exc_info=True)
+            log.error("Startup Seeding Error", error=str(e), exc_info=True)
 
         # Load master data
         master_state = await self.get_state(JournalMasterState)
         await master_state.load_accounts()
-        
+
         # Pass necessary reference data to FormState
         form_state = await self.get_state(JournalFormState)
         form_state.abstracts = master_state.abstracts
-        
+
         # Configure and load ListState
         list_state = await self.get_state(JournalListState)
         if not list_state.filter_start_date or not list_state.filter_end_date:
@@ -66,9 +72,9 @@ class JournalCoordinatorState(JournalState):
                         latest = open_fys[0]
                         list_state.filter_start_date = latest.start_date.isoformat()
                         list_state.filter_end_date = latest.end_date.isoformat()
-                        
+
         await list_state.load_entries()
-        
+
     async def handle_tab_change(self, val: str):
         """Handle UI tab change if maintaining local tab states."""
         if val == "list":
