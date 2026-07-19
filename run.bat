@@ -1,45 +1,36 @@
 @echo off
 chcp 65001 > nul
-setlocal enabledelayedexpansion
 
 echo ===================================================
-echo  Antigravity Reflex アプリケーション起動スクリプト
+echo  STEN-F Reflex アプリケーション起動スクリプト
 echo ===================================================
 
 cd /d "%~dp0"
 
-:: uv コマンドの存在チェック
+:: uv コマンド�E存在チェチE��
 where uv >nul 2>nul
-if !errorlevel! neq 0 (
-    echo [ERROR] uv コマンドが見つかりません。
-    echo [ERROR] Astral-sh の uv がインストールされ、環境変数 PATH に通っているか確認してください。
-    echo [ERROR] インストール手順については公式ドキュメントを参照してください。
-    pause
+if errorlevel 1 (
+    echo [ERROR] uv コマンドが見つかりません、E    echo [ERROR] Astral-sh の uv がインスト�Eルされ、環墁E��数 PATH に通ってぁE��か確認してください、E    echo [ERROR] インスト�Eル手頁E��つぁE��は公式ドキュメントを参�Eしてください、E    pause
     exit /b 1
 )
 
-:: .venv の存在チェックと初期化
-if not exist ".venv" (
-    echo [INFO] 仮想環境（.venv）が見つかりません。初期設定を開始します...
-    echo [INFO] uv を使用して依存関係を同期しています...
+:: .venv の存在チェチE��と初期匁Eif not exist ".venv" (
+    echo [INFO] 仮想環墁E��Evenv�E�が見つかりません。�E期設定を開始しまぁE..
+    echo [INFO] uv を使用して依存関係を同期してぁE��ぁE..
     uv sync
-    if !errorlevel! neq 0 (
-        echo [ERROR] 環境の初期化に失敗しました。pyproject.toml を確認してください。
-        pause
-        exit /b !errorlevel!
+    if errorlevel 1 (
+        echo [ERROR] 環墁E�E初期化に失敗しました。pyproject.toml を確認してください、E        pause
+        exit /b 1
     )
-    echo [INFO] 環境構築が完了しました。
-)
+    echo [INFO] 環墁E��築が完亁E��ました、E)
 
-:: ブラウザ自動起動（バックグラウンドで8秒後に起動）
-echo [INFO] ブラウザ自動起動タスクを開始しています...
+:: ブラウザ自動起動（バチE��グラウンドで8秒後に起動！Eecho [INFO] ブラウザ自動起動タスクを開始してぁE��ぁE..
 start "" cmd /c "timeout /t 8 /nobreak >nul & start http://localhost:3000"
 
-:: アプリケーションの起動
-echo [INFO] Reflex アプリケーションを起動しています...
+:: アプリケーションの起勁Eecho [INFO] Reflex アプリケーションを起動してぁE��ぁE..
 uv run reflex run
 
-if !errorlevel! neq 0 (
-    echo [WARNING] アプリケーションが異常終了したか、または停止されました。
-    pause
+if errorlevel 1 (
+    echo [WARNING] アプリケーションが異常終亁E��たか、また�E停止されました、E    pause
 )
+
