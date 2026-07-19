@@ -41,8 +41,9 @@
 - **総勘定元帳 (General Ledger):** 特定期間や特定の勘定科目にドリルダウンして取引の流れを追跡。
 - **決算書 PDF 非同期生成 (Offloading):** 重たい PDF 生成プロセスは非同期タスクとしてバックグラウンド処理されるため、帳票出力中も UI がフリーズせず操作を継続可能。
 
-### 4. 🤖 賢い AI OCR 自動仕訳機能 (Powered by OpenAI)
+### 4. 🤖 賢い AI OCR 自動仕訳機能 (Powered by OpenAI GPT-5.6)
 システム設定画面から OpenAI API キーを登録することで、レシートや請求書の画像から自動的に高精度な仕訳を生成します。
+- **最新の GPT-5.6 対応 & カスタマイズ機能:** 最新の `gpt-5.6-terra` 等の推論モデルにネイティブ対応。利用するモデルや推論思考深度（Reasoning Effort）は、ユーザーの予算や要求精度に応じて `.env` ファイルから自由に変更できます。
 - **Native PDF サポート:** PyMuPDF (`fitz`) を利用し、PDF 形式 of 領収書 of 最初の1ページを自動的に PNG 画像へレンダリングして OCR に送信。
 - **スマート画像最適化:** API のトークン消費量を削減しつつ、読み取り精度を最大化するため、画像を自動でリサイズおよび DPI 圧縮（長辺2000px制限、DPI 200制限）。
 - **スマート取引先マッチング:** 読み取った店舗名から「株式会社」などの法人格や不要なスペースを正規化して除去 (`_normalize_name`)。マスタの登録キーワードと曖昧照合を行い、一致した場合はインボイス登録番号（T番号）やマスタ定義済みの推奨科目を自動適用。
@@ -120,8 +121,10 @@ DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 # OpenAI API Key (AI OCR 機能に必要)
 OPENAI_API_KEY=sk-proj-...
 
-# OpenAI 推論設定 (カスタマイズする場合)
+# OpenAI 推論設定 (最新の GPT-5.6 に対応。モデルと推論深度はユーザーで自由に変更可能です)
+# モデル例: gpt-5.6-terra (標準推論), gpt-5.6-sol (最高精度), gpt-5.6-luna (高速/低コスト)
 OPENAI_DEFAULT_MODEL=gpt-5.6-terra
+# 推論深度 (Reasoning Effort): low, medium, high, xhigh (モデルの思考の深さを変更可能)
 OPENAI_REASONING_EFFORT=high
 ```
 
