@@ -74,7 +74,7 @@ async def test_save_evidence_for_transaction_success(tmp_path):
     # Expected format: YYYYMMDD_{Amount}_{NormalizedCorp}_{ID}.pdf
     # "テスト株式会社（合同会社ぼっち）" -> normalized to "テスト（ぼっち）" roughly,
     # non-alphanumeric stripped, leading to "テストぼっち"
-    expected_name = f"20260719_12960_テストぼっち_99.pdf"
+    expected_name = "20260719_12960_テストぼっち_99.pdf"
     assert saved_path.name == expected_name
     
     with open(saved_path, "rb") as f:

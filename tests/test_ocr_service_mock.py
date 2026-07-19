@@ -1,11 +1,9 @@
 import pytest
 import io
-import json
 from PIL import Image
 from reportlab.pdfgen import canvas
 from openai import APIError
 from app.infrastructure.external.ocr_service import OpenAIOCRService
-from app.domain.models.receipt import ReceiptData
 
 def get_dummy_image_bytes(width=100, height=100):
     img = Image.new("RGB", (width, height), color="white")

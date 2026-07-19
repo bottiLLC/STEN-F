@@ -1,4 +1,3 @@
-import pytest
 from datetime import date
 from app.infrastructure.external.pdf_service import PDFService
 from app.domain.models.corporation import Corporation

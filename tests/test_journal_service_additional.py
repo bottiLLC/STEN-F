@@ -1,5 +1,4 @@
 import pytest
-import datetime
 from datetime import date
 from app.domain.models.transaction import Transaction, TransactionLine
 from app.domain.models.fiscal_year import FiscalYear
