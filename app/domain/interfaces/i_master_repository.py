@@ -58,6 +58,9 @@ class IMasterRepository(ABC):
     
     @abstractmethod
     async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear: pass
+
+    @abstractmethod
+    async def delete_fiscal_year(self, fy_id: int) -> bool: pass
     
     # Account
     @abstractmethod
@@ -75,3 +78,6 @@ class IMasterRepository(ABC):
     
     @abstractmethod
     async def save_abstract(self, abstract: Abstract) -> Abstract: pass
+
+    @abstractmethod
+    async def delete_abstract(self, abs_id: int) -> bool: pass

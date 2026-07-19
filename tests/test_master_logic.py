@@ -90,3 +90,61 @@ class TestMasterLogic:
             
             assert "仕訳で使用されているため" in str(excinfo.value)
 
+
+    async def test_fiscal_year_deletion(self, container):
+        """Test deletion of a fiscal year."""
+        from app.domain.models.fiscal_year import FiscalYear
+        
+        async with container.master_service_scope() as master_service:
+            # 1. Create a Fiscal Year
+            fy = FiscalYear(
+                name="Temp FY for delete",
+                start_date=date(2030, 1, 1),
+                end_date=date(2030, 12, 31),
+                status="OPEN"
+            )
+            saved = await master_service.save_fiscal_year(fy)
+            assert saved.id is not None
+            
+            # Verify exists
+            fys = await master_service.get_fiscal_years()
+            assert any(f.id == saved.id for f in fys)
+            
+            # 2. Delete
+            await master_service.delete_fiscal_year(saved.id)
+            
+            # Verify deleted
+            fys_after = await master_service.get_fiscal_years()
+            assert not any(f.id == saved.id for f in fys_after)
+
+    async def test_abstract_lifecycle(self, container):
+        """Test full lifecycle for Abstract settings including deletion."""
+        from app.domain.models.abstract import Abstract
+        
+        async with container.master_service_scope() as master_service:
+            # Get an account id
+            accounts = await master_service.get_accounts()
+            acc = accounts[0]
+            
+            # 1. Save
+            abs_data = Abstract(
+                account_id=acc.id,
+                text="会議費立替払い"
+            )
+            saved = await master_service.save_abstract(abs_data)
+            assert saved.id is not None
+            assert saved.text == "会議費立替払い"
+            
+            # Verify list contains saved item
+            abstracts = await master_service.get_abstracts()
+            assert any(a.id == saved.id for a in abstracts)
+            
+            # 2. Delete
+            # master_service has `delete_abstract`
+            await master_service.delete_abstract(saved.id)
+            
+            # Verify list does not contain deleted item
+            abstracts_after = await master_service.get_abstracts()
+            assert not any(a.id == saved.id for a in abstracts_after)
+
+

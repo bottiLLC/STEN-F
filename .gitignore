@@ -35,3 +35,11 @@ Thumbs.db
 .git_bak/
 frontend.zip
 backend.zip
+
+# Coverage & Caches
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+mypy_errors.txt

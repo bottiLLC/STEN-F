@@ -157,7 +157,7 @@ def render_journal_input() -> rx.Component:
                         color_scheme="red",
                         variant="ghost",
                         on_click=lambda: JournalFormState.remove_line(i),
-                        disabled=JournalFormState.lines.length() <= 1
+                        disabled=len(JournalFormState.lines) <= 1
                     ),
                     width="100%",
                     align_items="center",

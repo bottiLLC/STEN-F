@@ -24,7 +24,7 @@ from app.domain.models.system import SystemSettings
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
 
 class MasterService:
-    def __init__(self, repository: IMasterRepository, ledger_repository: ILedgerRepository = None):
+    def __init__(self, repository: IMasterRepository, ledger_repository: ILedgerRepository | None = None):
         self.repository = repository
         self.ledger_repository = ledger_repository
         self.log = logger.bind(service="MasterService")
@@ -40,7 +40,7 @@ class MasterService:
         return saved
         
     # --- Corporation ---
-    async def get_corporation(self) -> Corporation:
+    async def get_corporation(self) -> Corporation | None:
         return await self.repository.get_corporation()
 
     async def save_corporation(self, corp: Corporation):
@@ -52,7 +52,7 @@ class MasterService:
     async def get_fiscal_years(self) -> list[FiscalYear]:
         return await self.repository.get_fiscal_years()
 
-    async def get_fiscal_year_by_id(self, fy_id: int) -> FiscalYear:
+    async def get_fiscal_year_by_id(self, fy_id: int) -> FiscalYear | None:
         return await self.repository.get_fiscal_year(fy_id)
 
     async def save_fiscal_year(self, fy: FiscalYear):
@@ -117,10 +117,11 @@ class MasterService:
     async def get_abstracts(self) -> list[Abstract]:
         return await self.repository.get_abstracts()
 
-    async def save_abstract(self, abstract: Abstract):
+    async def save_abstract(self, abstract: Abstract) -> Abstract:
         self.log.info("Saving Abstract", text=abstract.text)
-        await self.repository.save_abstract(abstract)
+        saved = await self.repository.save_abstract(abstract)
         self.log.info("Abstract saved")
+        return saved
 
     async def delete_abstract(self, abstract_id: int):
         self.log.info("Deleting Abstract", abstract_id=abstract_id)

@@ -17,6 +17,7 @@ from typing import List, Optional
 from datetime import date
 from app.domain.models.transaction import Transaction
 from app.domain.models.account import Account
+from app.domain.models.fiscal_year import FiscalYear
 
 class ILedgerRepository(ABC):
     @abstractmethod
@@ -76,3 +77,9 @@ class ILedgerRepository(ABC):
     async def get_frequent_account_ids(self, limit: int = 5) -> List[int]:
         """Get IDs of frequently used accounts."""
         pass
+
+    @abstractmethod
+    async def get_fiscal_year(self, fiscal_year_id: int) -> Optional[FiscalYear]:
+        """Fetch a fiscal year by ID."""
+        pass
+

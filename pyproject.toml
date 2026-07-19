@@ -55,13 +55,12 @@ packages = ["app"]
 [tool.mypy]
 python_version = "3.14"
 ignore_missing_imports = true
+plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 
 [[tool.mypy.overrides]]
 module = [
     "app.ui.*",
-    "app.infrastructure.*",
-    "app.application.*",
-    "app.domain.*"
+    "app.infrastructure.*"
 ]
 ignore_errors = true
 
