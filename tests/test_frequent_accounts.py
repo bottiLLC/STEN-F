@@ -12,24 +12,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-import os
-
-# Ensure project root AND app dir are in path
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-app_dir = os.path.join(root_dir, 'app')
-sys.path.append(root_dir)
-sys.path.append(app_dir)
-
-import pytest  # noqa: E402
-from datetime import date  # noqa: E402
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker  # noqa: E402
+import pytest
+from datetime import date
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 # Import App Modules
-from app.infrastructure.db.models import Base, AccountTable  # noqa: E402
-from app.infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository  # noqa: E402
-from app.application.services.journal_service import JournalService  # noqa: E402
-from app.domain.models.transaction import Transaction, TransactionLine  # noqa: E402
+from app.infrastructure.db.models import Base, AccountTable
+from app.infrastructure.repositories.ledger_repository_impl import SQLAlchemyLedgerRepository
+from app.application.services.journal_service import JournalService
+from app.domain.models.transaction import Transaction, TransactionLine
 
 # Test Config
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
