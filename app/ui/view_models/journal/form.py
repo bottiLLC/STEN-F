@@ -235,12 +235,14 @@ class JournalFormState(JournalState):
                         await master_service.save_counterparty(cp)
 
                 if not self.continuous_entry:
-                    self._reset_form_state()
                     yield rx.set_value("form_description", "")
                     yield rx.set_value("form_counterparty", "")
                     yield rx.set_value("form_invoice_number", "")
-                    yield rx.set_value(f"{self.form_key}_debit_0", "")
-                    yield rx.set_value(f"{self.form_key}_credit_0", "")
+                    for i in range(len(self.lines)):
+                        yield rx.set_value(f"{self.form_key}_debit_{i}", "")
+                        yield rx.set_value(f"{self.form_key}_credit_{i}", "")
+
+                    self._reset_form_state()
 
                 # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
                 yield
@@ -285,12 +287,14 @@ class JournalFormState(JournalState):
 
         self.is_processing = False
         self.transaction_date = date.today().isoformat()
-        self._reset_form_state()
         yield rx.set_value("form_description", "")
         yield rx.set_value("form_counterparty", "")
         yield rx.set_value("form_invoice_number", "")
-        yield rx.set_value(f"{self.form_key}_debit_0", "")
-        yield rx.set_value(f"{self.form_key}_credit_0", "")
+        for i in range(len(self.lines)):
+            yield rx.set_value(f"{self.form_key}_debit_{i}", "")
+            yield rx.set_value(f"{self.form_key}_credit_{i}", "")
+
+        self._reset_form_state()
 
         # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
         yield
