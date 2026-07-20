@@ -84,5 +84,8 @@ class JournalCoordinatorState(JournalState):
             list_state = await self.get_state(JournalListState)
             await list_state.load_entries()
         elif val == "input":
-            # 入力タブに戻った際にロックを解除する
+            # 入力タブに戻った際にロックを解除し、キーを更新して強制リマウントする
             form_state.is_active = True
+            import uuid
+
+            form_state.form_key = str(uuid.uuid4())

@@ -60,6 +60,7 @@ def render_journal_input() -> rx.Component:
                         on_change=JournalFormState.set_description,
                         width="400px",
                         list="abstract_suggestions_list",
+                        key=JournalFormState.form_key + "_desc",
                     ),
                     rx.el.datalist(
                         rx.foreach(
@@ -76,6 +77,7 @@ def render_journal_input() -> rx.Component:
                         value=JournalFormState.counterparty,
                         on_change=JournalFormState.set_counterparty,
                         width="200px",
+                        key=JournalFormState.form_key + "_cp",
                     ),
                 ),
                 rx.vstack(
@@ -85,6 +87,7 @@ def render_journal_input() -> rx.Component:
                         value=JournalFormState.invoice_number,
                         on_change=JournalFormState.set_invoice_number,
                         width="200px",
+                        key=JournalFormState.form_key + "_inv",
                     ),
                 ),
                 spacing="4",
@@ -151,6 +154,7 @@ def render_journal_input() -> rx.Component:
                             i, "debit", val
                         ),
                         width="150px",
+                        key=JournalFormState.form_key + "_debit_" + i.to_string(),
                     ),
                     rx.input(
                         placeholder="貸方金額",
@@ -160,6 +164,7 @@ def render_journal_input() -> rx.Component:
                             i, "credit", val
                         ),
                         width="150px",
+                        key=JournalFormState.form_key + "_credit_" + i.to_string(),
                     ),
                     rx.button(
                         rx.icon("trash-2", size=18),
