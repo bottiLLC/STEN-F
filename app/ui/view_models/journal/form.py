@@ -43,6 +43,7 @@ class JournalFormState(JournalState):
     register_master: bool = False
     continuous_entry: bool = False
     is_processing: bool = False
+    form_key: str = "initial"
 
     def set_register_master(self, value: bool):
         self.register_master = value
@@ -200,6 +201,9 @@ class JournalFormState(JournalState):
                     self.invoice_number = ""
                     self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
                     self.register_master = False
+                    import uuid
+
+                    self.form_key = str(uuid.uuid4())
 
                 # Clear OCR state
                 yield await ocr_state.clear_upload_state()
@@ -240,6 +244,9 @@ class JournalFormState(JournalState):
         self.invoice_number = ""
         self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
         self.register_master = False
+        import uuid
+
+        self.form_key = str(uuid.uuid4())
 
         # Clear OCR State
         from .ocr import JournalOCRState

@@ -218,4 +218,5 @@ def render_journal_input() -> rx.Component:
         border="1px solid #eaeaea",
         border_radius="8px",
         width="100%",
+        key=JournalFormState.form_key,
     )
