@@ -45,6 +45,17 @@ class JournalFormState(JournalState):
     is_processing: bool = False
     form_key: str = "initial"
 
+    def _reset_form_state(self):
+        """Reset all input fields to their default clean values."""
+        self.description = ""
+        self.counterparty = ""
+        self.invoice_number = ""
+        self.lines = [{"account_id": "", "debit": "", "credit": ""}]
+        self.register_master = False
+        import uuid
+
+        self.form_key = str(uuid.uuid4())
+
     def set_register_master(self, value: bool):
         self.register_master = value
 
@@ -224,14 +235,7 @@ class JournalFormState(JournalState):
                         await master_service.save_counterparty(cp)
 
                 if not self.continuous_entry:
-                    self.description = ""
-                    self.counterparty = ""
-                    self.invoice_number = ""
-                    self.lines = [{"account_id": "", "debit": "", "credit": ""}]
-                    self.register_master = False
-                    import uuid
-
-                    self.form_key = str(uuid.uuid4())
+                    self._reset_form_state()
 
                 # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
                 yield
@@ -276,14 +280,7 @@ class JournalFormState(JournalState):
 
         self.is_processing = False
         self.transaction_date = date.today().isoformat()
-        self.description = ""
-        self.counterparty = ""
-        self.invoice_number = ""
-        self.lines = [{"account_id": "", "debit": "", "credit": ""}]
-        self.register_master = False
-        import uuid
-
-        self.form_key = str(uuid.uuid4())
+        self._reset_form_state()
 
         # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
         yield

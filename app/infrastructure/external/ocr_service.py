@@ -141,6 +141,13 @@ Return ONLY the raw JSON object without markdown formatting.
                     "NFKC", receipt.merchant_name
                 )
 
+            # インボイス番号のクレンジング (T+13桁)
+            if receipt.invoice_registration_number:
+                import re
+
+                match = re.search(r"(T\d{13})", receipt.invoice_registration_number)
+                receipt.invoice_registration_number = match.group(1) if match else None
+
             # Step 2: Journal Template (Dictionary) Matching
             async with DI.get_master_service() as master_service:
                 cps = await master_service.get_counterparties()
@@ -148,14 +155,14 @@ Return ONLY the raw JSON object without markdown formatting.
 
                 # 1. インボイス登録番号によるマッチング (T+13桁) を最優先
                 if receipt.invoice_registration_number:
-                    import re
-
-                    match = re.search(r"(T\d{13})", receipt.invoice_registration_number)
-                    t_num = match.group(1) if match else None
-                    if t_num:
-                        matched_template = next(
-                            (c for c in cps if c.invoice_number == t_num), None
-                        )
+                    matched_template = next(
+                        (
+                            c
+                            for c in cps
+                            if c.invoice_number == receipt.invoice_registration_number
+                        ),
+                        None,
+                    )
 
                 # 2. 取引先名によるマッチング (インボイス番号で見つからなかった場合)
                 if not matched_template and receipt.merchant_name:
