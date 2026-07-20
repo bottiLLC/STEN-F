@@ -133,8 +133,20 @@ class JournalOCRState(JournalState):
                 },
             ]
 
+        # フロントエンドの入力欄へ明示的に値を反映・同期させる
+        yield rx.set_value("form_description", form_state.description)
+        yield rx.set_value("form_counterparty", form_state.counterparty)
+        yield rx.set_value("form_invoice_number", form_state.invoice_number)
+        if data.total_amount_incl_tax:
+            yield rx.set_value(
+                f"{form_state.form_key}_debit_0", str(data.total_amount_incl_tax)
+            )
+            yield rx.set_value(
+                f"{form_state.form_key}_credit_1", str(data.total_amount_incl_tax)
+            )
+
         if data.needs_manual_review:
-            return rx.window_alert(f"要確認: {data.error_message}")
+            yield rx.window_alert(f"要確認: {data.error_message}")
 
     async def clear_upload_state(self):
         """Called by FormState on submit/clear to clear OCR files."""
