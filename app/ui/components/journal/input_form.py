@@ -61,7 +61,7 @@ def render_journal_input() -> rx.Component:
                         width="400px",
                         list="abstract_suggestions_list",
                         key=JournalFormState.form_key + "_desc",
-                        auto_complete="off",
+                        auto_complete=False,
                     ),
                     rx.el.datalist(
                         rx.foreach(
@@ -79,7 +79,7 @@ def render_journal_input() -> rx.Component:
                         on_change=JournalFormState.set_counterparty,
                         width="200px",
                         key=JournalFormState.form_key + "_cp",
-                        auto_complete="off",
+                        auto_complete=False,
                     ),
                 ),
                 rx.vstack(
@@ -90,7 +90,7 @@ def render_journal_input() -> rx.Component:
                         on_change=JournalFormState.set_invoice_number,
                         width="200px",
                         key=JournalFormState.form_key + "_inv",
-                        auto_complete="off",
+                        auto_complete=False,
                     ),
                 ),
                 spacing="4",
