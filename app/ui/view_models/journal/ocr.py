@@ -62,9 +62,9 @@ class JournalOCRState(JournalState):
                 )
 
                 if receipt_data:
-                    alert_event = await self._apply_ocr_result(receipt_data)
-                    if alert_event:
-                        yield alert_event
+                    async for event in self._apply_ocr_result(receipt_data):
+                        if event:
+                            yield event
 
                     if receipt_data.is_registered_merchant:
                         yield rx.toast(
