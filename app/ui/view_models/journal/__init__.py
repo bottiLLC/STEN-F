@@ -77,6 +77,12 @@ class JournalCoordinatorState(JournalState):
 
     async def handle_tab_change(self, val: str):
         """Handle UI tab change if maintaining local tab states."""
+        form_state = await self.get_state(JournalFormState)
         if val == "list":
+            # 履歴タブ表示中はフォーム書き込みをロックし、アンマウント時の残響イベントを無視する
+            form_state.is_active = False
             list_state = await self.get_state(JournalListState)
             await list_state.load_entries()
+        elif val == "input":
+            # 入力タブに戻った際にロックを解除する
+            form_state.is_active = True

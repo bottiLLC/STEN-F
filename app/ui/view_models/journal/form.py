@@ -44,6 +44,7 @@ class JournalFormState(JournalState):
     continuous_entry: bool = False
     is_processing: bool = False
     form_key: str = "initial"
+    is_active: bool = True
 
     def _reset_form_state(self):
         """Reset all input fields to their default clean values."""
@@ -63,17 +64,17 @@ class JournalFormState(JournalState):
         self.continuous_entry = value
 
     def set_transaction_date(self, value: str):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         self.transaction_date = value
 
     def set_description(self, value: str):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         self.description = value
 
     async def set_counterparty(self, value: str):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         self.counterparty = value
 
@@ -88,30 +89,30 @@ class JournalFormState(JournalState):
                         self.update_line_account(0, str(matched.debit_account_id))
 
     def set_invoice_number(self, value: str):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         self.invoice_number = value.upper()
 
     def add_line(self):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         self.lines.append({"account_id": "", "debit": "", "credit": ""})
 
     def remove_line(self, index: int):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         if len(self.lines) > 1:
             self.lines.pop(index)
 
     def update_line_account(self, index: int, value: str):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         new_lines = self.lines[:]
         new_lines[index]["account_id"] = value
         self.lines = new_lines
 
     def update_line(self, index: int, field: str, value: Any):
-        if self.is_processing:
+        if self.is_processing or not self.is_active:
             return
         if field in ["debit", "credit"]:
             # ユーザーが入力値を消した場合は、0にならず空欄（空文字）のまま保持する
