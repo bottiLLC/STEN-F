@@ -12,6 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from pathlib import Path
 from app.config import settings
@@ -36,24 +37,20 @@ async def init_db():
 
         # Auto-migration: Check if backup_path exists in system_config table
         try:
-
-            def check_column_exists(connection):
-                cursor = connection.connection.cursor()
-                cursor.execute("PRAGMA table_info(system_config)")
-                columns = [row[1] for row in cursor.fetchall()]
-                return "backup_path" in columns
-
-            has_column = await conn.run_sync(check_column_exists)
-            if not has_column:
+            # Try to select the column. If it doesn't exist, this will raise an OperationalError.
+            await conn.execute(text("SELECT backup_path FROM system_config LIMIT 1"))
+        except Exception:
+            # Column likely does not exist, so try to add it
+            try:
                 await conn.execute(
-                    "ALTER TABLE system_config ADD COLUMN backup_path TEXT"
+                    text("ALTER TABLE system_config ADD COLUMN backup_path TEXT")
                 )
-        except Exception as e:
-            import structlog
+            except Exception as e:
+                import structlog
 
-            structlog.get_logger().warning(
-                "Auto-migration of backup_path failed", error=str(e)
-            )
+                structlog.get_logger().warning(
+                    "Auto-migration of backup_path column failed", error=str(e)
+                )
 
 
 AsyncSessionLocal = async_sessionmaker(
