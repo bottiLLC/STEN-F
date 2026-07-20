@@ -210,7 +210,7 @@ class LedgerService:
         return await self._generate_financial_report_logic(fy_id)
 
     async def _generate_financial_report_logic(self, fiscal_year_id: int):
-        from domain.models.financial_report import (
+        from app.domain.models.financial_report import (
             FinancialReport,
             FinancialSection,
             FiscalYear,

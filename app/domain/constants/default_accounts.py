@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from domain.models.account import AccountType
+from app.domain.models.account import AccountType
 
 DEFAULT_ACCOUNTS = [
     # 1. 流動資産 (Current Assets)

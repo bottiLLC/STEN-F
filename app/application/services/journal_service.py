@@ -102,7 +102,7 @@ class JournalService:
                                     max_credit = line.credit
                                     credit_account_id = line.account_id
 
-                            from domain.models.counterparty import Counterparty
+                            from app.domain.models.counterparty import Counterparty
 
                             new_template = Counterparty(
                                 name=transaction.counterparty,

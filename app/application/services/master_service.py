@@ -106,7 +106,7 @@ class MasterService:
 
     async def initialize_default_accounts(self) -> int:
         """Initializes default accounts if they don't exist."""
-        from domain.constants.default_accounts import DEFAULT_ACCOUNTS
+        from app.domain.constants.default_accounts import DEFAULT_ACCOUNTS
 
         self.log.info("Initializing default accounts")
         existing_accounts = await self.get_accounts()
