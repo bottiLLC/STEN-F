@@ -36,9 +36,7 @@ async def test_extract_receipt_data_image_success(mocker):
         return_value=None
     )
     mock_master_service.get_accounts = mocker.AsyncMock(return_value=[])
-    mock_master_service.get_counterparties = mocker.AsyncMock(
-        return_value=[]
-    )
+    mock_master_service.get_counterparties = mocker.AsyncMock(return_value=[])
 
     # Context manager return value mock
     class AsyncContextMock:
@@ -89,9 +87,7 @@ async def test_extract_receipt_data_pdf_success(mocker):
         return_value=None
     )
     mock_master_service.get_accounts = mocker.AsyncMock(return_value=[])
-    mock_master_service.get_counterparties = mocker.AsyncMock(
-        return_value=[]
-    )
+    mock_master_service.get_counterparties = mocker.AsyncMock(return_value=[])
 
     class AsyncContextMock:
         async def __aenter__(self):
@@ -140,9 +136,7 @@ async def test_extract_receipt_data_large_image_resize(mocker):
         return_value=None
     )
     mock_master_service.get_accounts = mocker.AsyncMock(return_value=[])
-    mock_master_service.get_counterparties = mocker.AsyncMock(
-        return_value=[]
-    )
+    mock_master_service.get_counterparties = mocker.AsyncMock(return_value=[])
 
     class AsyncContextMock:
         async def __aenter__(self):
