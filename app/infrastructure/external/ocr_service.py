@@ -101,7 +101,7 @@ class OpenAIOCRService:
             cp_list_str = "\n".join([f"- {cp}" for cp in counterparty_list])
 
         sys_instruct = f"""
-You are an expert OCR assistant. Extract EXACTLY the following 3 pieces of information from the receipt image.
+You are an expert OCR assistant. Extract EXACTLY the following fields from the receipt image.
 Do not make any accounting inferences.
 
 ### Registered Counterparty List
@@ -112,6 +112,7 @@ Extract the following fields into a valid JSON object:
 1. **merchant_name**: The name of the store or vendor. If illegible, use null.
 2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD). 
 3. **total_amount_incl_tax**: The total amount paid including tax (integer).
+4. **invoice_registration_number**: The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.
 
 Return ONLY the raw JSON object without markdown formatting.
 """
@@ -132,40 +133,58 @@ Return ONLY the raw JSON object without markdown formatting.
                 **{k: v for k, v in data.items() if k in ReceiptData.model_fields}
             )
 
+            # カタカナの全角正規化 (NFKC)
+            import unicodedata
+
+            if receipt.merchant_name:
+                receipt.merchant_name = unicodedata.normalize(
+                    "NFKC", receipt.merchant_name
+                )
+
             # Step 2: Journal Template (Dictionary) Matching
             async with DI.get_master_service() as master_service:
-                # Normalize OCR result and check against counterparty list
-                if counterparty_list and receipt.merchant_name:
+                cps = await master_service.get_counterparties()
+                matched_template = None
+
+                # 1. インボイス登録番号によるマッチング (T+13桁) を最優先
+                if receipt.invoice_registration_number:
+                    import re
+
+                    match = re.search(r"(T\d{13})", receipt.invoice_registration_number)
+                    t_num = match.group(1) if match else None
+                    if t_num:
+                        matched_template = next(
+                            (c for c in cps if c.invoice_number == t_num), None
+                        )
+
+                # 2. 取引先名によるマッチング (インボイス番号で見つからなかった場合)
+                if not matched_template and receipt.merchant_name:
                     norm_ocr = self._normalize_name(receipt.merchant_name)
-                    for registered_name in counterparty_list:
-                        if norm_ocr == self._normalize_name(registered_name):
-                            receipt.merchant_name = registered_name
-                            receipt.is_registered_merchant = True
+                    for cp in cps:
+                        if norm_ocr == self._normalize_name(cp.name):
+                            matched_template = cp
                             break
 
-                if receipt.merchant_name:
-                    template = await master_service.get_counterparty_by_keyword(
-                        receipt.merchant_name
+                # マスタと一致した場合、マスタデータを適用する
+                if matched_template:
+                    receipt.merchant_name = matched_template.name
+                    receipt.invoice_registration_number = (
+                        matched_template.invoice_number
                     )
-                    if template:
-                        # Map invoice number from master if available
-                        receipt.invoice_registration_number = (
-                            template.invoice_number if template.invoice_number else None
-                        )
-                        # Map dictionary data
-                        receipt.inferred_debit_account_id = (
-                            str(template.debit_account_id)
-                            if template.debit_account_id
-                            else None
-                        )
-                        receipt.inferred_credit_account_id = (
-                            str(template.credit_account_id)
-                            if template.credit_account_id
-                            else None
-                        )
-                        receipt.description = template.description_template
-                        receipt.is_dictionary_matched = True
-                        return self._validate_receipt(receipt)
+                    receipt.inferred_debit_account_id = (
+                        str(matched_template.debit_account_id)
+                        if matched_template.debit_account_id
+                        else None
+                    )
+                    receipt.inferred_credit_account_id = (
+                        str(matched_template.credit_account_id)
+                        if matched_template.credit_account_id
+                        else None
+                    )
+                    receipt.description = matched_template.description_template
+                    receipt.is_registered_merchant = True
+                    receipt.is_dictionary_matched = True
+                    return self._validate_receipt(receipt)
 
                 # Step 3: LLM Fallback Inference for unknown counterparties
                 acc_list_str = (
@@ -313,13 +332,18 @@ Return ONLY the raw JSON object without markdown formatting.
     def _normalize_name(self, name: str) -> str:
         """
         Normalize company name for fuzzy matching.
-        1. Remove spaces (full/half).
-        2. Remove corporate status (株式会社, etc).
+        1. Convert to NFKC (converts half-width Katakana to full-width Katakana).
+        2. Remove spaces (full/half).
+        3. Remove corporate status (株式会社, etc).
         """
         if not name:
             return ""
 
-        # 1. Remove spaces
+        import unicodedata
+
+        name = unicodedata.normalize("NFKC", name)
+
+        # 2. Remove spaces
         name = name.replace(" ", "").replace("　", "")
 
         # 2. Remove corporate statuses (Common ones)
