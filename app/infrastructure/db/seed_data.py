@@ -12,9 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from sqlalchemy.future import select
 import structlog
-from app.infrastructure.db.session import AsyncSessionLocal
 from app.domain.models.account import Account, AccountType
 
 log = structlog.get_logger()
@@ -263,44 +261,7 @@ DEFAULT_ACCOUNTS = [
     },
 ]
 
-from app.infrastructure.db.models import AccountTable  # noqa: E402
 
-
-async def seed_accounts():
-    """Seed existing database with default accounts if empty."""
-    # Ensure tables exist
-    from app.infrastructure.db.session import init_db
-
-    await init_db()
-
-    async with AsyncSessionLocal() as session:
-        try:
-            # Check if accounts exist
-            result = await session.execute(select(AccountTable).limit(1))
-            if result.scalar_one_or_none():
-                return  # Database already seeded
-
-            log.info("Seeding default accounts...")
-
-            # Map Pydantic definition to ORM usage equivalent or directly save via Repo logic
-            # Simulating Repo logic using session directly for speed/simplicity or use Repo?
-            # Direct session add is fine for seeding.
-
-            for acc_data in DEFAULT_ACCOUNTS:
-                # Assuming Account is the Pydantic model mapped to ORM?
-                # app.domain.models.account.Account is Pydantic.
-                # app.infrastructure.db.models.AccountModel is ORM?
-                # Let's check imports in repository.
-                # Usually we should use Repository to be clean, but circular deps might be an issue?
-                # Let's look at `app/infrastructure/db/models.py`.
-                # For now, let's assume we use the Repository if possible.
-
-                # Check DI usage
-                pass
-
-        except Exception as e:
-            log.error("Seeding check failed", error=str(e), exc_info=True)
-            return
 
 async def seed_accounts_with_service(service):
     """Seed default accounts using the provided master service."""
