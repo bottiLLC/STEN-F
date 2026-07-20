@@ -28,20 +28,8 @@ def journal_page() -> rx.Component:
                     rx.tabs.trigger("仕訳入力", value="input"),
                     rx.tabs.trigger("仕訳帳 (履歴)", value="list"),
                 ),
-                rx.tabs.content(
-                    rx.cond(
-                        JournalCoordinatorState.current_tab == "input",
-                        render_journal_input(),
-                    ),
-                    value="input",
-                ),
-                rx.tabs.content(
-                    rx.cond(
-                        JournalCoordinatorState.current_tab == "list",
-                        render_journal_list(),
-                    ),
-                    value="list",
-                ),
+                rx.tabs.content(render_journal_input(), value="input"),
+                rx.tabs.content(render_journal_list(), value="list"),
                 default_value="input",
                 on_change=JournalCoordinatorState.handle_tab_change,
             ),

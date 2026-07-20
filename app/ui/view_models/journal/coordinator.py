@@ -29,8 +29,6 @@ class JournalCoordinatorState(JournalState):
     Handles top-level mount events to distribute loaded data to independent substates.
     """
 
-    current_tab: str = "input"
-
     async def on_mount_journal(self):
         """Called when Journal Entry or History pages are mounted."""
         # Run seeding if necessary
@@ -66,16 +64,15 @@ class JournalCoordinatorState(JournalState):
 
     async def handle_tab_change(self, val: str):
         """Handle UI tab change if maintaining local tab states."""
-        self.current_tab = val
         form_state = await self.get_state(JournalFormState)
+        import uuid
+
         if val == "list":
-            # 履歴タブ表示中はフォーム書き込みをロックし、アンマウント時の残響イベントを無視する
-            form_state.is_active = False
+            # 履歴タブへ移動する瞬間に、フォームのDOMキャッシュを破壊するためにキーを更新する
+            form_state.form_key = str(uuid.uuid4())
+
             list_state = await self.get_state(JournalListState)
             await list_state.load_entries()
         elif val == "input":
-            # 入力タブに戻った際にロックを解除し、キーを更新して強制リマウントする
-            form_state.is_active = True
-            import uuid
-
+            # 入力タブへ戻ってきた瞬間にも、キャッシュ残留を防ぐためにキーを更新して強制リセットする
             form_state.form_key = str(uuid.uuid4())
