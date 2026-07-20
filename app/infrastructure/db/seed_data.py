@@ -262,7 +262,6 @@ DEFAULT_ACCOUNTS = [
 ]
 
 
-
 async def seed_accounts_with_service(service):
     """Seed default accounts using the provided master service."""
     existing = await service.get_accounts()
@@ -283,6 +282,7 @@ async def seed_accounts():
     """Seed existing database with default accounts if empty, or sync missing ones."""
     # Ensure tables exist
     from app.infrastructure.db.session import init_db
+
     await init_db()
 
     # To avoid ORM model import issues without looking at files, let's use the MasterService via DI

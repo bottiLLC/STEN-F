@@ -40,6 +40,7 @@ class OpeningBSState(rx.State):
         yield
         try:
             from app.infrastructure.db.seed_data import seed_accounts
+
             await seed_accounts()
 
             async with DI.get_master_service() as service:

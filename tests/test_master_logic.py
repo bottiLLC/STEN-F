@@ -167,7 +167,9 @@ class TestMasterLogic:
             accounts = await master_service.get_accounts()
 
             # Verify that '未払法人税等' exists in the database with expected properties
-            accrued_tax_acc = next((a for a in accounts if a.name == "未払法人税等"), None)
+            accrued_tax_acc = next(
+                (a for a in accounts if a.name == "未払法人税等"), None
+            )
 
             assert accrued_tax_acc is not None
             assert accrued_tax_acc.code in ("2150", "2160")
