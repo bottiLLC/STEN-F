@@ -14,6 +14,7 @@
 
 import reflex as rx
 from ...view_models.journal.ocr import JournalOCRState
+from ...view_models.journal.form import JournalFormState
 
 
 def render_ocr_upload_area() -> rx.Component:
@@ -48,7 +49,7 @@ def render_ocr_upload_area() -> rx.Component:
                 on_click=JournalOCRState.handle_upload(
                     rx.upload_files("upload_receipt")
                 ),
-                disabled=JournalOCRState.is_analyzing,
+                disabled=JournalOCRState.is_analyzing | JournalFormState.is_processing,
             ),
             rx.text(
                 "※ PDF, JPG, PNG対応. OpenAIを使用します",

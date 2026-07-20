@@ -15,6 +15,7 @@
 import reflex as rx
 from ...view_models.journal.master import JournalMasterState
 from ...view_models.journal.form import JournalFormState
+from ...view_models.journal.ocr import JournalOCRState
 from .ocr_upload import render_ocr_upload_area
 
 
@@ -198,7 +199,7 @@ def render_journal_input() -> rx.Component:
                 variant="outline",
                 color_scheme="gray",
                 width="120px",
-                disabled=JournalFormState.is_processing,
+                disabled=JournalFormState.is_processing | JournalOCRState.is_analyzing,
             ),
             rx.button(
                 rx.cond(
@@ -209,7 +210,7 @@ def render_journal_input() -> rx.Component:
                 on_click=JournalFormState.submit,
                 size="3",
                 width="200px",
-                disabled=JournalFormState.is_processing,
+                disabled=JournalFormState.is_processing | JournalOCRState.is_analyzing,
             ),
             spacing="5",
         ),

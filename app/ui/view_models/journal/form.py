@@ -103,8 +103,12 @@ class JournalFormState(JournalState):
         if self.is_processing:
             return
         if field in ["debit", "credit"]:
-            val = normalize_amount(value)
-            self.lines[index][field] = val
+            # ユーザーが入力値を消した場合は、0にならず空欄（空文字）のまま保持する
+            if value is None or str(value).strip() == "":
+                self.lines[index][field] = ""
+            else:
+                val = normalize_amount(value)
+                self.lines[index][field] = val
         else:
             self.lines[index][field] = value
 
@@ -137,18 +141,26 @@ class JournalFormState(JournalState):
         if self.is_processing:
             return
 
+        from .ocr import JournalOCRState
+
+        ocr_state = await self.get_state(JournalOCRState)
+        if ocr_state.is_analyzing:
+            return
+
         self.is_processing = True
         yield
 
         try:
             valid_lines = []
             for line in self.lines:
-                if line["account_id"] and (line["debit"] > 0 or line["credit"] > 0):
+                debit_val = normalize_amount(line.get("debit"))
+                credit_val = normalize_amount(line.get("credit"))
+                if line["account_id"] and (debit_val > 0 or credit_val > 0):
                     valid_lines.append(
                         TransactionLine(
                             account_id=line["account_id"],
-                            debit=line["debit"],
-                            credit=line["credit"],
+                            debit=debit_val,
+                            credit=credit_val,
                         )
                     )
 
@@ -256,6 +268,12 @@ class JournalFormState(JournalState):
 
     async def clear_form(self):
         """Clear all inputs in the journal entry form."""
+        from .ocr import JournalOCRState
+
+        ocr_state = await self.get_state(JournalOCRState)
+        if ocr_state.is_analyzing:
+            return
+
         self.is_processing = False
         self.transaction_date = date.today().isoformat()
         self.description = ""
