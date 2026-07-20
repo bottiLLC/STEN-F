@@ -41,21 +41,14 @@ class JournalFormState(JournalState):
 
     # Flags
     register_master: bool = False
-    clear_on_submit: bool = True
+    continuous_entry: bool = False
     is_processing: bool = False
 
     def set_register_master(self, value: bool):
         self.register_master = value
 
-    def set_clear_on_submit(self, value: bool):
-        self.clear_on_submit = value
-
-    @rx.var
-    def continuous_entry(self) -> bool:
-        return not self.clear_on_submit
-
     def set_continuous_entry(self, value: bool):
-        self.clear_on_submit = not value
+        self.continuous_entry = value
 
     def set_transaction_date(self, value: str):
         self.transaction_date = value
@@ -201,7 +194,7 @@ class JournalFormState(JournalState):
                     async with DI.get_master_service() as master_service:
                         await master_service.save_counterparty(cp)
 
-                if self.clear_on_submit:
+                if not self.continuous_entry:
                     self.description = ""
                     self.counterparty = ""
                     self.invoice_number = ""
