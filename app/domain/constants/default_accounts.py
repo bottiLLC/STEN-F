@@ -131,6 +131,12 @@ DEFAULT_ACCOUNTS = [
         "type": AccountType.CURRENT_LIABILITY,
         "description": "内容不明の入金など",
     },
+    {
+        "code": "2150",
+        "name": "未払法人税等",
+        "type": AccountType.CURRENT_LIABILITY,
+        "description": "決算により確定した未払いの法人税等",
+    },
     # 4. 固定負債 (Fixed Liabilities)
     {
         "code": "2210",

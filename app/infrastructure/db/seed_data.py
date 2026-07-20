@@ -113,6 +113,12 @@ DEFAULT_ACCOUNTS = [
         "description": "源泉所得税、社会保険料などの預り分",
     },
     {
+        "code": "2160",
+        "name": "未払法人税等",
+        "type": AccountType.CURRENT_LIABILITY,
+        "description": "決算により確定した未払いの法人税等",
+    },
+    {
         "code": "2210",
         "name": "長期借入金",
         "type": AccountType.FIXED_LIABILITY,
@@ -296,17 +302,31 @@ async def seed_accounts():
             log.error("Seeding check failed", error=str(e), exc_info=True)
             return
 
+async def seed_accounts_with_service(service):
+    """Seed default accounts using the provided master service."""
+    existing = await service.get_accounts()
+    existing_codes = {acc.code for acc in existing}
+
+    added_count = 0
+    for acc_data in DEFAULT_ACCOUNTS:
+        if acc_data["code"] not in existing_codes:
+            acc = Account(**acc_data)
+            await service.save_account(acc)
+            added_count += 1
+
+    if added_count > 0:
+        log.info("Default accounts synced", added_count=added_count)
+
+
+async def seed_accounts():
+    """Seed existing database with default accounts if empty, or sync missing ones."""
+    # Ensure tables exist
+    from app.infrastructure.db.session import init_db
+    await init_db()
+
     # To avoid ORM model import issues without looking at files, let's use the MasterService via DI
     # But DI might need loop.
     from app.ui.di import DI
 
     async with DI.get_master_service() as service:
-        existing = await service.get_accounts()
-        if existing:
-            return
-
-        log.info("Seeding default accounts via Service...")
-        for acc_data in DEFAULT_ACCOUNTS:
-            acc = Account(**acc_data)
-            await service.save_account(acc)
-        log.info("Seeding complete.")
+        await seed_accounts_with_service(service)

@@ -155,3 +155,20 @@ class TestMasterLogic:
             # Verify list does not contain deleted item
             abstracts_after = await master_service.get_abstracts()
             assert not any(a.id == saved.id for a in abstracts_after)
+
+    async def test_default_accounts_seeding_and_accrued_tax(self, container):
+        """Test that default accounts are seeded correctly and '未払法人税等' exists."""
+        from app.infrastructure.db.seed_data import seed_accounts_with_service
+
+        async with container.master_service_scope() as master_service:
+            # Run seed_accounts_with_service (which will merge DEFAULT_ACCOUNTS into the test database)
+            await seed_accounts_with_service(master_service)
+
+            accounts = await master_service.get_accounts()
+
+            # Verify that '未払法人税等' exists in the database with expected properties
+            accrued_tax_acc = next((a for a in accounts if a.name == "未払法人税等"), None)
+
+            assert accrued_tax_acc is not None
+            assert accrued_tax_acc.code in ("2150", "2160")
+            assert accrued_tax_acc.type.value == "CurrentLiability"
