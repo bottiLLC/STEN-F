@@ -126,6 +126,7 @@ class SystemTable(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     ai_api_key: Mapped[str | None] = mapped_column(nullable=True)
+    backup_path: Mapped[str | None] = mapped_column(nullable=True)
 
 
 async def init_db():

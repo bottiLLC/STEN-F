@@ -37,9 +37,56 @@ class SystemState(rx.State):
             async with DI.get_master_service() as service:
                 settings = await service.get_system_settings()
                 self.ai_api_key = settings.ai_api_key or ""
+                if settings.backup_path:
+                    self.backup_path = settings.backup_path
         except Exception as e:
             # First-time loading might fail if the DB isn't strictly seeded
             log.warning("Failed to load system settings", error=str(e))
+
+    async def save_backup_path(self):
+        """バックアップ保存先パスをデータベースに保存する"""
+        try:
+            async with DI.get_master_service() as service:
+                settings = await service.get_system_settings()
+                settings.backup_path = self.backup_path
+                await service.save_system_settings(settings)
+            yield rx.toast.success("バックアップ保存先を設定しました。")
+        except Exception as e:
+            yield rx.window_alert(f"保存エラー: {str(e)}")
+
+    async def select_backup_directory(self):
+        """Tkinterを使用してフォルダ選択ダイアログを開き、パスを取得して保存する"""
+        import asyncio
+
+        def _open_dialog():
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            selected = filedialog.askdirectory(
+                title="バックアップ保存先フォルダの選択",
+                initialdir=self.backup_path or "",
+            )
+            root.destroy()
+            return selected
+
+        try:
+            selected_dir = await asyncio.to_thread(_open_dialog)
+            if selected_dir:
+                from pathlib import Path
+
+                normalized = str(Path(selected_dir).resolve())
+                self.backup_path = normalized
+                async with DI.get_master_service() as service:
+                    settings = await service.get_system_settings()
+                    settings.backup_path = normalized
+                    await service.save_system_settings(settings)
+                yield rx.toast.success(f"保存先を設定しました: {normalized}")
+        except Exception as e:
+            log.error("Failed to select directory via tkinter", error=str(e))
+            yield rx.window_alert(f"フォルダ選択エラー: {str(e)}")
 
     async def save_api_key(self):
         """OpenAI APIキーを保存する"""

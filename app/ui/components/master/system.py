@@ -52,11 +52,20 @@ def render_system_tab() -> rx.Component:
             rx.text(
                 "現在のデータベースのバックアップを作成します。", size="2", color="gray"
             ),
-            rx.input(
-                value=SystemState.backup_path,
-                on_change=SystemState.set_backup_path,
-                placeholder="保存先フォルダ",
-                width="500px",
+            rx.hstack(
+                rx.input(
+                    value=SystemState.backup_path,
+                    on_change=SystemState.set_backup_path,
+                    on_blur=SystemState.save_backup_path,
+                    placeholder="保存先フォルダ",
+                    width="400px",
+                ),
+                rx.button(
+                    "参照...",
+                    on_click=SystemState.select_backup_directory,
+                    variant="soft",
+                ),
+                spacing="2",
             ),
             rx.button("バックアップ実行", on_click=SystemState.create_backup),
             spacing="3",

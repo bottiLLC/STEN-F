@@ -25,5 +25,8 @@ class SystemSettings(BaseModel):
     ai_api_key: Optional[str] = Field(
         None, description="OpenAI API Key for AI operations"
     )
+    backup_path: Optional[str] = Field(
+        None, description="Database backup directory path"
+    )
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")

@@ -61,11 +61,14 @@ class SQLAlchemyMasterRepository(IMasterRepository):
 
         if existing:
             existing.ai_api_key = settings.ai_api_key
+            existing.backup_path = settings.backup_path
             await self.session.commit()
             await self.session.refresh(existing)
             return SystemSettings.model_validate(existing)
         else:
-            new_settings = SystemTable(ai_api_key=settings.ai_api_key)
+            new_settings = SystemTable(
+                ai_api_key=settings.ai_api_key, backup_path=settings.backup_path
+            )
             self.session.add(new_settings)
             await self.session.commit()
             await self.session.refresh(new_settings)

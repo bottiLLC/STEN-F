@@ -34,6 +34,27 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+        # Auto-migration: Check if backup_path exists in system_config table
+        try:
+
+            def check_column_exists(connection):
+                cursor = connection.connection.cursor()
+                cursor.execute("PRAGMA table_info(system_config)")
+                columns = [row[1] for row in cursor.fetchall()]
+                return "backup_path" in columns
+
+            has_column = await conn.run_sync(check_column_exists)
+            if not has_column:
+                await conn.execute(
+                    "ALTER TABLE system_config ADD COLUMN backup_path TEXT"
+                )
+        except Exception as e:
+            import structlog
+
+            structlog.get_logger().warning(
+                "Auto-migration of backup_path failed", error=str(e)
+            )
+
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
