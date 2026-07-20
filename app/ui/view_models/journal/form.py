@@ -34,7 +34,7 @@ class JournalFormState(JournalState):
     counterparty: str = ""
     invoice_number: str = ""
 
-    lines: List[Dict[str, Any]] = [{"account_id": "", "debit": 0, "credit": 0}]
+    lines: List[Dict[str, Any]] = [{"account_id": "", "debit": "", "credit": ""}]
 
     # Master data copies needed for UI logic
     abstracts: List[Abstract] = []
@@ -74,7 +74,7 @@ class JournalFormState(JournalState):
         self.invoice_number = value.upper()
 
     def add_line(self):
-        self.lines.append({"account_id": "", "debit": 0, "credit": 0})
+        self.lines.append({"account_id": "", "debit": "", "credit": ""})
 
     def remove_line(self, index: int):
         if len(self.lines) > 1:
@@ -199,11 +199,14 @@ class JournalFormState(JournalState):
                     self.description = ""
                     self.counterparty = ""
                     self.invoice_number = ""
-                    self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
+                    self.lines = [{"account_id": "", "debit": "", "credit": ""}]
                     self.register_master = False
                     import uuid
 
                     self.form_key = str(uuid.uuid4())
+
+                # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
+                yield
 
                 # Clear OCR state
                 yield await ocr_state.clear_upload_state()
@@ -242,11 +245,14 @@ class JournalFormState(JournalState):
         self.description = ""
         self.counterparty = ""
         self.invoice_number = ""
-        self.lines = [{"account_id": "", "debit": 0, "credit": 0}]
+        self.lines = [{"account_id": "", "debit": "", "credit": ""}]
         self.register_master = False
         import uuid
 
         self.form_key = str(uuid.uuid4())
+
+        # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
+        yield
 
         # Clear OCR State
         from .ocr import JournalOCRState
