@@ -130,13 +130,17 @@ async def test_create_backup_db_not_found(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_create_backup_invalid_directory_path():
-    """Test error when target directory cannot be created."""
+async def test_create_backup_invalid_directory_path(tmp_path):
+    """Test error when target directory cannot be created (cross-platform path conflict)."""
     service = BackupService()
-    # Invalid directory path on Windows (e.g. invalid character or illegal drive)
-    invalid_path = "Z:\\non_existent_drive_999\\backup"
+    # Create a regular file to conflict with directory creation
+    conflict_file = tmp_path / "regular_file.txt"
+    conflict_file.write_text("dummy", encoding="utf-8")
+
+    # Attempting to create a subdirectory inside a regular file raises NotADirectoryError / OSError on all platforms
+    invalid_path = conflict_file / "child_directory"
 
     with pytest.raises(
         ValueError, match="指定されたディレクトリを作成できませんでした"
     ):
-        await service.create_backup(invalid_path)
+        await service.create_backup(str(invalid_path))
