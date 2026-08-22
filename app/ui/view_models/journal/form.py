@@ -39,21 +39,25 @@ class JournalFormState(JournalState):
     # Master data copies needed for UI logic
     abstracts: List[Abstract] = []
 
-    # Flags
+    # Flags and versioning
     register_master: bool = False
     continuous_entry: bool = False
     is_processing: bool = False
     form_key: str = "initial"
+    form_version: int = 0
+    selected_abstract: str = ""
 
     def _reset_form_state(self):
         """Reset all input fields to their default clean values."""
+        import uuid
+
         self.description = ""
         self.counterparty = ""
         self.invoice_number = ""
         self.lines = [{"account_id": "", "debit": "", "credit": ""}]
         self.register_master = False
-        import uuid
-
+        self.selected_abstract = ""
+        self.form_version += 1
         self.form_key = str(uuid.uuid4())
 
     def set_register_master(self, value: bool):
@@ -71,6 +75,15 @@ class JournalFormState(JournalState):
         if self.is_processing:
             return
         self.description = value
+        if self.selected_abstract and self.selected_abstract != value:
+            self.selected_abstract = ""
+
+    def select_abstract(self, value: str):
+        if self.is_processing:
+            return
+        if value:
+            self.selected_abstract = value
+            self.description = value
 
     async def set_counterparty(self, value: str):
         if self.is_processing:
@@ -78,8 +91,12 @@ class JournalFormState(JournalState):
         self.counterparty = value
 
         if value:
+            current_version = self.form_version
             async with DI.get_master_service() as service:
                 cps = await service.get_counterparties()
+                # If form was reset or counterparty changed during async query, drop stale result
+                if self.form_version != current_version or self.counterparty != value:
+                    return
                 matched = next((c for c in cps if c.name == value), None)
                 if matched:
                     if matched.invoice_number:
@@ -235,13 +252,6 @@ class JournalFormState(JournalState):
                         await master_service.save_counterparty(cp)
 
                 if not self.continuous_entry:
-                    yield rx.set_value("form_description", "")
-                    yield rx.set_value("form_counterparty", "")
-                    yield rx.set_value("form_invoice_number", "")
-                    for i in range(len(self.lines)):
-                        yield rx.set_value(f"{self.form_key}_debit_{i}", "")
-                        yield rx.set_value(f"{self.form_key}_credit_{i}", "")
-
                     self._reset_form_state()
 
                 # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
@@ -287,20 +297,10 @@ class JournalFormState(JournalState):
 
         self.is_processing = False
         self.transaction_date = date.today().isoformat()
-        yield rx.set_value("form_description", "")
-        yield rx.set_value("form_counterparty", "")
-        yield rx.set_value("form_invoice_number", "")
-        for i in range(len(self.lines)):
-            yield rx.set_value(f"{self.form_key}_debit_{i}", "")
-            yield rx.set_value(f"{self.form_key}_credit_{i}", "")
-
         self._reset_form_state()
 
         # 即時でフロントエンドにクリア状態を送信し、画面をリセットする
         yield
 
         # Clear OCR State
-        from .ocr import JournalOCRState
-
-        ocr_state = await self.get_state(JournalOCRState)
         yield await ocr_state.clear_upload_state()

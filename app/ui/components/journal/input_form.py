@@ -51,8 +51,8 @@ def render_journal_input() -> rx.Component:
                                 )
                             )
                         ),
-                        value=JournalFormState.description,
-                        on_change=JournalFormState.set_description,
+                        value=JournalFormState.selected_abstract,
+                        on_change=JournalFormState.select_abstract,
                     ),
                     rx.input(
                         placeholder="取引内容を入力...",
@@ -61,7 +61,7 @@ def render_journal_input() -> rx.Component:
                         width="400px",
                         list="abstract_suggestions_list",
                         key=JournalFormState.form_key + "_desc",
-                        id="form_description",
+                        id=JournalFormState.form_key + "_desc",
                         auto_complete=False,
                     ),
                     rx.el.datalist(
@@ -80,7 +80,7 @@ def render_journal_input() -> rx.Component:
                         on_change=JournalFormState.set_counterparty,
                         width="200px",
                         key=JournalFormState.form_key + "_cp",
-                        id="form_counterparty",
+                        id=JournalFormState.form_key + "_cp",
                         auto_complete=False,
                     ),
                 ),
@@ -92,7 +92,7 @@ def render_journal_input() -> rx.Component:
                         on_change=JournalFormState.set_invoice_number,
                         width="200px",
                         key=JournalFormState.form_key + "_inv",
-                        id="form_invoice_number",
+                        id=JournalFormState.form_key + "_inv",
                         auto_complete=False,
                     ),
                 ),

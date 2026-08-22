@@ -134,9 +134,9 @@ class JournalOCRState(JournalState):
             ]
 
         # フロントエンドの入力欄へ明示的に値を反映・同期させる
-        yield rx.set_value("form_description", form_state.description)
-        yield rx.set_value("form_counterparty", form_state.counterparty)
-        yield rx.set_value("form_invoice_number", form_state.invoice_number)
+        yield rx.set_value(f"{form_state.form_key}_desc", form_state.description)
+        yield rx.set_value(f"{form_state.form_key}_cp", form_state.counterparty)
+        yield rx.set_value(f"{form_state.form_key}_inv", form_state.invoice_number)
         if data.total_amount_incl_tax:
             yield rx.set_value(
                 f"{form_state.form_key}_debit_0", str(data.total_amount_incl_tax)

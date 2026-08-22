@@ -108,3 +108,35 @@ async def test_create_backup_no_target_dir():
         ValueError, match="バックアップ先ディレクトリが指定されていません"
     ):
         await service.create_backup("")
+
+
+@pytest.mark.asyncio
+async def test_create_backup_db_not_found(tmp_path):
+    """Test error when source DB file does not exist."""
+    original_database_url = settings.DATABASE_URL
+    non_existent_db = tmp_path / "ghost.db"
+
+    try:
+        settings.DATABASE_URL = f"sqlite+aiosqlite:///{non_existent_db}"
+        service = BackupService()
+        target_dir = tmp_path / "backups"
+
+        with pytest.raises(
+            RuntimeError, match="データベースのバックアップに失敗しました"
+        ):
+            await service.create_backup(str(target_dir))
+    finally:
+        settings.DATABASE_URL = original_database_url
+
+
+@pytest.mark.asyncio
+async def test_create_backup_invalid_directory_path():
+    """Test error when target directory cannot be created."""
+    service = BackupService()
+    # Invalid directory path on Windows (e.g. invalid character or illegal drive)
+    invalid_path = "Z:\\non_existent_drive_999\\backup"
+
+    with pytest.raises(
+        ValueError, match="指定されたディレクトリを作成できませんでした"
+    ):
+        await service.create_backup(invalid_path)
