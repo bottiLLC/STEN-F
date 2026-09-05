@@ -1,45 +1,44 @@
-.web
-.states
-assets/external/
-*.py[cod]
-# Python
+# Python & Bytecode
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# Virtual Env
+# Virtual Environments
+.venv/
 venv/
 env/
 .env
 
-# Database
+# Streamlit Local Secrets
+.streamlit/secrets.toml
+
+# Database & Storage
 *.db
+*.db-wal
+*.db-shm
 *.sqlite3
+storage/
+backups/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Generated Reports
+# Generated Files & Reports
 *.pdf
+*.csv
+!app/infrastructure/db/*.csv
 
-# Logs
+# Logs & Temp
 *.log
-*.txt
-!requirements.txt
+*.tmp
+*.bak
 
-# Backup
-.git_bak/
-frontend.zip
-backend.zip
-
-# Coverage & Caches
+# Testing & Coverage
 .coverage
 htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-mypy_errors.txt
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

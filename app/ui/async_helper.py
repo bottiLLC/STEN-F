@@ -12,17 +12,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import reflex as rx
+import asyncio
+from typing import TypeVar, Coroutine, Any
+
+T = TypeVar("T")
 
 
-class State(rx.State):
-    """The base state for the app."""
+def run_async(coro: Coroutine[Any, Any, T]) -> T:
+    """Safely runs an async coroutine within Streamlit's environment.
 
-    current_page: str = "journal"
-
-    # Global flag for cross-session updates (stored as timestamp)
-    last_journal_update: float = 0.0
-
-    def navigate_to(self, page: str):
-        self.current_page = page
-        return rx.redirect(f"/{page}" if page != "journal" else "/")
+    nest_asyncio must be applied prior to calling this function.
+    """
+    return asyncio.run(coro)

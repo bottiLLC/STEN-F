@@ -1,45 +1,72 @@
 @echo off
-
-echo ===================================================
-echo  STEN-F Reflex Application Boot Script
-echo ===================================================
-
+setlocal
 cd /d "%~dp0"
 
-:: Check if uv is installed
-where uv >nul 2>nul
-if not errorlevel 1 goto UV_OK
-echo [ERROR] uv command not found.
-echo [ERROR] Please make sure Astral uv is installed and added to your PATH.
-echo [ERROR] Refer to official installation guide.
+echo ===================================================
+echo   STEN-F Launcher (Windows)
+echo ===================================================
+echo.
+
+:: 1. Auto-detect Python
+where python >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Python is not installed or not in PATH.
+    echo Please install Python and ensure it is added to your environment variables.
+    echo.
+    pause
+    exit /b 1
+)
+
+:: 2. Bootstrap 'uv' via Python pip if missing
+where uv >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] 'uv' package manager not found. Bootstrapping via pip...
+    python -m pip install --upgrade pip >nul 2>&1
+    python -m pip install uv
+    if errorlevel 1 (
+        echo [ERROR] Failed to install 'uv'.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [INFO] 'uv' installed successfully.
+)
+
+:: 3. Detect Entry Point
+set ENTRY_POINT=app.py
+if not exist "app.py" (
+    if exist "main.py" (
+        set ENTRY_POINT=main.py
+    ) else (
+        echo [ERROR] Entry point app.py not found.
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+:: 4. Sync Dependencies
+if not exist ".venv" (
+    echo [INFO] Creating virtual environment...
+    call uv venv
+)
+
+if exist "pyproject.toml" (
+    echo [INFO] Syncing dependencies...
+    call uv sync
+)
+
+:: 5. Launch Application
+echo.
+echo [INFO] Launching %ENTRY_POINT% with Streamlit ...
+echo.
+
+call uv run streamlit run "%ENTRY_POINT%" --server.headless false
+
+if errorlevel 1 (
+    echo.
+    echo [WARNING] Application stopped or encountered an error.
+)
+
+echo.
 pause
-exit /b 1
-
-:UV_OK
-
-:: Initialize virtual environment if it doesn't exist
-if exist ".venv" goto VENV_OK
-echo [INFO] Virtual environment (.venv) not found. Initializing...
-echo [INFO] Syncing dependencies using uv...
-uv sync
-if not errorlevel 1 goto VENV_OK
-echo [ERROR] Environment initialization failed. Please check pyproject.toml.
-pause
-exit /b 1
-
-:VENV_OK
-
-:: Start browser in background after 8 seconds
-echo [INFO] Starting browser automation...
-start "" cmd /c "timeout /t 8 /nobreak >nul & start http://localhost:3000"
-
-:: Start application
-echo [INFO] Starting Reflex application...
-uv run reflex run
-
-if not errorlevel 1 goto END
-echo [WARNING] Application terminated unexpectedly or stopped.
-pause
-
-:END
-

@@ -12,55 +12,86 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import streamlit as st
 
-# Color Palette (Premium Blue/Grey Theme)
-primary_bg = "#f4f6f8"
-sidebar_bg = "#1a202c"
-sidebar_text_color = "#cbd5e0"
-sidebar_hover_bg = "#2d3748"
-accent_color = "#3182ce"
-text_color = "#2d3748"
-
-# Fonts
-font_family = "Inter, 'Noto Sans JP', sans-serif"
-
-# Styles
-base_style = {
-    "font_family": font_family,
-    "background_color": primary_bg,
+ACCOUNTING_CSS = """
+<style>
+/* Base typography for accounting values */
+.font-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-sidebar_style = {
-    "background_color": sidebar_bg,
-    "color": sidebar_text_color,
-    "height": "100vh",
-    "width": "250px",
-    "padding": "2em",
-    "position": "fixed",
-    "left": "0",
-    "top": "0",
-    "display": ["none", "none", "flex"],  # Hide on mobile (breakpoint dependent)
-    "flex_direction": "column",
+.text-right {
+    text-align: right;
 }
 
-content_style = {
-    "padding_left": ["0", "0", "250px"],  # Adjust for fixed sidebar
-    "padding_top": "2em",
-    "padding_bottom": "2em",
-    "background_color": primary_bg,
-    "min_height": "100vh",
+/* Debit & Credit badges */
+.badge-debit {
+    background-color: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
+    border: 1px solid rgba(37, 99, 235, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
 }
 
-# Typography
-heading_style = {
-    "font_weight": "700",
-    "color": text_color,
+.badge-credit {
+    background-color: rgba(16, 185, 129, 0.12);
+    color: #047857;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
 }
 
-master_form_style = {
-    "padding": "1.5em",
-    "border": "1px solid #e0e0e0",
-    "border_radius": "8px",
-    "width": "100%",
-    "background_color": "transparent",
+/* Balance check cards */
+.balance-card-ok {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.04) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
 }
+
+.balance-card-error {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.04) 100%);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+}
+
+/* Statement Section Headers */
+.statement-heading {
+    font-weight: 700;
+    font-size: 1.05rem;
+    padding: 6px 12px;
+    background-color: rgba(100, 116, 139, 0.08);
+    border-left: 4px solid #3b82f6;
+    border-radius: 0 4px 4px 0;
+    margin-top: 14px;
+    margin-bottom: 8px;
+}
+
+.statement-total-row {
+    font-weight: 700;
+    background-color: rgba(100, 116, 139, 0.12);
+    border-top: 2px solid #64748b;
+    border-bottom: 2px solid #64748b;
+    padding: 6px 12px;
+}
+
+/* T-Account visual divider */
+.t-account-divider {
+    border-right: 2px dashed #94a3b8;
+    height: 100%;
+}
+</style>
+"""
+
+
+def apply_accounting_styles() -> None:
+    """Injects custom CSS styles tailored for accounting and bookkeeping UI."""
+    st.markdown(ACCOUNTING_CSS, unsafe_allow_html=True)

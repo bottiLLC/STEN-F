@@ -8,7 +8,8 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "reflex>=0.6.8,<0.9.0",
+    "streamlit>=1.56.0,<1.57.0",
+    "nest-asyncio>=1.6.0",
     "sqlalchemy>=2.0.38",
     "aiosqlite>=0.21.0",
     "pydantic>=2.10.6",
@@ -62,10 +63,6 @@ packages = ["app"]
 python_version = "3.14"
 ignore_missing_imports = true
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
-
-[[tool.mypy.overrides]]
-module = "app.ui.*"
-disable_error_code = ["call-arg", "operator", "arg-type", "union-attr"]
 
 
 
