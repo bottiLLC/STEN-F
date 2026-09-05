@@ -14,7 +14,9 @@
 
 import pytest
 from datetime import date
+from pathlib import Path
 from streamlit.testing.v1 import AppTest
+from app.config import settings
 from app.domain.models.corporation import Corporation
 from app.domain.models.counterparty import Counterparty
 from app.domain.models.abstract import Abstract
@@ -55,6 +57,9 @@ class TestCoverageBoost:
     async def test_leap_year_fiscal_year_closing(self, container):
         """Test closing a fiscal year ending on a leap day (Feb 29)."""
         async with container.master_service_scope() as master_service:
+            # Ensure default accounts (including Retained Earnings) exist
+            await master_service.initialize_default_accounts()
+
             leap_fy = FiscalYear(
                 name="Leap Year FY",
                 start_date=date(2024, 3, 1),
@@ -197,13 +202,31 @@ class TestCoverageBoost:
             assert isinstance(frequent, list)
 
     async def test_backup_service_custom_dir(self, container, tmp_path):
-        """Test BackupService execution into a custom temporary directory."""
-        backup_service = container.get_backup_service()
+        """Test BackupService execution with mock DB and custom directory."""
+        original_project_root = settings.PROJECT_ROOT
+        original_database_url = settings.DATABASE_URL
+
+        mock_root = tmp_path / "mock_project"
+        mock_root.mkdir()
+        mock_db_dir = mock_root / "data"
+        mock_db_dir.mkdir()
+        mock_db_file = mock_db_dir / "sten_f.db"
+        mock_db_file.write_text("DUMMY_DB_DATA", encoding="utf-8")
+
         custom_backup_dir = str(tmp_path / "custom_backups")
 
-        backup_file_path = await backup_service.create_backup(custom_backup_dir)
-        assert backup_file_path is not None
-        assert "bookkeeping" in backup_file_path or "backups" in backup_file_path
+        try:
+            settings.PROJECT_ROOT = mock_root
+            settings.DATABASE_URL = f"sqlite+aiosqlite:///{mock_db_file}"
+
+            backup_service = container.get_backup_service()
+            backup_file_path = await backup_service.create_backup(custom_backup_dir)
+            assert backup_file_path is not None
+            assert Path(backup_file_path).exists()
+            assert (Path(backup_file_path) / "sten_f.db").exists()
+        finally:
+            settings.PROJECT_ROOT = original_project_root
+            settings.DATABASE_URL = original_database_url
 
     async def test_pdf_service_comprehensive_sections(self, container):
         """Test PDF generation with all financial report sections populated."""
