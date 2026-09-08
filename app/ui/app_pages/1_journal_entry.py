@@ -13,6 +13,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from datetime import date
+import unicodedata
 import streamlit as st
 import structlog
 
@@ -60,17 +61,20 @@ if "num_lines" not in st.session_state:
     st.session_state.num_lines = 1
 if "form_entry_key" not in st.session_state:
     st.session_state.form_entry_key = 0
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
 if "last_registered_summary" not in st.session_state:
     st.session_state.last_registered_summary = None
 
 
-def reset_journal_form():
-    """仕訳入力フォームおよびOCR状態を完全に初期化する"""
+def reset_all():
+    """仕訳入力フォームおよびアップローダー、OCR状態を完全に初期化する"""
     st.session_state.ocr_result = None
     st.session_state.ocr_file_bytes = None
     st.session_state.ocr_filename = None
     st.session_state.num_lines = 1
     st.session_state.form_entry_key += 1
+    st.session_state.uploader_key += 1
 
 
 # 直前の登録完了サマリー通知
@@ -79,7 +83,8 @@ if st.session_state.last_registered_summary:
         f"✅ 前回の仕訳を登録しました: **{st.session_state.last_registered_summary}** （続けて次の仕訳を入力できます）"
     )
 
-current_key_prefix = f"v{st.session_state.form_entry_key}"
+current_form_prefix = f"v{st.session_state.form_entry_key}"
+current_uploader_prefix = f"u{st.session_state.uploader_key}"
 
 # ==============================================================================
 # Step 1: 📄 証憑アップロード & AI OCR 読み取り (ファーストビュー最優先)
@@ -96,16 +101,16 @@ with st.container(border=True):
             if st.button(
                 "入力内容をクリア",
                 icon=":material/refresh:",
-                key=f"btn_clear_ocr_{current_key_prefix}",
+                key=f"btn_clear_ocr_{current_form_prefix}",
             ):
                 st.session_state.last_registered_summary = None
-                reset_journal_form()
+                reset_all()
                 st.rerun()
 
     uploaded_file = st.file_uploader(
         "レシート・領収書・請求書のPDFまたは画像ファイルをドロップしてください",
         type=["pdf", "png", "jpg", "jpeg"],
-        key=f"receipt_uploader_{current_key_prefix}",
+        key=f"receipt_uploader_{current_uploader_prefix}",
         help="PDFまたは画像ファイルをアップロードすると、AIが日付、取引先、登録番号、金額、勘定科目を自動解析します。",
     )
 
@@ -124,12 +129,12 @@ with st.container(border=True):
                 st.info("📄 PDF形式の証憑がセットされました。")
 
         with col_up2:
-            st.markdown("👇 **AI読み取りを実行して振替伝票に展開します**")
+            st.markdown("👇 **AI読み取りを実行して振替伝票に自動展開します**")
             if st.button(
                 "🤖 AIで自動読み取りを実行",
                 type="primary",
                 icon=":material/document_scanner:",
-                key=f"btn_run_ocr_{current_key_prefix}",
+                key=f"btn_run_ocr_{current_form_prefix}",
             ):
                 with st.spinner(
                     "AIが証憑を解析中 (取引日・金額・取引先・科目を推論)..."
@@ -153,6 +158,8 @@ with st.container(border=True):
                             st.session_state.ocr_file_bytes = file_bytes
                             st.session_state.ocr_filename = uploaded_file.name
                             st.session_state.last_registered_summary = None
+                            # フォームのキーバージョンを進めることで、Step 2 のウィジェットに OCR 読取結果が自動反映される
+                            st.session_state.form_entry_key += 1
 
                             if result.is_registered_merchant:
                                 st.toast(
@@ -160,7 +167,9 @@ with st.container(border=True):
                                     icon="✅",
                                 )
                             else:
-                                st.toast("AI読み取り完了！", icon="🎉")
+                                st.toast(
+                                    "AI読み取り完了！振替伝票に反映しました", icon="🎉"
+                                )
                             st.rerun()
                         else:
                             st.error(
@@ -176,81 +185,158 @@ with st.container(border=True):
                             )
 
 
-# Preset values from OCR if present
+# ==============================================================================
+# マスタ参照 & 振替伝票への自動仮入力値の解決
+# ==============================================================================
 default_date = date.today()
 default_desc = ""
 default_cp = ""
 default_inv = ""
-default_lines = [{"debit_acc": "", "debit_amt": 0, "credit_acc": "", "credit_amt": 0}]
+default_abstract_idx = 0
+matched_cp: Counterparty | None = None
+target_debit_acc_id: str | None = None
+target_credit_acc_id: str | None = None
+total_amt: int = 0
 
 if st.session_state.ocr_result:
     ocr = st.session_state.ocr_result
+
+    # 1. 取引日
     if ocr.transaction_date:
         try:
             default_date = date.fromisoformat(ocr.transaction_date)
         except ValueError:
             pass
-    if ocr.description:
-        default_desc = ocr.description
-    elif ocr.merchant_name:
-        default_desc = ocr.merchant_name
-    if ocr.merchant_name:
-        default_cp = ocr.merchant_name
-    if ocr.invoice_registration_number:
-        default_inv = ocr.invoice_registration_number
 
+    # 2. 金額
     if ocr.total_amount_incl_tax:
-        debit_lbl = next(
-            (
-                lbl
-                for lbl, aid in account_options.items()
-                if aid == ocr.inferred_debit_account_id
-            ),
-            "",
-        )
-        credit_lbl = next(
-            (
-                lbl
-                for lbl, aid in account_options.items()
-                if aid == ocr.inferred_credit_account_id
-            ),
-            "",
-        )
-        default_lines = [
-            {
-                "debit_acc": debit_lbl,
-                "debit_amt": int(ocr.total_amount_incl_tax),
-                "credit_acc": credit_lbl,
-                "credit_amt": int(ocr.total_amount_incl_tax),
-            }
-        ]
+        total_amt = int(ocr.total_amount_incl_tax)
 
-    # AI Detection Summary Card
-    with st.container(border=True):
-        st.markdown("#### 🎯 AI解析サマリー")
-        sc1, sc2, sc3, sc4 = st.columns(4)
-        with sc1:
-            st.metric("取引日", str(default_date))
-        with sc2:
-            st.metric("取引先", default_cp or "未検出")
-        with sc3:
-            st.metric("金額 (税込)", f"¥{ocr.total_amount_incl_tax or 0:,}")
-        with sc4:
-            st.metric(
-                "登録番号",
-                default_inv or "なし (免税/未検出)",
+    # 3. 取引先マスタとの照合
+    if ocr.invoice_registration_number:
+        inv_clean = ocr.invoice_registration_number.strip().upper()
+        default_inv = inv_clean
+        matched_cp = next(
+            (
+                c
+                for c in counterparties
+                if c.invoice_number and c.invoice_number.strip().upper() == inv_clean
+            ),
+            None,
+        )
+
+    if not matched_cp and ocr.merchant_name:
+        default_cp = ocr.merchant_name
+        norm_ocr_name = (
+            unicodedata.normalize("NFKC", ocr.merchant_name)
+            .replace(" ", "")
+            .replace("　", "")
+            .lower()
+        )
+        for c in counterparties:
+            if not c.name:
+                continue
+            norm_c_name = (
+                unicodedata.normalize("NFKC", c.name)
+                .replace(" ", "")
+                .replace("　", "")
+                .lower()
             )
+            if (
+                norm_c_name == norm_ocr_name
+                or norm_c_name in norm_ocr_name
+                or norm_ocr_name in norm_c_name
+            ):
+                matched_cp = c
+                break
 
-        if ocr.needs_manual_review:
-            st.warning(f"⚠️ 確認推奨: {ocr.error_message}")
+    if matched_cp:
+        default_cp = matched_cp.name
+        if matched_cp.invoice_number:
+            default_inv = matched_cp.invoice_number
+        if matched_cp.debit_account_id:
+            target_debit_acc_id = str(matched_cp.debit_account_id)
+        if matched_cp.credit_account_id:
+            target_credit_acc_id = str(matched_cp.credit_account_id)
+        if matched_cp.description_template:
+            default_desc = matched_cp.description_template
+
+    # 4. 摘要マスタとの照合
+    if not default_desc:
+        if ocr.description:
+            default_desc = ocr.description
+        elif ocr.merchant_name:
+            default_desc = ocr.merchant_name
+
+    # よく使う摘要マスタから一致する候補を探索
+    if default_desc:
+        for idx, opt in enumerate(abstract_options):
+            if opt and (
+                opt == default_desc or opt in default_desc or default_desc in opt
+            ):
+                default_abstract_idx = idx
+                break
+
+    # 5. 勘定科目の決定
+    if not target_debit_acc_id and ocr.inferred_debit_account_id:
+        target_debit_acc_id = str(ocr.inferred_debit_account_id)
+    if not target_credit_acc_id and ocr.inferred_credit_account_id:
+        target_credit_acc_id = str(ocr.inferred_credit_account_id)
+
+    # デフォルトの貸方科目が未設定の場合、現金や普通預金、未払金などマスタから適切な科目を補完
+    if not target_credit_acc_id:
+        # 現金 (101) を優先探索
+        cash_acc = next(
+            (
+                aid
+                for lbl, aid in account_options.items()
+                if "101" in lbl or "現金" in lbl
+            ),
+            None,
+        )
+        if cash_acc:
+            target_credit_acc_id = cash_acc
+
+    debit_lbl = next(
+        (lbl for lbl, aid in account_options.items() if aid == target_debit_acc_id),
+        "",
+    )
+    credit_lbl = next(
+        (lbl for lbl, aid in account_options.items() if aid == target_credit_acc_id),
+        "",
+    )
+
+    default_lines = [
+        {
+            "debit_acc": debit_lbl,
+            "debit_amt": total_amt,
+            "credit_acc": credit_lbl,
+            "credit_amt": total_amt,
+        }
+    ]
+else:
+    default_lines = [
+        {"debit_acc": "", "debit_amt": 0, "credit_acc": "", "credit_amt": 0}
+    ]
 
 
 # ==============================================================================
-# Step 2: 📝 一般的な簿記の表示（振替伝票形式）
+# Step 2: 📝 振替伝票
 # ==============================================================================
 with st.container(border=True):
-    st.subheader("📝 Step 2: 振替伝票 (確認・微修正・登録)")
+    st.subheader("📝 Step 2: 振替伝票")
     st.caption("複式簿記の標準形式で借方・貸方を左右対照に入力・確認できます。")
+
+    # AI読み取り結果の展開案内（AI解析サマリと兼用）
+    if st.session_state.ocr_result:
+        ocr = st.session_state.ocr_result
+        match_info = "（取引先マスタ一致 ✅）" if matched_cp else ""
+        st.info(
+            f"🤖 **AIが証憑とマスタを参照し、下記の振替伝票に候補を自動仮入力しました** {match_info}\n\n"
+            "内容をご確認の上、必要に応じて修正して「💾 この内容で仕訳帳に登録する」を押してください。"
+        )
+        if ocr.needs_manual_review:
+            st.warning(f"⚠️ 確認推奨: {ocr.error_message}")
 
     # Transaction Header info
     col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 2, 2])
@@ -258,32 +344,33 @@ with st.container(border=True):
         tx_date = st.date_input(
             "取引日 (発生日)",
             value=default_date,
-            key=f"tx_date_input_{current_key_prefix}",
+            key=f"tx_date_input_{current_form_prefix}",
         )
     with col_h2:
         abstract_choice = st.selectbox(
             "よく使う摘要から選ぶ",
             abstract_options,
-            key=f"abstract_choice_input_{current_key_prefix}",
+            index=default_abstract_idx,
+            key=f"abstract_choice_input_{current_form_prefix}",
         )
         desc_input = st.text_input(
             "摘要 (取引内容)",
             value=default_desc,
-            key=f"desc_input_field_{current_key_prefix}",
+            key=f"desc_input_field_{current_form_prefix}",
         )
         final_desc = abstract_choice if abstract_choice else desc_input
     with col_h3:
         final_cp = st.text_input(
             "取引先 (支払先/売上先)",
             value=default_cp,
-            key=f"cp_input_field_{current_key_prefix}",
+            key=f"cp_input_field_{current_form_prefix}",
         )
     with col_h4:
         final_inv = st.text_input(
             "インボイス登録番号",
             value=default_inv,
             help="適格請求書発行事業者の登録番号 (例: T1234567890123)",
-            key=f"inv_input_field_{current_key_prefix}",
+            key=f"inv_input_field_{current_form_prefix}",
         )
 
     st.markdown("---")
@@ -325,7 +412,7 @@ with st.container(border=True):
                 index=account_labels.index(d_line["debit_acc"])
                 if d_line["debit_acc"] in account_labels
                 else 0,
-                key=f"debit_acc_{current_key_prefix}_{i}",
+                key=f"debit_acc_{current_form_prefix}_{i}",
             )
         with col_d_amt:
             debit_amt = st.number_input(
@@ -333,7 +420,7 @@ with st.container(border=True):
                 min_value=0,
                 value=int(str(d_line.get("debit_amt", 0))),
                 step=1000,
-                key=f"debit_amt_{current_key_prefix}_{i}",
+                key=f"debit_amt_{current_form_prefix}_{i}",
             )
         with col_c_acc:
             credit_acc = st.selectbox(
@@ -342,7 +429,7 @@ with st.container(border=True):
                 index=account_labels.index(str(d_line.get("credit_acc", "")))
                 if str(d_line.get("credit_acc", "")) in account_labels
                 else 0,
-                key=f"credit_acc_{current_key_prefix}_{i}",
+                key=f"credit_acc_{current_form_prefix}_{i}",
             )
         with col_c_amt:
             credit_amt = st.number_input(
@@ -350,7 +437,7 @@ with st.container(border=True):
                 min_value=0,
                 value=int(str(d_line.get("credit_amt", 0))),
                 step=1000,
-                key=f"credit_amt_{current_key_prefix}_{i}",
+                key=f"credit_amt_{current_form_prefix}_{i}",
             )
 
         line_inputs.append(
@@ -365,13 +452,13 @@ with st.container(border=True):
     # Line controls
     col_ctrl1, col_ctrl2, _ = st.columns([2, 2, 4])
     with col_ctrl1:
-        if st.button("➕ 明細行を追加", key=f"btn_add_line_{current_key_prefix}"):
+        if st.button("➕ 明細行を追加", key=f"btn_add_line_{current_form_prefix}"):
             st.session_state.num_lines += 1
             st.rerun()
     with col_ctrl2:
         if st.session_state.num_lines > 1:
             if st.button(
-                "➖ 最後の行を削除", key=f"btn_remove_line_{current_key_prefix}"
+                "➖ 最後の行を削除", key=f"btn_remove_line_{current_form_prefix}"
             ):
                 st.session_state.num_lines -= 1
                 st.rerun()
@@ -414,7 +501,7 @@ with st.container(border=True):
         save_cp_master = st.checkbox(
             "この取引先を取引先マスタに自動登録/更新する",
             value=True if final_cp else False,
-            key=f"chk_save_cp_{current_key_prefix}",
+            key=f"chk_save_cp_{current_form_prefix}",
         )
     with col_opt2:
         if st.session_state.ocr_file_bytes:
@@ -424,7 +511,7 @@ with st.container(border=True):
         "💾 この内容で仕訳帳に登録する",
         type="primary",
         icon=":material/save:",
-        key=f"btn_submit_journal_{current_key_prefix}",
+        key=f"btn_submit_journal_{current_form_prefix}",
         use_container_width=True,
     )
 
@@ -509,7 +596,7 @@ with st.container(border=True):
                 # 登録完了サマリーを保持してフォームを完全初期化
                 summary_str = f"{tx.date.strftime('%Y/%m/%d')} | {tx.description} | ¥{calc_debit:,}"
                 st.session_state.last_registered_summary = summary_str
-                reset_journal_form()
+                reset_all()
 
                 st.toast("仕訳帳に登録しました！次の仕訳を入力できます。", icon="🎉")
                 st.rerun()

@@ -117,6 +117,34 @@ def test_journal_entry_form_successful_submission():
         assert at.session_state["last_registered_summary"] is not None
 
 
+def test_journal_entry_ocr_auto_fill_to_voucher():
+    """Verify that OCR result automatically populates Step 2 Voucher without showing redundant summary."""
+    from app.domain.models.receipt import ReceiptData
+
+    at = AppTest.from_file("app/ui/app_pages/1_journal_entry.py", default_timeout=15)
+
+    dummy_receipt = ReceiptData(
+        merchant_name="テストサプライ株式会社",
+        transaction_date="2026-08-15",
+        total_amount_incl_tax=12800,
+        invoice_registration_number="T9876543210987",
+        description="オフィス消耗品一式",
+        inferred_debit_account_id="1",
+        inferred_credit_account_id="2",
+    )
+    at.session_state["ocr_result"] = dummy_receipt
+    at.session_state["form_entry_key"] = 1
+    at.run()
+
+    assert not at.exception
+    # Step 2 header should be "Step 2: 振替伝票"
+    subheaders = [s.value for s in at.subheader]
+    assert any("Step 2: 振替伝票" in s for s in subheaders)
+    # Redundant AI summary card should not exist
+    markdowns = [m.value for m in at.markdown]
+    assert not any("AI解析サマリー" in m for m in markdowns)
+
+
 def test_journal_history_page_interactions():
     """Verify that 2_journal_history.py page renders, filters work, and dataframe displays."""
     at = AppTest.from_file("app/ui/app_pages/2_journal_history.py", default_timeout=15)
