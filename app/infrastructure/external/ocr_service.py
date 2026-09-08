@@ -368,6 +368,35 @@ Extract the following fields into a valid JSON object matching the requested sch
 
         response = await asyncio.to_thread(_sync_generate)
         result = response.text or ""
+
+        # Check finish reason if text is empty
+        if not result:
+            if hasattr(response, "candidates") and response.candidates:
+                candidate = response.candidates[0]
+                finish_reason = getattr(candidate, "finish_reason", None)
+                if finish_reason and str(finish_reason).upper() in (
+                    "SAFETY",
+                    "IMAGE_SAFETY",
+                ):
+                    raise ValueError(
+                        "⚠️ **コンテンツ安全フィルターにより生成がブロックされました**\n\n"
+                        "領収書・証憑の画像が安全基準（個人情報・禁止コンテンツ等の制限）に抵触した可能性があります。\n"
+                        "画像内容をご確認の上、鮮明な別の画像でお試しください。"
+                    )
+                elif finish_reason and str(finish_reason).upper() in (
+                    "RECITATION",
+                    "IMAGE_RECITATION",
+                ):
+                    raise ValueError(
+                        "⚠️ **著作権・引用制限（Recitation）により生成がブロックされました**\n\n"
+                        "別の証憑画像でお試しください。"
+                    )
+                elif finish_reason:
+                    raise ValueError(
+                        f"⚠️ **AIモデルの出力が中断されました (理由: {finish_reason})**"
+                    )
+            raise ValueError("Gemini APIから空の応答が返されました。")
+
         self.log.info("call_gemini_api_success")
         return result
 
@@ -401,48 +430,138 @@ Extract the following fields into a valid JSON object matching the requested sch
         return result
 
     def _format_api_error_message(self, e: APIError) -> str:
-        """Gemini APIエラーをユーザーにとって分かりやすい日本語案内文に変換する"""
+        """
+        Gemini API公式仕様（Standard Error Codes, Generation Blocked Codes, HTTP Status）
+        に基づき、エラー内容をユーザーフレンドリーな日本語診断案内文に変換する。
+        """
         code = getattr(e, "code", None)
         raw_msg = getattr(e, "message", None) or str(e)
+        msg_upper = raw_msg.upper()
 
+        # 1. 認証・APIキー関連 (401 / 400 API_KEY_INVALID / authentication)
         if (
-            "API_KEY_INVALID" in raw_msg
-            or "API key not valid" in raw_msg
-            or (code == 400 and "API key" in raw_msg)
+            "API_KEY_INVALID" in msg_upper
+            or "API KEY NOT VALID" in msg_upper
+            or "AUTHENTICATION" in msg_upper
+            or "UNAUTHENTICATED" in msg_upper
+            or code == 401
+            or (code == 400 and "API KEY" in msg_upper)
         ):
             return (
-                "⚠️ **Gemini API キーが無効です**\n\n"
-                "「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルに正しい Gemini API キーが設定されているかご確認ください。\n"
+                "⚠️ **Gemini API キーが無効または未設定です**\n\n"
+                "Google AI Studio で取得した有効な API キーが登録されているかご確認ください。\n"
+                "「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n"
                 f"(詳細エラー: `{raw_msg}`)"
             )
-        if "RESOURCE_EXHAUSTED" in raw_msg or code == 429:
+
+        # 2. アクセス権限不足 (403 / permission_denied)
+        if "PERMISSION_DENIED" in msg_upper or code == 403:
             return (
-                "⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました**\n\n"
-                "しばらく待ってから再度お試しいただくか、Google AI Studio で利用枠をご確認ください。\n"
+                "⚠️ **Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n"
+                "API キーの権限設定、Google Cloud プロジェクトの有効化状態、またはアクセス制限をご確認ください。\n"
                 f"(詳細エラー: `{raw_msg}`)"
             )
-        if "PERMISSION_DENIED" in raw_msg or code == 403:
+
+        # 3. リソース・モデル未検出 (404 / not_found / model_not_found)
+        if "NOT_FOUND" in msg_upper or "MODEL_NOT_FOUND" in msg_upper or code == 404:
             return (
-                "⚠️ **Gemini API へのアクセス権限が拒否されました**\n\n"
-                "APIキーの権限設定や有効化状態をご確認ください。\n"
+                f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n"
+                "モデルコードが正しいか、またはご利用のアカウントで利用可能なモデルかをご確認ください。\n"
                 f"(詳細エラー: `{raw_msg}`)"
             )
-        if "NOT_FOUND" in raw_msg or code == 404:
+
+        # 4. レート制限・クォータ枯渇 (429 / rate_limit_exceeded / quota_exceeded / RESOURCE_EXHAUSTED)
+        if (
+            "RESOURCE_EXHAUSTED" in msg_upper
+            or "RATE_LIMIT" in msg_upper
+            or "QUOTA_EXCEEDED" in msg_upper
+            or "TOO_MANY_REQUESTS" in msg_upper
+            or code == 429
+        ):
             return (
-                f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません**\n\n"
+                "⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\n"
+                "短時間の間にリクエストが集中したか、1日のクォータ上限に達しています。\n"
+                "しばらく時間をおいてから再度お試しいただくか、Google AI Studio で利用状況をご確認ください。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+
+        # 5. リクエスト前提条件・パラメータ不正 (400 / failed_precondition / invalid_request / out_of_range)
+        if "FAILED_PRECONDITION" in msg_upper:
+            return (
+                "⚠️ **API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n"
+                "Google Cloud プロジェクトの請求設定（Billing）やアカウント前提条件をご確認ください。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if "OUT_OF_RANGE" in msg_upper or code == 416:
+            return (
+                "⚠️ **リクエストパラメータが許容範囲外です (416 Out of Range)**\n\n"
                 f"(詳細エラー: `{raw_msg}`)"
             )
         if (
-            code in (500, 502, 503, 504)
-            or "INTERNAL" in raw_msg
-            or "UNAVAILABLE" in raw_msg
+            "INVALID_REQUEST" in msg_upper
+            or "PARAMETER_UNKNOWN" in msg_upper
+            or (code == 400 and "INVALID_ARGUMENT" in msg_upper)
         ):
             return (
-                "⚠️ **Google Gemini サーバー側で一時的な障害が発生しています**\n\n"
+                "⚠️ **API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n"
+                "画像データが破損しているか、対応していない形式の可能性があります。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+
+        # 6. 安全性・ポリシー制限 (Generation Blocked Codes)
+        if "SAFETY" in msg_upper or "IMAGE_SAFETY" in msg_upper:
+            return (
+                "⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n"
+                "画像やテキストが Google の安全基準（有害・禁止コンテンツ制限）に抵触した可能性があります。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if "RECITATION" in msg_upper or "IMAGE_RECITATION" in msg_upper:
+            return (
+                "⚠️ **著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if (
+            "PROHIBITED_CONTENT" in msg_upper
+            or "BLOCKLIST" in msg_upper
+            or "SPII" in msg_upper
+        ):
+            return (
+                "⚠️ **ポリシーまたは機密情報保護制限（SPII/Blocklist）によりブロックされました**\n\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+
+        # 7. サーバー一時障害・タイムアウト (500 / 502 / 503 / 504 / service_unavailable / deadline_exceeded)
+        if "DEADLINE_EXCEEDED" in msg_upper or code == 504:
+            return (
+                "⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\n"
+                "通信環境をご確認の上、再度お試しください。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if (
+            code in (500, 502, 503)
+            or "INTERNAL" in msg_upper
+            or "SERVICE_UNAVAILABLE" in msg_upper
+            or "UNAVAILABLE" in msg_upper
+        ):
+            return (
+                "⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n"
                 "Google のサービス稼働状態をご確認の上、しばらく待ってから再度お試しください。\n"
                 f"(詳細エラー: `{raw_msg}`)"
             )
+        if "UNIMPLEMENTED" in msg_upper or code == 501:
+            return (
+                "⚠️ **要求された操作は現在サポートされていません (501 Not Implemented)**\n\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
 
+        # 8. クライアント切断 (499 / cancelled)
+        if "CANCELLED" in msg_upper or code == 499:
+            return (
+                "⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+
+        # 9. その他汎用
         return f"⚠️ **Gemini API エラー (Code: {code or '不明'})**\n\n{raw_msg}"
 
     def _clean_json_text(self, text: str) -> str:

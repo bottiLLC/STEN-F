@@ -468,7 +468,7 @@ def test_format_api_error_message():
         },
     )
     msg_key = service._format_api_error_message(err_key)
-    assert "Gemini API キーが無効です" in msg_key
+    assert "Gemini API キーが無効または未設定です" in msg_key
     assert "AI・システム設定" in msg_key
 
     # 2. Quota / Rate limit (429)
@@ -488,12 +488,48 @@ def test_format_api_error_message():
     msg_404 = service._format_api_error_message(err_404)
     assert "指定されたAIモデル" in msg_404
 
-    # 5. Server Error (500)
+    # 5. Failed Precondition (400)
+    err_prec = APIError(
+        400, {"error": {"message": "FAILED_PRECONDITION: billing disabled"}}
+    )
+    msg_prec = service._format_api_error_message(err_prec)
+    assert "前提条件が満たされていません" in msg_prec
+
+    # 6. Out of range (416)
+    err_range = APIError(416, {"error": {"message": "OUT_OF_RANGE"}})
+    msg_range = service._format_api_error_message(err_range)
+    assert "許容範囲外です" in msg_range
+
+    # 7. Safety / Blocked
+    err_safety = APIError(
+        400, {"error": {"message": "SAFETY: Content blocked due to safety"}}
+    )
+    msg_safety = service._format_api_error_message(err_safety)
+    assert "コンテンツ安全フィルター" in msg_safety
+
+    # 8. Recitation Blocked
+    err_rec = APIError(
+        400, {"error": {"message": "RECITATION: Copyright recitation blocked"}}
+    )
+    msg_rec = service._format_api_error_message(err_rec)
+    assert "著作権・引用制限" in msg_rec
+
+    # 9. Timeout (504)
+    err_504 = APIError(504, {"error": {"message": "DEADLINE_EXCEEDED"}})
+    msg_504 = service._format_api_error_message(err_504)
+    assert "タイムアウトしました" in msg_504
+
+    # 10. Server Error (500)
     err_500 = APIError(500, {"error": {"message": "INTERNAL: backend failure"}})
     msg_500 = service._format_api_error_message(err_500)
     assert "Google Gemini サーバー側で一時的な障害が発生しています" in msg_500
 
-    # 6. Unknown fallback error
+    # 11. Client Cancelled (499)
+    err_499 = APIError(499, {"error": {"message": "CANCELLED"}})
+    msg_499 = service._format_api_error_message(err_499)
+    assert "クライアント側で中断されました" in msg_499
+
+    # 12. Unknown fallback error
     err_unknown = APIError(999, {"error": {"message": "Random error message"}})
     msg_unknown = service._format_api_error_message(err_unknown)
     assert "Gemini API エラー (Code: 999)" in msg_unknown
