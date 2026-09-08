@@ -58,6 +58,28 @@ if "ocr_filename" not in st.session_state:
     st.session_state.ocr_filename = None
 if "num_lines" not in st.session_state:
     st.session_state.num_lines = 1
+if "form_entry_key" not in st.session_state:
+    st.session_state.form_entry_key = 0
+if "last_registered_summary" not in st.session_state:
+    st.session_state.last_registered_summary = None
+
+
+def reset_journal_form():
+    """仕訳入力フォームおよびOCR状態を完全に初期化する"""
+    st.session_state.ocr_result = None
+    st.session_state.ocr_file_bytes = None
+    st.session_state.ocr_filename = None
+    st.session_state.num_lines = 1
+    st.session_state.form_entry_key += 1
+
+
+# 直前の登録完了サマリー通知
+if st.session_state.last_registered_summary:
+    st.success(
+        f"✅ 前回の仕訳を登録しました: **{st.session_state.last_registered_summary}** （続けて次の仕訳を入力できます）"
+    )
+
+current_key_prefix = f"v{st.session_state.form_entry_key}"
 
 # ==============================================================================
 # Step 1: 📄 証憑アップロード & AI OCR 読み取り (ファーストビュー最優先)
@@ -67,20 +89,23 @@ with st.container(border=True):
     with col_hdr1:
         st.subheader("📄 Step 1: 証憑（PDF/画像）のアップロード & AI自動読取")
     with col_hdr2:
-        if st.session_state.ocr_result is not None:
+        if (
+            st.session_state.ocr_result is not None
+            or st.session_state.last_registered_summary is not None
+        ):
             if st.button(
-                "クリア / 次の証憑", icon=":material/refresh:", key="btn_clear_ocr"
+                "入力内容をクリア",
+                icon=":material/refresh:",
+                key=f"btn_clear_ocr_{current_key_prefix}",
             ):
-                st.session_state.ocr_result = None
-                st.session_state.ocr_file_bytes = None
-                st.session_state.ocr_filename = None
-                st.session_state.num_lines = 1
+                st.session_state.last_registered_summary = None
+                reset_journal_form()
                 st.rerun()
 
     uploaded_file = st.file_uploader(
         "レシート・領収書・請求書のPDFまたは画像ファイルをドロップしてください",
         type=["pdf", "png", "jpg", "jpeg"],
-        key="receipt_uploader",
+        key=f"receipt_uploader_{current_key_prefix}",
         help="PDFまたは画像ファイルをアップロードすると、AIが日付、取引先、登録番号、金額、勘定科目を自動解析します。",
     )
 
@@ -104,7 +129,7 @@ with st.container(border=True):
                 "🤖 AIで自動読み取りを実行",
                 type="primary",
                 icon=":material/document_scanner:",
-                key="btn_run_ocr",
+                key=f"btn_run_ocr_{current_key_prefix}",
             ):
                 with st.spinner(
                     "AIが証憑を解析中 (取引日・金額・取引先・科目を推論)..."
@@ -127,6 +152,7 @@ with st.container(border=True):
                             st.session_state.ocr_result = result
                             st.session_state.ocr_file_bytes = file_bytes
                             st.session_state.ocr_filename = uploaded_file.name
+                            st.session_state.last_registered_summary = None
 
                             if result.is_registered_merchant:
                                 st.toast(
@@ -230,26 +256,34 @@ with st.container(border=True):
     col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 2, 2])
     with col_h1:
         tx_date = st.date_input(
-            "取引日 (発生日)", value=default_date, key="tx_date_input"
+            "取引日 (発生日)",
+            value=default_date,
+            key=f"tx_date_input_{current_key_prefix}",
         )
     with col_h2:
         abstract_choice = st.selectbox(
-            "よく使う摘要から選ぶ", abstract_options, key="abstract_choice_input"
+            "よく使う摘要から選ぶ",
+            abstract_options,
+            key=f"abstract_choice_input_{current_key_prefix}",
         )
         desc_input = st.text_input(
-            "摘要 (取引内容)", value=default_desc, key="desc_input_field"
+            "摘要 (取引内容)",
+            value=default_desc,
+            key=f"desc_input_field_{current_key_prefix}",
         )
         final_desc = abstract_choice if abstract_choice else desc_input
     with col_h3:
         final_cp = st.text_input(
-            "取引先 (支払先/売上先)", value=default_cp, key="cp_input_field"
+            "取引先 (支払先/売上先)",
+            value=default_cp,
+            key=f"cp_input_field_{current_key_prefix}",
         )
     with col_h4:
         final_inv = st.text_input(
             "インボイス登録番号",
             value=default_inv,
             help="適格請求書発行事業者の登録番号 (例: T1234567890123)",
-            key="inv_input_field",
+            key=f"inv_input_field_{current_key_prefix}",
         )
 
     st.markdown("---")
@@ -291,7 +325,7 @@ with st.container(border=True):
                 index=account_labels.index(d_line["debit_acc"])
                 if d_line["debit_acc"] in account_labels
                 else 0,
-                key=f"debit_acc_{i}",
+                key=f"debit_acc_{current_key_prefix}_{i}",
             )
         with col_d_amt:
             debit_amt = st.number_input(
@@ -299,7 +333,7 @@ with st.container(border=True):
                 min_value=0,
                 value=int(str(d_line.get("debit_amt", 0))),
                 step=1000,
-                key=f"debit_amt_{i}",
+                key=f"debit_amt_{current_key_prefix}_{i}",
             )
         with col_c_acc:
             credit_acc = st.selectbox(
@@ -308,7 +342,7 @@ with st.container(border=True):
                 index=account_labels.index(str(d_line.get("credit_acc", "")))
                 if str(d_line.get("credit_acc", "")) in account_labels
                 else 0,
-                key=f"credit_acc_{i}",
+                key=f"credit_acc_{current_key_prefix}_{i}",
             )
         with col_c_amt:
             credit_amt = st.number_input(
@@ -316,7 +350,7 @@ with st.container(border=True):
                 min_value=0,
                 value=int(str(d_line.get("credit_amt", 0))),
                 step=1000,
-                key=f"credit_amt_{i}",
+                key=f"credit_amt_{current_key_prefix}_{i}",
             )
 
         line_inputs.append(
@@ -331,12 +365,14 @@ with st.container(border=True):
     # Line controls
     col_ctrl1, col_ctrl2, _ = st.columns([2, 2, 4])
     with col_ctrl1:
-        if st.button("➕ 明細行を追加", key="btn_add_line"):
+        if st.button("➕ 明細行を追加", key=f"btn_add_line_{current_key_prefix}"):
             st.session_state.num_lines += 1
             st.rerun()
     with col_ctrl2:
         if st.session_state.num_lines > 1:
-            if st.button("➖ 最後の行を削除", key="btn_remove_line"):
+            if st.button(
+                "➖ 最後の行を削除", key=f"btn_remove_line_{current_key_prefix}"
+            ):
                 st.session_state.num_lines -= 1
                 st.rerun()
 
@@ -378,7 +414,7 @@ with st.container(border=True):
         save_cp_master = st.checkbox(
             "この取引先を取引先マスタに自動登録/更新する",
             value=True if final_cp else False,
-            key="chk_save_cp",
+            key=f"chk_save_cp_{current_key_prefix}",
         )
     with col_opt2:
         if st.session_state.ocr_file_bytes:
@@ -388,7 +424,7 @@ with st.container(border=True):
         "💾 この内容で仕訳帳に登録する",
         type="primary",
         icon=":material/save:",
-        key="btn_submit_journal",
+        key=f"btn_submit_journal_{current_key_prefix}",
         use_container_width=True,
     )
 
@@ -470,20 +506,18 @@ with st.container(border=True):
 
                 run_async(execute_save())
 
-                # Clear OCR state
-                st.session_state.ocr_result = None
-                st.session_state.ocr_file_bytes = None
-                st.session_state.ocr_filename = None
-                st.session_state.num_lines = 1
+                # 登録完了サマリーを保持してフォームを完全初期化
+                summary_str = f"{tx.date.strftime('%Y/%m/%d')} | {tx.description} | ¥{calc_debit:,}"
+                st.session_state.last_registered_summary = summary_str
+                reset_journal_form()
 
-                st.toast("仕訳帳に登録しました！", icon="🎉")
-                st.success(
-                    "仕訳が正常に登録されました。次の証憑をアップロードできます。"
-                )
+                st.toast("仕訳帳に登録しました！次の仕訳を入力できます。", icon="🎉")
                 st.rerun()
 
             except ValueError as ve:
-                st.error(f"入力内容にエラーがあります: {ve}")
-            except Exception as ex:
-                log.error("Failed to save transaction", error=str(ex), exc_info=True)
-                st.error(f"登録処理エラー: {ex}")
+                st.error(f"登録エラー: {str(ve)}")
+            except Exception as e:
+                log.error(
+                    "Failed to register journal entry", error=str(e), exc_info=True
+                )
+                st.error(f"登録処理中にエラーが発生しました: {str(e)}")

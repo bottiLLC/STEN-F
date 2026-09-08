@@ -111,6 +111,10 @@ def test_journal_entry_form_successful_submission():
 
         assert not at.exception
         assert len(at.error) == 0
+        assert "form_entry_key" in at.session_state
+        assert at.session_state["form_entry_key"] >= 1
+        assert "last_registered_summary" in at.session_state
+        assert at.session_state["last_registered_summary"] is not None
 
 
 def test_journal_history_page_interactions():
