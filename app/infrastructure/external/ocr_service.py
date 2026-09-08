@@ -55,6 +55,22 @@ class ReceiptExtractionSchema(BaseModel):
     )
 
 
+class AccountInferenceSchema(BaseModel):
+    """
+    Gemini Structured Output 専用の勘定科目・摘要推論スキーマ
+    """
+
+    debit_account: Optional[str] = Field(
+        None, description="借方科目の名前（例: 消耗品費, 会議費, 旅費交通費など）"
+    )
+    credit_account: Optional[str] = Field(
+        None, description="貸方科目の名前（例: 役員借入金, 普通預金など）"
+    )
+    description: Optional[str] = Field(
+        None, description="取引の摘要文（例: 〇〇代として）"
+    )
+
+
 class GeminiOCRService:
     """
     Google Gemini API (gemini-3.5-flash-lite) を利用した領収書・証憑OCRおよび仕訳推論サービス。
@@ -362,6 +378,7 @@ Extract the following fields into a valid JSON object matching the requested sch
 
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
+            response_schema=AccountInferenceSchema,
             temperature=0.0,
         )
 
