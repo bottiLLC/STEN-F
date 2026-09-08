@@ -386,7 +386,9 @@ async def test_master_service_system_settings(container):
 
 def test_ui_master_management_system_settings_tab():
     """Verify 7_master_management.py AI and System Settings tab renders and submits."""
-    at = AppTest.from_file("app/ui/app_pages/7_master_management.py", default_timeout=15)
+    at = AppTest.from_file(
+        "app/ui/app_pages/7_master_management.py", default_timeout=15
+    )
     at.run()
     assert not at.exception
     assert len(at.tabs) >= 7

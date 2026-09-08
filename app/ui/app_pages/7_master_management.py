@@ -433,7 +433,12 @@ with tab_sys:
     sys_cfg = run_async(fetch_sys_settings())
 
     with st.form("system_settings_form"):
-        current_key = sys_cfg.ai_api_key or settings.GEMINI_API_KEY or settings.OPENAI_API_KEY or ""
+        current_key = (
+            sys_cfg.ai_api_key
+            or settings.GEMINI_API_KEY
+            or settings.OPENAI_API_KEY
+            or ""
+        )
         ai_key_input = st.text_input(
             "Gemini API キー (AI OCR / 科目自動推論用)",
             value=current_key,
@@ -442,7 +447,9 @@ with tab_sys:
         )
         st.caption(f"🤖 現在の使用モデル: `{settings.GEMINI_DEFAULT_MODEL}`")
 
-        if st.form_submit_button("💾 設定を保存する", type="primary", icon=":material/save:"):
+        if st.form_submit_button(
+            "💾 設定を保存する", type="primary", icon=":material/save:"
+        ):
             new_sys_settings = SystemSettings(
                 id=sys_cfg.id,
                 ai_api_key=ai_key_input.strip() if ai_key_input.strip() else None,
