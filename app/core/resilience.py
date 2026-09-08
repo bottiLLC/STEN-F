@@ -16,13 +16,13 @@ import functools
 import structlog
 import tenacity
 from tenacity import wait_exponential, stop_after_attempt, retry_if_exception_type
-from openai import APIError as OpenAPIError
+from google.genai.errors import APIError as GenAIAPIError
 
 log = structlog.get_logger()
 
 
 def resilient_api_call(
-    max_retries=3, base_delay=1.0, exceptions=(OpenAPIError, Exception)
+    max_retries=3, base_delay=1.0, exceptions=(GenAIAPIError, Exception)
 ):
     """
     Decorator for adding resilience to asynchronous API calls.

@@ -54,7 +54,8 @@ class Container:
     async def journal_service_scope(self) -> AsyncGenerator[JournalService, None]:
         async with self.session_scope() as session:
             repo = SQLAlchemyLedgerRepository(session)
-            service = JournalService(repo)
+            master_repo = SQLAlchemyMasterRepository(session)
+            service = JournalService(repo, master_repository=master_repo)
             yield service
 
     @asynccontextmanager
@@ -85,7 +86,7 @@ class Container:
             # Construct services sharing the repos (and thus the session)
             master_service = MasterService(master_repo, ledger_repository=ledger_repo)
             ledger_service = LedgerService(ledger_repo)
-            journal_service = JournalService(ledger_repo)
+            journal_service = JournalService(ledger_repo, master_repository=master_repo)
 
             service = FiscalYearService(master_service, ledger_service, journal_service)
             yield service

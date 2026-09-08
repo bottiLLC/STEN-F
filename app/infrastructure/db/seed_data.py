@@ -285,9 +285,7 @@ async def seed_accounts():
 
     await init_db()
 
-    # To avoid ORM model import issues without looking at files, let's use the MasterService via DI
-    # But DI might need loop.
-    from app.ui.di import DI
+    from app.container import container
 
-    async with DI.get_master_service() as service:
+    async with container.master_service_scope() as service:
         await seed_accounts_with_service(service)

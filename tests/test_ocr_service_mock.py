@@ -46,9 +46,11 @@ async def test_extract_receipt_data_image_success(mocker):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     # Mock Gemini client.aio.models.generate_content
     mock_response = mocker.MagicMock()
@@ -94,9 +96,11 @@ async def test_extract_receipt_data_pdf_success(mocker):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     mock_response = mocker.MagicMock()
     mock_response.text = '{"merchant_name": "PDF Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 9800}'
@@ -140,9 +144,11 @@ async def test_extract_receipt_data_large_image_resize(mocker):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     mock_response = mocker.MagicMock()
     mock_response.text = '{"merchant_name": "Large Img Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 3000}'
@@ -181,9 +187,11 @@ async def test_extract_receipt_data_api_error(mocker):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     # Mock APIError with message
     err = APIError(429, {"error": {"message": "API Rate Limit Exceeded"}})
@@ -233,9 +241,11 @@ async def test_extract_receipt_data_invoice_match(mocker):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     # OCR returns matched invoice number but a different merchant name
     mock_response = mocker.MagicMock()
@@ -299,9 +309,11 @@ async def test_extract_receipt_data_katakana_normalization_and_name_match(
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     # OCR returns half-width Katakana name
     mock_response = mocker.MagicMock()
@@ -351,9 +363,11 @@ async def test_extract_receipt_data_markdown_json_response(mocker):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     # Mock response wrapped in ```json ... ```
     mock_response = mocker.MagicMock()
@@ -410,9 +424,11 @@ async def test_extract_receipt_data_fallback_failure_tolerance(mocker):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    from app.ui.di import DI
+    from app.container import container
 
-    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+    mocker.patch.object(
+        container, "master_service_scope", return_value=AsyncContextMock()
+    )
 
     # Step 1 succeeds, Step 3 throws error
     mock_response_step1 = mocker.MagicMock()

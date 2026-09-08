@@ -18,29 +18,38 @@ import structlog
 from app.core.utils import normalize_amount
 from app.domain.models.transaction import Transaction, TransactionLine
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
+from app.domain.interfaces.i_master_repository import IMasterRepository
+from app.domain.models.counterparty import Counterparty
 
 log = structlog.get_logger()
 
 
 class JournalService:
-    def __init__(self, repository: ILedgerRepository):
+    def __init__(
+        self,
+        repository: ILedgerRepository,
+        master_repository: IMasterRepository | None = None,
+    ):
         self.repository = repository
+        self.master_repository = master_repository
         self.log = log.bind(service="JournalService")
+
+    async def _get_fiscal_years(self):
+        if self.master_repository:
+            return await self.master_repository.get_fiscal_years()
+        from app.container import container
+
+        async with container.master_service_scope() as ms:
+            return await ms.get_fiscal_years()
 
     async def _validate_transaction_date(self, transaction_date: date):
         """
         取引日付が現在OPENな会計年度の範囲内か検証する。
         """
-        from app.ui.di import DI
-
-        async with DI.get_master_service() as master_service:
-            fys = await master_service.get_fiscal_years()
-
+        fys = await self._get_fiscal_years()
         open_fys = [fy for fy in fys if fy.status == "OPEN"]
 
         if not open_fys:
-            # If there are no OPEN fiscal years, we might want to restrict entirely or warn.
-            # Assuming strict compliance: must have an OPEN year.
             raise ValueError("現在「OPEN」ステータスの会計年度が存在しません。")
 
         # Check if the date falls in ANY of the completely OPEN years
@@ -79,42 +88,53 @@ class JournalService:
 
             # --- Auto-Learning for Counterparty Dictionary ---
             if transaction.counterparty:
-                from app.ui.di import DI
-
                 try:
-                    async with DI.get_master_service() as master_service:
+                    if self.master_repository:
                         existing_template = (
-                            await master_service.get_counterparty_by_keyword(
+                            await self.master_repository.get_counterparty_by_keyword(
                                 transaction.counterparty
                             )
                         )
-                        if not existing_template:
-                            # Extract primary debit and primary credit from lines
-                            debit_account_id = None
-                            credit_account_id = None
-                            max_debit = -1
-                            max_credit = -1
-                            for line in transaction.lines:
-                                if line.debit > max_debit:
-                                    max_debit = line.debit
-                                    debit_account_id = line.account_id
-                                if line.credit > max_credit:
-                                    max_credit = line.credit
-                                    credit_account_id = line.account_id
+                    else:
+                        from app.container import container
 
-                            from app.domain.models.counterparty import Counterparty
+                        async with container.master_service_scope() as ms:
+                            existing_template = await ms.get_counterparty_by_keyword(
+                                transaction.counterparty
+                            )
 
-                            new_template = Counterparty(
-                                name=transaction.counterparty,
-                                debit_account_id=debit_account_id,
-                                credit_account_id=credit_account_id,
-                                description_template=transaction.description,
-                            )
-                            await master_service.save_counterparty(new_template)
-                            context_log.info(
-                                "Auto-learned new counterparty rules",
-                                keyword=transaction.counterparty,
-                            )
+                    if not existing_template:
+                        # Extract primary debit and primary credit from lines
+                        debit_account_id = None
+                        credit_account_id = None
+                        max_debit = -1
+                        max_credit = -1
+                        for line in transaction.lines:
+                            if line.debit > max_debit:
+                                max_debit = line.debit
+                                debit_account_id = line.account_id
+                            if line.credit > max_credit:
+                                max_credit = line.credit
+                                credit_account_id = line.account_id
+
+                        new_template = Counterparty(
+                            name=transaction.counterparty,
+                            debit_account_id=debit_account_id,
+                            credit_account_id=credit_account_id,
+                            description_template=transaction.description,
+                        )
+                        if self.master_repository:
+                            await self.master_repository.save_counterparty(new_template)
+                        else:
+                            from app.container import container
+
+                            async with container.master_service_scope() as ms:
+                                await ms.save_counterparty(new_template)
+
+                        context_log.info(
+                            "Auto-learned new counterparty rules",
+                            keyword=transaction.counterparty,
+                        )
                 except Exception as e:
                     context_log.warning(
                         "Failed to auto-learn counterparty rules", error=str(e)

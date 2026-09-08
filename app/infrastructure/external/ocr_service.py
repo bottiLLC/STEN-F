@@ -95,9 +95,9 @@ class GeminiOCRService:
         )
         local_log.info("extract_receipt_data_start")
 
-        from app.ui.di import DI
+        from app.container import container
 
-        async with DI.get_master_service() as ms:
+        async with container.master_service_scope() as ms:
             system_settings = await ms.get_system_settings()
             api_key = system_settings.ai_api_key
 
@@ -207,7 +207,7 @@ Extract the following fields into a valid JSON object matching the requested sch
                 receipt.invoice_registration_number = match.group(1) if match else None
 
             # Step 2: Journal Template (Dictionary) Matching
-            async with DI.get_master_service() as master_service:
+            async with container.master_service_scope() as master_service:
                 cps = await master_service.get_counterparties()
                 matched_template = None
 

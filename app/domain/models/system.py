@@ -23,7 +23,7 @@ class SystemSettings(BaseModel):
 
     id: Optional[int] = Field(None, description="Database ID")
     ai_api_key: Optional[str] = Field(
-        None, description="OpenAI API Key for AI operations"
+        None, description="Gemini API Key for AI operations"
     )
     backup_path: Optional[str] = Field(
         None, description="Database backup directory path"
