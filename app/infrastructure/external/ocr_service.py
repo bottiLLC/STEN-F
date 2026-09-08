@@ -12,6 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import asyncio
 import io
 import json
 import re
@@ -356,11 +357,14 @@ Extract the following fields into a valid JSON object matching the requested sch
             temperature=0.0,
         )
 
-        response = await client.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=config,
-        )
+        def _sync_generate():
+            return client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+
+        response = await asyncio.to_thread(_sync_generate)
         result = response.text or ""
         self.log.info("call_gemini_api_success")
         return result
@@ -382,11 +386,14 @@ Extract the following fields into a valid JSON object matching the requested sch
             temperature=0.0,
         )
 
-        response = await client.aio.models.generate_content(
-            model=model,
-            contents=sys_instruct_fallback,
-            config=config,
-        )
+        def _sync_generate():
+            return client.models.generate_content(
+                model=model,
+                contents=sys_instruct_fallback,
+                config=config,
+            )
+
+        response = await asyncio.to_thread(_sync_generate)
         result = response.text or ""
         self.log.info("call_gemini_fallback_success")
         return result

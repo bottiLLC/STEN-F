@@ -14,6 +14,7 @@
 
 import asyncio
 from typing import TypeVar, Coroutine, Any
+import sniffio
 
 T = TypeVar("T")
 
@@ -23,4 +24,10 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
 
     nest_asyncio must be applied prior to calling this function.
     """
+    # Ensure sniffio detects asyncio context under Python 3.14+ nest_asyncio
+    try:
+        sniffio.current_async_library_cvar.set("asyncio")
+    except Exception:
+        pass
+
     return asyncio.run(coro)

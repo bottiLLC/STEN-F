@@ -57,8 +57,7 @@ async def test_extract_receipt_data_image_success(mocker):
     mock_response.text = '{"merchant_name": "Mock Store", "transaction_date": "2026-07-19", "total_amount_incl_tax": 1500}'
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
-        new_callable=mocker.AsyncMock,
+        "google.genai.models.Models.generate_content",
         return_value=mock_response,
     )
 
@@ -106,8 +105,7 @@ async def test_extract_receipt_data_pdf_success(mocker):
     mock_response.text = '{"merchant_name": "PDF Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 9800}'
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
-        new_callable=mocker.AsyncMock,
+        "google.genai.models.Models.generate_content",
         return_value=mock_response,
     )
 
@@ -154,8 +152,7 @@ async def test_extract_receipt_data_large_image_resize(mocker):
     mock_response.text = '{"merchant_name": "Large Img Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 3000}'
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
-        new_callable=mocker.AsyncMock,
+        "google.genai.models.Models.generate_content",
         return_value=mock_response,
     )
 
@@ -197,8 +194,7 @@ async def test_extract_receipt_data_api_error(mocker):
     err = APIError(429, {"error": {"message": "API Rate Limit Exceeded"}})
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
-        new_callable=mocker.AsyncMock,
+        "google.genai.models.Models.generate_content",
         side_effect=err,
     )
 
@@ -255,8 +251,7 @@ async def test_extract_receipt_data_invoice_match(mocker):
     )
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
-        new_callable=mocker.AsyncMock,
+        "google.genai.models.Models.generate_content",
         return_value=mock_response,
     )
 
@@ -323,8 +318,7 @@ async def test_extract_receipt_data_katakana_normalization_and_name_match(
     )
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
-        new_callable=mocker.AsyncMock,
+        "google.genai.models.Models.generate_content",
         return_value=mock_response,
     )
 
@@ -374,8 +368,7 @@ async def test_extract_receipt_data_markdown_json_response(mocker):
     mock_response.text = '```json\n{"merchant_name": "Markdown Store", "transaction_date": "2026-07-19", "total_amount_incl_tax": 4500}\n```'
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
-        new_callable=mocker.AsyncMock,
+        "google.genai.models.Models.generate_content",
         return_value=mock_response,
     )
 
@@ -434,7 +427,7 @@ async def test_extract_receipt_data_fallback_failure_tolerance(mocker):
     mock_response_step1 = mocker.MagicMock()
     mock_response_step1.text = '{"merchant_name": "Unregistered Store", "transaction_date": "2026-07-19", "total_amount_incl_tax": 2000}'
 
-    async def mock_generate(*args, **kwargs):
+    def mock_generate(*args, **kwargs):
         # First call is Step 1, second is Step 3
         if (
             "contents" in kwargs
@@ -446,7 +439,7 @@ async def test_extract_receipt_data_fallback_failure_tolerance(mocker):
         raise APIError(500, {"error": {"message": "Inference server error"}})
 
     mocker.patch(
-        "google.genai.models.AsyncModels.generate_content",
+        "google.genai.models.Models.generate_content",
         side_effect=mock_generate,
     )
 
