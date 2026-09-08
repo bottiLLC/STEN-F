@@ -142,7 +142,12 @@ with st.container(border=True):
                             )
                     except Exception as e:
                         log.error("OCR extraction failed", error=str(e), exc_info=True)
-                        st.error(f"OCR解析エラー: {str(e)}")
+                        err_msg = str(e)
+                        st.error(err_msg)
+                        if "API" in err_msg or "キー" in err_msg or "設定" in err_msg:
+                            st.info(
+                                "💡 **設定確認**: 画面左メニューの「設定・管理」→「マスタ・システム管理」→「⚙️ AI・システム設定」タブから Gemini API キーの登録・保存が行えます。"
+                            )
 
 
 # Preset values from OCR if present

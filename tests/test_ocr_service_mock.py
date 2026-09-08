@@ -201,7 +201,7 @@ async def test_extract_receipt_data_api_error(mocker):
     service = GeminiOCRService()
     img_bytes = get_dummy_image_bytes()
 
-    with pytest.raises(ValueError, match="Gemini API エラーが発生しました"):
+    with pytest.raises(ValueError, match="利用上限"):
         await service.extract_receipt_data(img_bytes, "png")
 
 
@@ -452,3 +452,48 @@ async def test_extract_receipt_data_fallback_failure_tolerance(mocker):
     assert res is not None
     assert res.merchant_name == "Unregistered Store"
     assert res.total_amount_incl_tax == 2000
+
+
+def test_format_api_error_message():
+    """Verify that various Gemini API errors are formatted with friendly Japanese messages."""
+    service = GeminiOCRService()
+
+    # 1. Invalid API Key
+    err_key = APIError(
+        400,
+        {
+            "error": {
+                "message": "API_KEY_INVALID: API key not valid. Please pass a valid API key."
+            }
+        },
+    )
+    msg_key = service._format_api_error_message(err_key)
+    assert "Gemini API キーが無効です" in msg_key
+    assert "AI・システム設定" in msg_key
+
+    # 2. Quota / Rate limit (429)
+    err_429 = APIError(
+        429, {"error": {"message": "RESOURCE_EXHAUSTED: quota exceeded"}}
+    )
+    msg_429 = service._format_api_error_message(err_429)
+    assert "利用上限（クォータ／レート制限）に達しました" in msg_429
+
+    # 3. Permission Denied (403)
+    err_403 = APIError(403, {"error": {"message": "PERMISSION_DENIED"}})
+    msg_403 = service._format_api_error_message(err_403)
+    assert "アクセス権限が拒否されました" in msg_403
+
+    # 4. Model Not Found (404)
+    err_404 = APIError(404, {"error": {"message": "NOT_FOUND: model not found"}})
+    msg_404 = service._format_api_error_message(err_404)
+    assert "指定されたAIモデル" in msg_404
+
+    # 5. Server Error (500)
+    err_500 = APIError(500, {"error": {"message": "INTERNAL: backend failure"}})
+    msg_500 = service._format_api_error_message(err_500)
+    assert "Google Gemini サーバー側で一時的な障害が発生しています" in msg_500
+
+    # 6. Unknown fallback error
+    err_unknown = APIError(999, {"error": {"message": "Random error message"}})
+    msg_unknown = service._format_api_error_message(err_unknown)
+    assert "Gemini API エラー (Code: 999)" in msg_unknown

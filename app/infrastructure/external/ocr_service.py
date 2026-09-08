@@ -319,9 +319,11 @@ Extract the following fields into a valid JSON object matching the requested sch
             return self._validate_receipt(receipt)
 
         except APIError as e:
-            self.log.error("Gemini API Error", error=str(e))
-            err_msg = getattr(e, "message", None) or str(e)
-            raise ValueError(f"Gemini API エラーが発生しました: {err_msg}") from e
+            self.log.error(
+                "Gemini API Error", error=str(e), code=getattr(e, "code", None)
+            )
+            friendly_msg = self._format_api_error_message(e)
+            raise ValueError(friendly_msg) from e
         except ValueError as e:
             self.log.error("Validation/Config Error", error=str(e))
             raise e
@@ -397,6 +399,51 @@ Extract the following fields into a valid JSON object matching the requested sch
         result = response.text or ""
         self.log.info("call_gemini_fallback_success")
         return result
+
+    def _format_api_error_message(self, e: APIError) -> str:
+        """Gemini APIエラーをユーザーにとって分かりやすい日本語案内文に変換する"""
+        code = getattr(e, "code", None)
+        raw_msg = getattr(e, "message", None) or str(e)
+
+        if (
+            "API_KEY_INVALID" in raw_msg
+            or "API key not valid" in raw_msg
+            or (code == 400 and "API key" in raw_msg)
+        ):
+            return (
+                "⚠️ **Gemini API キーが無効です**\n\n"
+                "「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルに正しい Gemini API キーが設定されているかご確認ください。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if "RESOURCE_EXHAUSTED" in raw_msg or code == 429:
+            return (
+                "⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました**\n\n"
+                "しばらく待ってから再度お試しいただくか、Google AI Studio で利用枠をご確認ください。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if "PERMISSION_DENIED" in raw_msg or code == 403:
+            return (
+                "⚠️ **Gemini API へのアクセス権限が拒否されました**\n\n"
+                "APIキーの権限設定や有効化状態をご確認ください。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if "NOT_FOUND" in raw_msg or code == 404:
+            return (
+                f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません**\n\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+        if (
+            code in (500, 502, 503, 504)
+            or "INTERNAL" in raw_msg
+            or "UNAVAILABLE" in raw_msg
+        ):
+            return (
+                "⚠️ **Google Gemini サーバー側で一時的な障害が発生しています**\n\n"
+                "Google のサービス稼働状態をご確認の上、しばらく待ってから再度お試しください。\n"
+                f"(詳細エラー: `{raw_msg}`)"
+            )
+
+        return f"⚠️ **Gemini API エラー (Code: {code or '不明'})**\n\n{raw_msg}"
 
     def _clean_json_text(self, text: str) -> str:
         """Markdownコードブロックなどを安全に除去してJSON文字列を取り出す"""
