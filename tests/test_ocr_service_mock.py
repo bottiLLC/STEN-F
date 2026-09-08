@@ -329,3 +329,117 @@ async def test_extract_receipt_data_katakana_normalization_and_name_match(
     assert res.description == "Katakana Master"
     assert res.is_registered_merchant is True
     assert res.is_dictionary_matched is True
+
+
+@pytest.mark.asyncio
+async def test_extract_receipt_data_markdown_json_response(mocker):
+    """Ensure that Markdown wrapped JSON codeblocks are cleanly parsed."""
+    mock_system_settings = mocker.MagicMock()
+    mock_system_settings.ai_api_key = "test-api-key"
+
+    mock_master_service = mocker.MagicMock()
+    mock_master_service.get_system_settings = mocker.AsyncMock(
+        return_value=mock_system_settings
+    )
+    mock_master_service.get_counterparties = mocker.AsyncMock(return_value=[])
+    mock_master_service.get_accounts = mocker.AsyncMock(return_value=[])
+
+    class AsyncContextMock:
+        async def __aenter__(self):
+            return mock_master_service
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    from app.ui.di import DI
+
+    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+
+    # Mock response wrapped in ```json ... ```
+    mock_response = mocker.MagicMock()
+    mock_response.text = '```json\n{"merchant_name": "Markdown Store", "transaction_date": "2026-07-19", "total_amount_incl_tax": 4500}\n```'
+
+    mocker.patch(
+        "google.genai.models.AsyncModels.generate_content",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_response,
+    )
+
+    service = GeminiOCRService()
+    img_bytes = get_dummy_image_bytes()
+    res = await service.extract_receipt_data(img_bytes, "png")
+
+    assert res is not None
+    assert res.merchant_name == "Markdown Store"
+    assert res.total_amount_incl_tax == 4500
+
+
+@pytest.mark.asyncio
+async def test_extract_receipt_data_empty_file(mocker):
+    """Verify that empty file bytes raise a clear ValueError."""
+    service = GeminiOCRService()
+    with pytest.raises(ValueError, match="アップロードされたファイルが空です"):
+        await service.extract_receipt_data(b"", "png")
+
+
+@pytest.mark.asyncio
+async def test_extract_receipt_data_unsupported_file_type(mocker):
+    """Verify that unsupported file extensions raise a clear ValueError."""
+    service = GeminiOCRService()
+    with pytest.raises(ValueError, match="サポートされていないファイル形式です"):
+        await service.extract_receipt_data(b"dummy content", "docx")
+
+
+@pytest.mark.asyncio
+async def test_extract_receipt_data_fallback_failure_tolerance(mocker):
+    """Ensure that even if fallback account inference fails, OCR raw data is still returned."""
+    mock_system_settings = mocker.MagicMock()
+    mock_system_settings.ai_api_key = "test-api-key"
+
+    mock_master_service = mocker.MagicMock()
+    mock_master_service.get_system_settings = mocker.AsyncMock(
+        return_value=mock_system_settings
+    )
+    mock_master_service.get_counterparties = mocker.AsyncMock(return_value=[])
+    mock_master_service.get_accounts = mocker.AsyncMock(return_value=[])
+
+    class AsyncContextMock:
+        async def __aenter__(self):
+            return mock_master_service
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    from app.ui.di import DI
+
+    mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
+
+    # Step 1 succeeds, Step 3 throws error
+    mock_response_step1 = mocker.MagicMock()
+    mock_response_step1.text = '{"merchant_name": "Unregistered Store", "transaction_date": "2026-07-19", "total_amount_incl_tax": 2000}'
+
+    async def mock_generate(*args, **kwargs):
+        # First call is Step 1, second is Step 3
+        if (
+            "contents" in kwargs
+            and isinstance(kwargs["contents"], list)
+            and len(kwargs["contents"]) > 1
+        ):
+            return mock_response_step1
+        # Fallback call fails
+        raise APIError(500, {"error": {"message": "Inference server error"}})
+
+    mocker.patch(
+        "google.genai.models.AsyncModels.generate_content",
+        side_effect=mock_generate,
+    )
+
+    service = GeminiOCRService()
+    img_bytes = get_dummy_image_bytes()
+    res = await service.extract_receipt_data(
+        img_bytes, "png", account_list=["101: 現金", "201: 役員借入金"]
+    )
+
+    assert res is not None
+    assert res.merchant_name == "Unregistered Store"
+    assert res.total_amount_incl_tax == 2000

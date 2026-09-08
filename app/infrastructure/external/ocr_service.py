@@ -14,11 +14,13 @@
 
 import io
 import json
+import re
 import unicodedata
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 import fitz  # PyMuPDF
 from PIL import Image
+from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -29,6 +31,28 @@ from app.config import settings
 from app.domain.models.receipt import ReceiptData
 
 log = structlog.get_logger()
+
+
+class ReceiptExtractionSchema(BaseModel):
+    """
+    Gemini Structured Output 専用の領収書・証憑抽出スキーマ
+    """
+
+    merchant_name: Optional[str] = Field(
+        None, description="The name of the store or vendor. If illegible, use null."
+    )
+    transaction_date: Optional[str] = Field(
+        None,
+        description="The date of the transaction (Format: YYYY-MM-DD). If illegible, use null.",
+    )
+    total_amount_incl_tax: Optional[int] = Field(
+        None,
+        description="The total amount paid including tax (integer). If illegible, use null.",
+    )
+    invoice_registration_number: Optional[str] = Field(
+        None,
+        description="The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.",
+    )
 
 
 class GeminiOCRService:
@@ -45,7 +69,7 @@ class GeminiOCRService:
         file_type: str,
         account_list: list[str] | None = None,
         counterparty_list: list[str] | None = None,
-    ) -> Optional[ReceiptData]:
+    ) -> ReceiptData:
         # Include all function input parameters in log context, masking sensitive keys
         local_log = self.log.bind(
             file_type=file_type,
@@ -71,29 +95,39 @@ class GeminiOCRService:
         if not api_key:
             local_log.error("API Key not configured.")
             raise ValueError(
-                "システム設定画面からAI連携用のAPIキー（Gemini）を登録してください。"
+                "AI連携用のAPIキー（Gemini）が設定されていません。\n"
+                "「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または .env ファイルに GEMINI_API_KEY を登録してください。"
             )
 
-        # Determine MIME type first
-        mime_type = "image/jpeg"  # Default
+        if not file_bytes or len(file_bytes) == 0:
+            raise ValueError("アップロードされたファイルが空です。")
+
+        # Determine MIME type and preprocess
+        mime_type = "image/jpeg"
         if file_type.lower() == "pdf":
             try:
                 # PDFの場合は最初のページをPNG画像にレンダリングする
                 doc = fitz.open(stream=file_bytes, filetype="pdf")
                 if len(doc) > 0:
                     page = doc.load_page(0)
-                    pix = page.get_pixmap(dpi=200)
+                    pix = page.get_pixmap(dpi=200, alpha=False)
                     file_bytes = pix.tobytes("png")
                     mime_type = "image/png"
                 else:
-                    raise ValueError("PDF file is empty")
+                    raise ValueError("PDFファイルが空（0ページ）です。")
             except Exception as e:
-                self.log.error("PDF page rendering failed", error=str(e))
-                raise ValueError("PDFファイルの読み込みに失敗しました。") from e
-        elif file_type.lower() in ["png", "jpg", "jpeg"]:
+                self.log.error("PDF page rendering failed", error=str(e), exc_info=True)
+                raise ValueError(
+                    f"PDFファイルの読み込み・レンダリングに失敗しました: {str(e)}"
+                ) from e
+        elif file_type.lower() in ["png", "jpg", "jpeg", "webp"]:
             mime_type = f"image/{file_type.lower()}"
             if mime_type == "image/jpg":
                 mime_type = "image/jpeg"
+        else:
+            raise ValueError(
+                f"サポートされていないファイル形式です: {file_type} (対応形式: PDF, PNG, JPG, JPEG, WEBP)"
+            )
 
         # Optimize image size/DPI
         optimized_bytes, final_mime_type = self._optimize_image(file_bytes, mime_type)
@@ -111,13 +145,11 @@ Do not make any accounting inferences.
 If the merchant name matches or resembles one of these, use the EXACT name from this list for "merchant_name".
 {cp_list_str}
 
-Extract the following fields into a valid JSON object:
+Extract the following fields into a valid JSON object matching the requested schema:
 1. **merchant_name**: The name of the store or vendor. If illegible, use null.
 2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD). 
 3. **total_amount_incl_tax**: The total amount paid including tax (integer).
 4. **invoice_registration_number**: The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.
-
-Return ONLY the raw JSON object without markdown formatting.
 """
 
         client = genai.Client(api_key=api_key)
@@ -128,24 +160,33 @@ Return ONLY the raw JSON object without markdown formatting.
             )
 
             if not response_text:
-                raise ValueError("Empty response from Gemini")
+                raise ValueError("Gemini APIから応答が得られませんでした。")
 
-            data = json.loads(response_text)
-            # Safely create ReceiptData ignoring extra fields if LLM hallucinates them
+            cleaned_json = self._clean_json_text(response_text)
+            try:
+                data = json.loads(cleaned_json)
+            except json.JSONDecodeError as e:
+                self.log.error("JSON decode error", raw=response_text, error=str(e))
+                raise ValueError(
+                    f"AI解析結果のJSONパースに失敗しました: {str(e)}"
+                ) from e
+
+            # Create ReceiptData model
             receipt = ReceiptData(
-                **{k: v for k, v in data.items() if k in ReceiptData.model_fields}
+                merchant_name=data.get("merchant_name"),
+                transaction_date=data.get("transaction_date"),
+                total_amount_incl_tax=data.get("total_amount_incl_tax"),
+                invoice_registration_number=data.get("invoice_registration_number"),
             )
 
             # カタカナの全角正規化 (NFKC)
             if receipt.merchant_name:
                 receipt.merchant_name = unicodedata.normalize(
                     "NFKC", receipt.merchant_name
-                )
+                ).strip()
 
             # インボイス番号のクレンジング (T+13桁)
             if receipt.invoice_registration_number:
-                import re
-
                 match = re.search(r"(T\d{13})", receipt.invoice_registration_number)
                 receipt.invoice_registration_number = match.group(1) if match else None
 
@@ -194,11 +235,12 @@ Return ONLY the raw JSON object without markdown formatting.
                     receipt.is_dictionary_matched = True
                     return self._validate_receipt(receipt)
 
-                # Step 3: LLM Fallback Inference for unknown counterparties
-                acc_list_str = (
-                    chr(10).join(account_list) if account_list else "一覧なし"
-                )
-                sys_instruct_fallback = f"""
+                # Step 3: LLM Fallback Inference for unknown counterparties (Fault-tolerant)
+                try:
+                    acc_list_str = (
+                        chr(10).join(account_list) if account_list else "一覧なし"
+                    )
+                    sys_instruct_fallback = f"""
 あなたは免税事業者の経理担当です。
 先ほど、取引先『{receipt.merchant_name or "不明"}』で『{receipt.total_amount_incl_tax or 0}円』支払った。
 以下の【勘定科目一覧】の中から、適切な借方科目と貸方科目を推論し、JSON形式で返答してください。
@@ -221,31 +263,40 @@ Return ONLY the raw JSON object without markdown formatting.
   "description": "摘要文（例：〇〇代として）"
 }}
 """
-                fallback_response_text = await self._call_gemini_fallback(
-                    client, sys_instruct_fallback
-                )
+                    fallback_response_text = await self._call_gemini_fallback(
+                        client, sys_instruct_fallback
+                    )
 
-                if fallback_response_text:
-                    fallback_data = json.loads(fallback_response_text)
-                    accounts_db = await master_service.get_accounts()
+                    if fallback_response_text:
+                        fallback_clean = self._clean_json_text(fallback_response_text)
+                        fallback_data = json.loads(fallback_clean)
+                        accounts_db = await master_service.get_accounts()
 
-                    def find_acc_id(name):
-                        if not name:
+                        def find_acc_id(name):
+                            if not name:
+                                return None
+                            # Try exact match or find in code: name string
+                            for acc in accounts_db:
+                                if (
+                                    acc.name == name
+                                    or name in f"{acc.code}: {acc.name}"
+                                ):
+                                    return str(acc.id)
                             return None
-                        # Try exact match or find in code: name string
-                        for acc in accounts_db:
-                            if acc.name == name or name in f"{acc.code}: {acc.name}":
-                                return str(acc.id)
-                        return None
 
-                    receipt.inferred_debit_account_id = find_acc_id(
-                        fallback_data.get("debit_account")
-                    )
-                    receipt.inferred_credit_account_id = find_acc_id(
-                        fallback_data.get("credit_account")
-                    )
-                    receipt.description = fallback_data.get(
-                        "description", receipt.merchant_name
+                        receipt.inferred_debit_account_id = find_acc_id(
+                            fallback_data.get("debit_account")
+                        )
+                        receipt.inferred_credit_account_id = find_acc_id(
+                            fallback_data.get("credit_account")
+                        )
+                        receipt.description = fallback_data.get(
+                            "description", receipt.merchant_name
+                        )
+                except Exception as fb_err:
+                    self.log.warning(
+                        "Fallback account inference failed (continuing with raw OCR)",
+                        error=str(fb_err),
                     )
 
             return self._validate_receipt(receipt)
@@ -255,11 +306,13 @@ Return ONLY the raw JSON object without markdown formatting.
             err_msg = getattr(e, "message", None) or str(e)
             raise ValueError(f"Gemini API エラーが発生しました: {err_msg}") from e
         except ValueError as e:
-            self.log.error("Configuration Error", error=str(e))
+            self.log.error("Validation/Config Error", error=str(e))
             raise e
         except Exception as e:
-            self.log.exception("Failed to extract receipt data", error=str(e))
-            return None
+            self.log.exception("Unexpected OCR extraction failure", error=str(e))
+            raise ValueError(
+                f"AI証憑解析処理中に予期せぬエラーが発生しました: {str(e)}"
+            ) from e
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -283,7 +336,7 @@ Return ONLY the raw JSON object without markdown formatting.
 
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=ReceiptData,
+            response_schema=ReceiptExtractionSchema,
             temperature=0.0,
         )
 
@@ -320,6 +373,17 @@ Return ONLY the raw JSON object without markdown formatting.
         result = response.text or ""
         self.log.info("call_gemini_fallback_success")
         return result
+
+    def _clean_json_text(self, text: str) -> str:
+        """Markdownコードブロックなどを安全に除去してJSON文字列を取り出す"""
+        clean = text.strip()
+        if clean.startswith("```json"):
+            clean = clean[7:]
+        elif clean.startswith("```"):
+            clean = clean[3:]
+        if clean.endswith("```"):
+            clean = clean[:-3]
+        return clean.strip()
 
     def _normalize_name(self, name: str) -> str:
         """
@@ -454,8 +518,6 @@ Return ONLY the raw JSON object without markdown formatting.
 
         # 3. Invoice Number Validation
         if data.invoice_registration_number:
-            import re
-
             # Extract pattern T + 13 digits from the string
             match = re.search(r"(T\d{13})", data.invoice_registration_number)
             if match:
@@ -475,7 +537,7 @@ Return ONLY the raw JSON object without markdown formatting.
 
     def _optimize_image(self, file_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
         """
-        PDFはすでに変換済みのため画像のみ。長辺2000px以内、DPIが大きすぎる場合はリサイズして軽量化する。
+        画像の長辺が大きすぎる場合やPNGを高効率なJPEGに圧縮して軽量化する。
         """
         try:
             with Image.open(io.BytesIO(file_bytes)) as img:
@@ -487,11 +549,14 @@ Return ONLY the raw JSON object without markdown formatting.
                     needs_compression = True
                 elif max(img.size) > max_pixels:
                     needs_compression = True
+                elif mime_type == "image/png":
+                    # PNGはバイト数が膨らみやすいためJPEG変換で軽量化
+                    needs_compression = True
 
                 if needs_compression:
                     img.thumbnail((max_pixels, max_pixels), Image.Resampling.LANCZOS)
                     processed_img: Any = (
-                        img.convert("RGB") if img.mode in ("RGBA", "P") else img
+                        img.convert("RGB") if img.mode != "RGB" else img
                     )
                     output = io.BytesIO()
                     processed_img.save(
