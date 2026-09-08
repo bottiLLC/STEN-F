@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
 
     # External APIs
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_DEFAULT_MODEL: str = "gemini-3.5-flash-lite"
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_DEFAULT_MODEL: str = "gpt-5.6-terra"
     OPENAI_REASONING_EFFORT: str = "high"

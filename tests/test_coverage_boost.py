@@ -356,3 +356,44 @@ def test_ui_journal_entry_with_ocr_preset():
         clear_btn.click()
         at.run()
         assert not at.exception
+
+
+@pytest.mark.asyncio
+async def test_master_service_system_settings(container):
+    """Test SystemSettings CRUD in MasterService."""
+    from app.domain.models.system import SystemSettings
+
+    async with container.master_service_scope() as ms:
+        # Get existing or default
+        settings_obj = await ms.get_system_settings()
+        assert settings_obj is not None
+
+        # Save update
+        new_settings = SystemSettings(
+            id=settings_obj.id,
+            ai_api_key="AIzaSyTestApiKey12345",
+            backup_path="/custom/backup/path",
+        )
+        saved = await ms.save_system_settings(new_settings)
+        assert saved.ai_api_key == "AIzaSyTestApiKey12345"
+        assert saved.backup_path == "/custom/backup/path"
+
+        # Re-fetch
+        fetched = await ms.get_system_settings()
+        assert fetched.ai_api_key == "AIzaSyTestApiKey12345"
+        assert fetched.backup_path == "/custom/backup/path"
+
+
+def test_ui_master_management_system_settings_tab():
+    """Verify 7_master_management.py AI and System Settings tab renders and submits."""
+    at = AppTest.from_file("app/ui/app_pages/7_master_management.py", default_timeout=15)
+    at.run()
+    assert not at.exception
+    assert len(at.tabs) >= 7
+
+    # Find system settings submit button and trigger
+    sys_btn = next((b for b in at.button if "設定を保存" in b.label), None)
+    if sys_btn:
+        sys_btn.click()
+        at.run()
+        assert not at.exception

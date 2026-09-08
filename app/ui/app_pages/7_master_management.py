@@ -23,6 +23,7 @@ from app.domain.models.account import Account, AccountType
 from app.domain.models.corporation import Corporation
 from app.domain.models.counterparty import Counterparty
 from app.domain.models.fiscal_year import FiscalYear
+from app.domain.models.system import SystemSettings
 from app.ui.async_helper import run_async
 from app.ui.di import DI
 from app.ui.styles import apply_accounting_styles
@@ -32,10 +33,10 @@ apply_accounting_styles()
 
 st.header("マスタ・システム管理", divider="blue")
 st.caption(
-    "事業者情報、会計年度・決算締め処理、勘定科目、取引先、よく使う摘要、バックアップを管理します。"
+    "事業者情報、会計年度・決算締め処理、勘定科目、取引先、よく使う摘要、バックアップ、AI連携設定を管理します。"
 )
 
-tab_corp, tab_fy, tab_acc, tab_cp, tab_abs, tab_backup = st.tabs(
+tab_corp, tab_fy, tab_acc, tab_cp, tab_abs, tab_backup, tab_sys = st.tabs(
     [
         "🏢 自社情報",
         "📅 会計年度・年度締め",
@@ -43,6 +44,7 @@ tab_corp, tab_fy, tab_acc, tab_cp, tab_abs, tab_backup = st.tabs(
         "🤝 取引先",
         "💬 よく使う摘要",
         "💾 バックアップ",
+        "⚙️ AI・システム設定",
     ]
 )
 
@@ -416,3 +418,45 @@ with tab_backup:
         "電子帳簿保存法に対応して蓄積された領収書・請求書ファイルは `storage/` フォルダに保管されています。"
         "データ容量が大きくなるため、上記の DB バックアップと併せて `storage/` フォルダごと外部ストレージやクラウドへ定期的にコピー・同期保存してください。"
     )
+
+# ==============================================================================
+# 7. System & AI Settings Tab
+# ==============================================================================
+with tab_sys:
+    st.subheader("AI連携 & システム環境設定")
+    st.caption("Google Gemini API 等のAIモデル連携設定を管理します。")
+
+    async def fetch_sys_settings():
+        async with DI.get_master_service() as service:
+            return await service.get_system_settings()
+
+    sys_cfg = run_async(fetch_sys_settings())
+
+    with st.form("system_settings_form"):
+        current_key = sys_cfg.ai_api_key or settings.GEMINI_API_KEY or settings.OPENAI_API_KEY or ""
+        ai_key_input = st.text_input(
+            "Gemini API キー (AI OCR / 科目自動推論用)",
+            value=current_key,
+            type="password",
+            help="Google AI Studioで取得したAPIキーを入力します。未設定の場合は .env の GEMINI_API_KEY が参照されます。",
+        )
+        st.caption(f"🤖 現在の使用モデル: `{settings.GEMINI_DEFAULT_MODEL}`")
+
+        if st.form_submit_button("💾 設定を保存する", type="primary", icon=":material/save:"):
+            new_sys_settings = SystemSettings(
+                id=sys_cfg.id,
+                ai_api_key=ai_key_input.strip() if ai_key_input.strip() else None,
+                backup_path=sys_cfg.backup_path,
+            )
+
+            async def save_sys():
+                async with DI.get_master_service() as service:
+                    await service.save_system_settings(new_sys_settings)
+
+            try:
+                run_async(save_sys())
+                st.toast("AI・システム設定を保存しました！", icon="✅")
+                st.rerun()
+            except Exception as e:
+                log.error("Failed to save system settings", error=str(e), exc_info=True)
+                st.error(f"システム設定の保存中にエラーが発生しました: {e}")

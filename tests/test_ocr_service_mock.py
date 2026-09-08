@@ -1,9 +1,9 @@
-import pytest
 import io
+import pytest
 from PIL import Image
 from reportlab.pdfgen import canvas
-from openai import APIError
-from app.infrastructure.external.ocr_service import OpenAIOCRService
+from google.genai.errors import APIError
+from app.infrastructure.external.ocr_service import GeminiOCRService, OpenAIOCRService
 
 
 def get_dummy_image_bytes(width=100, height=100):
@@ -50,20 +50,18 @@ async def test_extract_receipt_data_image_success(mocker):
 
     mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
 
-    # Mock chat completions
-    mock_choice = mocker.MagicMock()
-    mock_choice.message.content = '{"merchant_name": "Mock Store", "transaction_date": "2026-07-19", "total_amount_incl_tax": 1500}'
+    # Mock Gemini client.aio.models.generate_content
     mock_response = mocker.MagicMock()
-    mock_response.choices = [mock_choice]
+    mock_response.text = '{"merchant_name": "Mock Store", "transaction_date": "2026-07-19", "total_amount_incl_tax": 1500}'
 
     mocker.patch(
-        "openai.resources.chat.completions.AsyncCompletions.create",
+        "google.genai.models.AsyncModels.generate_content",
         new_callable=mocker.AsyncMock,
         return_value=mock_response,
     )
 
     # Run
-    service = OpenAIOCRService()
+    service = GeminiOCRService()
     img_bytes = get_dummy_image_bytes()
     res = await service.extract_receipt_data(img_bytes, "png")
 
@@ -100,20 +98,17 @@ async def test_extract_receipt_data_pdf_success(mocker):
 
     mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
 
-    # Mock chat completions
-    mock_choice = mocker.MagicMock()
-    mock_choice.message.content = '{"merchant_name": "PDF Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 9800}'
     mock_response = mocker.MagicMock()
-    mock_response.choices = [mock_choice]
+    mock_response.text = '{"merchant_name": "PDF Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 9800}'
 
     mocker.patch(
-        "openai.resources.chat.completions.AsyncCompletions.create",
+        "google.genai.models.AsyncModels.generate_content",
         new_callable=mocker.AsyncMock,
         return_value=mock_response,
     )
 
     # Run
-    service = OpenAIOCRService()
+    service = GeminiOCRService()
     pdf_bytes = get_dummy_pdf_bytes()
     res = await service.extract_receipt_data(pdf_bytes, "pdf")
 
@@ -149,13 +144,11 @@ async def test_extract_receipt_data_large_image_resize(mocker):
 
     mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
 
-    mock_choice = mocker.MagicMock()
-    mock_choice.message.content = '{"merchant_name": "Large Img Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 3000}'
     mock_response = mocker.MagicMock()
-    mock_response.choices = [mock_choice]
+    mock_response.text = '{"merchant_name": "Large Img Vendor", "transaction_date": "2026-07-19", "total_amount_incl_tax": 3000}'
 
     mocker.patch(
-        "openai.resources.chat.completions.AsyncCompletions.create",
+        "google.genai.models.AsyncModels.generate_content",
         new_callable=mocker.AsyncMock,
         return_value=mock_response,
     )
@@ -163,7 +156,7 @@ async def test_extract_receipt_data_large_image_resize(mocker):
     # Generate 2200x2200 large image to trigger resize/compression branch
     large_img_bytes = get_dummy_image_bytes(2200, 2200)
 
-    service = OpenAIOCRService()
+    service = GeminiOCRService()
     res = await service.extract_receipt_data(large_img_bytes, "jpg")
 
     assert res is not None
@@ -192,21 +185,19 @@ async def test_extract_receipt_data_api_error(mocker):
 
     mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
 
-    # Mock chat completions to throw APIError
-    # APIError constructor parameters: message, request, body
-    mock_request = mocker.MagicMock()
-    err = APIError("API Rate Limit Exceeded", mock_request, body=None)
+    # Mock APIError with message
+    err = APIError(429, {"error": {"message": "API Rate Limit Exceeded"}})
 
     mocker.patch(
-        "openai.resources.chat.completions.AsyncCompletions.create",
+        "google.genai.models.AsyncModels.generate_content",
         new_callable=mocker.AsyncMock,
         side_effect=err,
     )
 
-    service = OpenAIOCRService()
+    service = GeminiOCRService()
     img_bytes = get_dummy_image_bytes()
 
-    with pytest.raises(ValueError, match="OpenAI API エラーが発生しました"):
+    with pytest.raises(ValueError, match="Gemini API エラーが発生しました"):
         await service.extract_receipt_data(img_bytes, "png")
 
 
@@ -247,21 +238,19 @@ async def test_extract_receipt_data_invoice_match(mocker):
     mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
 
     # OCR returns matched invoice number but a different merchant name
-    mock_choice = mocker.MagicMock()
-    mock_choice.message.content = (
+    mock_response = mocker.MagicMock()
+    mock_response.text = (
         '{"merchant_name": "OCR Vendor", "transaction_date": "2026-07-19", '
         '"total_amount_incl_tax": 1500, "invoice_registration_number": "T1234567890123"}'
     )
-    mock_response = mocker.MagicMock()
-    mock_response.choices = [mock_choice]
 
     mocker.patch(
-        "openai.resources.chat.completions.AsyncCompletions.create",
+        "google.genai.models.AsyncModels.generate_content",
         new_callable=mocker.AsyncMock,
         return_value=mock_response,
     )
 
-    service = OpenAIOCRService()
+    service = GeminiOCRService()
     img_bytes = get_dummy_image_bytes()
     res = await service.extract_receipt_data(img_bytes, "png")
 
@@ -315,21 +304,19 @@ async def test_extract_receipt_data_katakana_normalization_and_name_match(
     mocker.patch.object(DI, "get_master_service", return_value=AsyncContextMock())
 
     # OCR returns half-width Katakana name
-    mock_choice = mocker.MagicMock()
-    mock_choice.message.content = (
+    mock_response = mocker.MagicMock()
+    mock_response.text = (
         '{"merchant_name": "ｽｰﾊﾟｰﾃｽﾄ", "transaction_date": "2026-07-19", '
         '"total_amount_incl_tax": 1200}'
     )
-    mock_response = mocker.MagicMock()
-    mock_response.choices = [mock_choice]
 
     mocker.patch(
-        "openai.resources.chat.completions.AsyncCompletions.create",
+        "google.genai.models.AsyncModels.generate_content",
         new_callable=mocker.AsyncMock,
         return_value=mock_response,
     )
 
-    service = OpenAIOCRService()
+    service = OpenAIOCRService()  # Test alias as well
     img_bytes = get_dummy_image_bytes()
     res = await service.extract_receipt_data(img_bytes, "png")
 

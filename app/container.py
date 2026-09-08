@@ -22,7 +22,7 @@ from app.infrastructure.repositories.ledger_repository_impl import (
 from app.infrastructure.repositories.master_repository_impl import (
     SQLAlchemyMasterRepository,
 )
-from app.infrastructure.external.ocr_service import OpenAIOCRService
+from app.infrastructure.external.ocr_service import GeminiOCRService
 from app.infrastructure.external.file_service import LocalFileService
 from app.application.services.ledger_service import LedgerService
 from app.application.services.master_service import MasterService
@@ -90,8 +90,8 @@ class Container:
             service = FiscalYearService(master_service, ledger_service, journal_service)
             yield service
 
-    def get_ocr_service(self) -> OpenAIOCRService:
-        return OpenAIOCRService()
+    def get_ocr_service(self) -> GeminiOCRService:
+        return GeminiOCRService()
 
     def get_file_service(self) -> LocalFileService:
         return LocalFileService()

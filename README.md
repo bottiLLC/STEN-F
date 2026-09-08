@@ -73,12 +73,11 @@ uv sync
 # データベース接続文字列（SQLite）
 DATABASE_URL=sqlite+aiosqlite:///bookkeeping.db
 
-# OpenAI API Key（AI OCR 機能を利用する場合に設定）
-OPENAI_API_KEY=sk-proj-...
+# Gemini API Key（AI OCR / 自動仕訳推論機能を利用する場合に設定）
+GEMINI_API_KEY=AIzaSy...
 
-# OpenAI モデル設定（用途や予算に応じて変更可能）
-OPENAI_DEFAULT_MODEL=gpt-5.6-terra
-OPENAI_REASONING_EFFORT=high
+# Gemini モデル設定（Google公式最新モデルコード）
+GEMINI_DEFAULT_MODEL=gemini-3.5-flash-lite
 ```
 
 ### 4. アプリケーションの起動
@@ -155,7 +154,7 @@ STEN-F はローカルファーストで動作し、すべてのデータはプ�
 | :--- | :--- | :--- |
 | **① データベース** | `data/sten_f.db`<br>*(※ `-wal`, `-shm` が存在する場合はそれらも含む)* | すべての仕訳データ、勘定科目、取引先、自社情報、会計年度 |
 | **② 証憑ストレージ** | `storage/` フォルダ | 仕訳に紐付けられた領収書・請求書の PDF および画像ファイル |
-| **③ 設定ファイル** | `.env` | OpenAI API キーなどの環境設定 |
+| **③ 設定ファイル** | `.env` | Gemini API キーなどの環境設定 |
 
 ---
 
@@ -260,10 +259,10 @@ app/
 │   ├── constants/              # 会計定数・税率定義
 │   ├── interfaces/             # リポジトリ抽象インターフェース
 │   ├── models/                 # 仕訳・勘定科目・年度・領収書ドメインモデル
-│   └── prompts/                # OpenAI OCR 推論プロンプト
+│   └── prompts/                # AI OCR 推論プロンプト
 ├── infrastructure/             # インフラ層 (外部サービス、DB、リポジトリ具象実装)
 │   ├── db/                     # SQLAlchemy ORM モデル、セッション管理
-│   ├── external/               # OpenAI OCR, PDF 生成, バックアップ, ファイル保存
+│   ├── external/               # Gemini OCR, PDF 生成, バックアップ, ファイル保存
 │   └── repositories/           # データアクセス具象実装
 ├── application/                # アプリケーションサービス層 (ユースケース)
 │   └── services/               # 仕訳・元帳・マスタ・決算サービス

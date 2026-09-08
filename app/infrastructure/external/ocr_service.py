@@ -12,28 +12,32 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import io
-import base64
-from typing import Optional, Any
-from PIL import Image
-import fitz  # PyMuPDF
+import json
+import unicodedata
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Optional
+import fitz  # PyMuPDF
+from PIL import Image
+from google import genai
+from google.genai import types
+from google.genai.errors import APIError
 import structlog
-from openai import AsyncOpenAI, APIError
-from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import settings
-
-# Re-using the Pydantic model for internal data transfer
 from app.domain.models.receipt import ReceiptData
 
 log = structlog.get_logger()
 
 
-class OpenAIOCRService:
+class GeminiOCRService:
+    """
+    Google Gemini API (gemini-3.5-flash-lite) を利用した領収書・証憑OCRおよび仕訳推論サービス。
+    """
+
     def __init__(self):
-        self.log = log.bind(service="OpenAIOCRService")
+        self.log = log.bind(service="GeminiOCRService")
 
     async def extract_receipt_data(
         self,
@@ -59,7 +63,7 @@ class OpenAIOCRService:
 
         # Fallback to config settings (which reads from .env)
         if not api_key:
-            api_key = settings.OPENAI_API_KEY
+            api_key = settings.GEMINI_API_KEY or settings.OPENAI_API_KEY
 
         masked_api_key = api_key[:8] + "..." if api_key else None
         local_log = local_log.bind(api_key=masked_api_key)
@@ -67,7 +71,7 @@ class OpenAIOCRService:
         if not api_key:
             local_log.error("API Key not configured.")
             raise ValueError(
-                "システム設定画面からAI連携用のAPIキー（OpenAI）を登録してください。"
+                "システム設定画面からAI連携用のAPIキー（Gemini）を登録してください。"
             )
 
         # Determine MIME type first
@@ -93,7 +97,6 @@ class OpenAIOCRService:
 
         # Optimize image size/DPI
         optimized_bytes, final_mime_type = self._optimize_image(file_bytes, mime_type)
-        base64_image = base64.b64encode(optimized_bytes).decode("utf-8")
 
         # Format counterparty list for prompt
         cp_list_str = ""
@@ -117,15 +120,15 @@ Extract the following fields into a valid JSON object:
 Return ONLY the raw JSON object without markdown formatting.
 """
 
-        client = AsyncOpenAI(api_key=api_key)
+        client = genai.Client(api_key=api_key)
         try:
-            # Step 1: Raw Extraction
-            response_text = await self._call_openai_api(
-                client, sys_instruct, base64_image, final_mime_type
+            # Step 1: Raw Extraction via Gemini
+            response_text = await self._call_gemini_api(
+                client, sys_instruct, optimized_bytes, final_mime_type
             )
 
             if not response_text:
-                raise ValueError("Empty response from OpenAI")
+                raise ValueError("Empty response from Gemini")
 
             data = json.loads(response_text)
             # Safely create ReceiptData ignoring extra fields if LLM hallucinates them
@@ -134,8 +137,6 @@ Return ONLY the raw JSON object without markdown formatting.
             )
 
             # カタカナの全角正規化 (NFKC)
-            import unicodedata
-
             if receipt.merchant_name:
                 receipt.merchant_name = unicodedata.normalize(
                     "NFKC", receipt.merchant_name
@@ -220,7 +221,7 @@ Return ONLY the raw JSON object without markdown formatting.
   "description": "摘要文（例：〇〇代として）"
 }}
 """
-                fallback_response_text = await self._call_openai_fallback(
+                fallback_response_text = await self._call_gemini_fallback(
                     client, sys_instruct_fallback
                 )
 
@@ -250,8 +251,9 @@ Return ONLY the raw JSON object without markdown formatting.
             return self._validate_receipt(receipt)
 
         except APIError as e:
-            self.log.error("OpenAI API Error", error=str(e))
-            raise ValueError(f"OpenAI API エラーが発生しました: {e.message}") from e
+            self.log.error("Gemini API Error", error=str(e))
+            err_msg = getattr(e, "message", None) or str(e)
+            raise ValueError(f"Gemini API エラーが発生しました: {err_msg}") from e
         except ValueError as e:
             self.log.error("Configuration Error", error=str(e))
             raise e
@@ -264,43 +266,34 @@ Return ONLY the raw JSON object without markdown formatting.
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    async def _call_openai_api(
-        self, client: AsyncOpenAI, sys_instruct: str, base64_image: str, mime_type: str
+    async def _call_gemini_api(
+        self,
+        client: genai.Client,
+        sys_instruct: str,
+        image_bytes: bytes,
+        mime_type: str,
     ) -> str:
-        from app.config import settings
+        model = settings.GEMINI_DEFAULT_MODEL
+        self.log.info("call_gemini_api_start", model=model)
 
-        model = settings.OPENAI_DEFAULT_MODEL
-        effort = settings.OPENAI_REASONING_EFFORT
+        contents: list[Any] = [
+            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            types.Part.from_text(text=sys_instruct),
+        ]
 
-        self.log.info("call_openai_api_start", model=model, reasoning_effort=effort)
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ReceiptData,
+            temperature=0.0,
+        )
 
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": sys_instruct},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{mime_type};base64,{base64_image}"
-                            },
-                        },
-                    ],
-                }
-            ],
-            "response_format": {"type": "json_object"},
-        }
-
-        if model.startswith("o") or "5.6" in model:
-            payload["reasoning_effort"] = effort
-        else:
-            payload["temperature"] = 0.0
-
-        response = await client.chat.completions.create(**payload)
-        result = response.choices[0].message.content or ""
-        self.log.info("call_openai_api_success")
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+        result = response.text or ""
+        self.log.info("call_gemini_api_success")
         return result
 
     @retry(
@@ -308,32 +301,24 @@ Return ONLY the raw JSON object without markdown formatting.
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    async def _call_openai_fallback(
-        self, client: AsyncOpenAI, sys_instruct_fallback: str
+    async def _call_gemini_fallback(
+        self, client: genai.Client, sys_instruct_fallback: str
     ) -> str:
-        from app.config import settings
+        model = settings.GEMINI_DEFAULT_MODEL
+        self.log.info("call_gemini_fallback_start", model=model)
 
-        model = settings.OPENAI_DEFAULT_MODEL
-        effort = settings.OPENAI_REASONING_EFFORT
-
-        self.log.info(
-            "call_openai_fallback_start", model=model, reasoning_effort=effort
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.0,
         )
 
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": [{"role": "user", "content": sys_instruct_fallback}],
-            "response_format": {"type": "json_object"},
-        }
-
-        if model.startswith("o") or "5.6" in model:
-            payload["reasoning_effort"] = effort
-        else:
-            payload["temperature"] = 0.0
-
-        response = await client.chat.completions.create(**payload)
-        result = response.choices[0].message.content or ""
-        self.log.info("call_openai_fallback_success")
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=sys_instruct_fallback,
+            config=config,
+        )
+        result = response.text or ""
+        self.log.info("call_gemini_fallback_success")
         return result
 
     def _normalize_name(self, name: str) -> str:
@@ -346,15 +331,12 @@ Return ONLY the raw JSON object without markdown formatting.
         if not name:
             return ""
 
-        import unicodedata
-
         name = unicodedata.normalize("NFKC", name)
 
         # 2. Remove spaces
         name = name.replace(" ", "").replace("　", "")
 
-        # 2. Remove corporate statuses (Common ones)
-        # Order matters: longer strings first to avoid partial replacements
+        # 3. Remove corporate statuses (Common ones)
         statuses = [
             "株式会社",
             "有限会社",
@@ -398,7 +380,6 @@ Return ONLY the raw JSON object without markdown formatting.
         messages = []
 
         # 1. Math Validation
-        # Check Total Tax vs Breakdown Sum
         calc_total_tax = 0
         calc_total_excl = 0
 
@@ -525,3 +506,7 @@ Return ONLY the raw JSON object without markdown formatting.
                 "Image optimization failed, sending raw bytes", error=str(e)
             )
             return file_bytes, mime_type
+
+
+# Backward compatibility alias
+OpenAIOCRService = GeminiOCRService

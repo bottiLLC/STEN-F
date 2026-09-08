@@ -12,13 +12,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from app.infrastructure.external.ocr_service import OpenAIOCRService
+from app.infrastructure.external.ocr_service import GeminiOCRService
 from app.domain.models.receipt import ReceiptData, TaxBreakdownItem
 
 
 class TestOCRValidation:
     def setup_method(self):
-        self.service = OpenAIOCRService()
+        self.service = GeminiOCRService()
 
     def test_valid_receipt(self):
         # 1000 + 100 (10%) = 1100
