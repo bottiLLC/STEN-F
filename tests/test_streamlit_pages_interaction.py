@@ -165,6 +165,12 @@ def test_journal_history_page_interactions():
         at.run()
         assert not at.exception
 
+    # Clear filters
+    if len(at.text_input) >= 1:
+        at.text_input[0].input("")
+        at.run()
+        assert not at.exception
+
 
 def test_general_ledger_page_interactions():
     """Verify that 3_general_ledger.py page renders account summary and ledger table."""

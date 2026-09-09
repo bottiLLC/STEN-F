@@ -14,10 +14,12 @@
 
 import os
 from datetime import date
+from typing import Any, Dict, List, Optional
 import pandas as pd
 import streamlit as st
 import structlog
 
+from app.domain.models.transaction import Transaction, TransactionLine
 from app.ui.async_helper import run_async
 from app.ui.di import DI
 from app.ui.styles import apply_accounting_styles
@@ -27,21 +29,36 @@ apply_accounting_styles()
 
 st.header("仕訳帳 (General Journal)", divider="blue")
 st.caption(
-    "すべての取引が日付順に記録された複式簿記の主要帳簿です。検索・証憑確認・CSV出力が行えます。"
+    "すべての取引が日付順に記録された複式簿記の主要帳簿です。検索・証憑確認・編集・CSV出力が行えます。"
 )
 
 
-# --- Fetch Fiscal Years for Date Defaults ---
-async def fetch_fiscal_years_and_accounts():
+# --- Fetch Initial Data (Fiscal Years, Accounts, Abstracts) ---
+async def fetch_page_init_data():
     async with DI.get_master_service() as service:
         fys = await service.get_fiscal_years()
         open_fy = next((f for f in fys if f.status == "OPEN"), None)
         accounts = await service.get_accounts()
-        return open_fy, fys, accounts
+        abstracts = await service.get_abstracts()
+        return open_fy, fys, accounts, abstracts
 
 
-open_fy, all_fys, accounts = run_async(fetch_fiscal_years_and_accounts())
-account_map = {a.id: f"{a.code}: {a.name}" for a in accounts}
+open_fy, all_fys, accounts, abstracts = run_async(fetch_page_init_data())
+account_map: Dict[int, str] = {a.id: f"{a.code}: {a.name}" for a in accounts}
+
+# Account options sorted by code
+account_labels: List[str] = [""] + [
+    f"{a.code}: {a.name}" for a in sorted(accounts, key=lambda x: int(x.code))
+]
+account_options: Dict[str, str] = {
+    f"{a.code}: {a.name}": str(a.id)
+    for a in sorted(accounts, key=lambda x: int(x.code))
+}
+account_options[""] = ""
+
+abstract_options: List[str] = [""] + sorted(
+    list(set(ab.text for ab in abstracts if ab.text))
+)
 
 default_start = open_fy.start_date if open_fy else date(date.today().year, 1, 1)
 default_end = open_fy.end_date if open_fy else date(date.today().year, 12, 31)
@@ -190,6 +207,9 @@ if entries:
             row_to_entry[len(rows) - 1] = e
 
     df = pd.DataFrame(rows)
+    st.caption(
+        "💡 行をクリックすると、下に振替伝票形式で詳細が表示され、直接編集・更新が行えます。"
+    )
     selection_event = st.dataframe(
         df,
         column_config={
@@ -213,24 +233,26 @@ if entries:
         use_container_width=True,
     )
 
-    # Determine selected entry from row selection checkbox
-    selected_entry = None
+    # Determine selected entry from row selection
+    selected_entry: Optional[Transaction] = None
     selection_obj = getattr(selection_event, "selection", None)
     if selection_obj and hasattr(selection_obj, "rows") and selection_obj.rows:
         selected_row_idx = selection_obj.rows[0]
         if isinstance(selected_row_idx, int) and selected_row_idx in row_to_entry:
             selected_entry = row_to_entry[selected_row_idx]
 
-    # --- Actions when row is selected ---
+    # --- Actions & Edit Form when row is selected ---
     if selected_entry:
         st.markdown("---")
         with st.container(border=True):
-            st.markdown(
-                f"### 🎯 選択仕訳の詳細: `ID: {selected_entry.id}` ({selected_entry.date} / {selected_entry.description or '摘要なし'})"
+            st.subheader(f"📝 選択仕訳の詳細・編集 (ID: {selected_entry.id})")
+            st.caption(
+                "仕訳の内容（日付・摘要・取引先・借方/貸方明細）を直接修正して更新保存できます。"
             )
-            col_action1, col_action2 = st.columns([3, 2])
 
-            with col_action1:
+            # 1. 証憑ダウンロード & 削除ボタン
+            col_act_left, col_act_right = st.columns([3, 2])
+            with col_act_left:
                 if selected_entry.evidence_path and os.path.exists(
                     selected_entry.evidence_path
                 ):
@@ -238,21 +260,25 @@ if entries:
                         file_data = f.read()
                     file_name = os.path.basename(selected_entry.evidence_path)
                     st.download_button(
-                        label=f"📥 証憑ファイル ({file_name}) をダウンロード",
+                        label=f"📥 添付証憑 ({file_name}) をダウンロード",
                         data=file_data,
                         file_name=file_name,
-                        type="primary",
+                        type="secondary",
                         icon=":material/download:",
+                        key=f"dl_evidence_{selected_entry.id}",
                     )
                 elif selected_entry.evidence_path:
                     st.warning("⚠️ 証憑ファイルがストレージ上に見つかりません。")
                 else:
                     st.caption("※ この仕訳に添付された証憑はありません。")
 
-            with col_action2:
+            with col_act_right:
                 if not selected_entry.is_deleted:
                     if st.button(
-                        "この仕訳を削除する", type="secondary", icon=":material/delete:"
+                        "この仕訳を削除する",
+                        type="secondary",
+                        icon=":material/delete:",
+                        key=f"del_tx_btn_{selected_entry.id}",
                     ):
 
                         async def delete_selected_tx():
@@ -260,8 +286,309 @@ if entries:
                                 await j_service.delete_entry(selected_entry.id)
 
                         run_async(delete_selected_tx())
-                        st.toast("仕訳を削除しました（論理削除）。", icon="🗑️")
+                        st.toast(
+                            f"仕訳 (ID: {selected_entry.id}) を削除しました。", icon="🗑️"
+                        )
                         st.rerun()
+
+            st.markdown("---")
+
+            # 2. 振替伝票形式の編集フォーム (Step 2: 振替伝票 相当)
+            # Prepare initial lines from selected entry
+            debit_lines = [line for line in selected_entry.lines if line.debit > 0]
+            credit_lines = [line for line in selected_entry.lines if line.credit > 0]
+            initial_line_count = max(len(debit_lines), len(credit_lines), 1)
+
+            default_edit_lines = []
+            for i in range(initial_line_count):
+                d_line = debit_lines[i] if i < len(debit_lines) else None
+                c_line = credit_lines[i] if i < len(credit_lines) else None
+                d_acc = account_map.get(d_line.account_id, "") if d_line else ""
+                c_acc = account_map.get(c_line.account_id, "") if c_line else ""
+                default_edit_lines.append(
+                    {
+                        "debit_acc": d_acc,
+                        "debit_amt": d_line.debit if d_line else 0,
+                        "credit_acc": c_acc,
+                        "credit_amt": c_line.credit if c_line else 0,
+                    }
+                )
+
+            # Manage line count state
+            line_count_key = f"edit_line_count_{selected_entry.id}"
+            if line_count_key not in st.session_state:
+                st.session_state[line_count_key] = len(default_edit_lines)
+
+            # Transaction Header Info
+            col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 2, 2])
+            with col_h1:
+                edit_tx_date = st.date_input(
+                    "取引日 (発生日)",
+                    value=selected_entry.date,
+                    key=f"edit_tx_date_{selected_entry.id}",
+                )
+
+            with col_h2:
+                # Determine default abstract selection
+                curr_desc = selected_entry.description or ""
+                default_abstract_idx = 0
+                for idx, opt in enumerate(abstract_options):
+                    if opt and opt == curr_desc.strip():
+                        default_abstract_idx = idx
+                        break
+
+                edit_abstract_choice = st.selectbox(
+                    "よく使う摘要から選ぶ",
+                    abstract_options,
+                    index=default_abstract_idx,
+                    key=f"edit_abstract_choice_{selected_entry.id}",
+                )
+                edit_desc_input = st.text_input(
+                    "摘要 (取引内容)",
+                    value=curr_desc,
+                    key=f"edit_desc_input_{selected_entry.id}",
+                )
+                edit_final_desc = (
+                    edit_abstract_choice if edit_abstract_choice else edit_desc_input
+                )
+
+            with col_h3:
+                edit_cp = st.text_input(
+                    "取引先 (支払先/売上先)",
+                    value=selected_entry.counterparty or "",
+                    key=f"edit_cp_{selected_entry.id}",
+                )
+
+            with col_h4:
+                edit_inv = st.text_input(
+                    "インボイス登録番号",
+                    value=selected_entry.invoice_number or "",
+                    help="適格請求書発行事業者の登録番号 (例: T1234567890123)",
+                    key=f"edit_inv_{selected_entry.id}",
+                )
+
+            st.markdown("---")
+
+            # Column header for Voucher table (Traditional Bookkeeping Style)
+            col_hdr_l, col_hdr_r = st.columns(2)
+            with col_hdr_l:
+                st.markdown(
+                    "### <span class='badge-debit'>【 借 方 (Debit) : 費用 / 資産の増加 】</span>",
+                    unsafe_allow_html=True,
+                )
+            with col_hdr_r:
+                st.markdown(
+                    "### <span class='badge-credit'>【 貸 方 (Credit) : 支払元 / 負債・収益 】</span>",
+                    unsafe_allow_html=True,
+                )
+
+            edit_line_inputs: List[Dict[str, Any]] = []
+            curr_lines_num = int(st.session_state[line_count_key])
+
+            for i in range(curr_lines_num):
+                d_line_def = (
+                    default_edit_lines[i]
+                    if i < len(default_edit_lines)
+                    else {
+                        "debit_acc": "",
+                        "debit_amt": 0,
+                        "credit_acc": "",
+                        "credit_amt": 0,
+                    }
+                )
+
+                col_d_acc, col_d_amt, col_c_acc, col_c_amt = st.columns([3, 2, 3, 2])
+
+                with col_d_acc:
+                    d_acc_val = str(d_line_def["debit_acc"])
+                    d_idx = (
+                        account_labels.index(d_acc_val)
+                        if d_acc_val in account_labels
+                        else 0
+                    )
+                    debit_acc = st.selectbox(
+                        f"借方科目 (行 {i + 1})",
+                        account_labels,
+                        index=d_idx,
+                        key=f"edit_debit_acc_{selected_entry.id}_{i}",
+                    )
+
+                with col_d_amt:
+                    debit_amt = st.number_input(
+                        f"借方金額 (行 {i + 1})",
+                        min_value=0,
+                        value=int(str(d_line_def.get("debit_amt", 0))),
+                        step=1000,
+                        key=f"edit_debit_amt_{selected_entry.id}_{i}",
+                    )
+
+                with col_c_acc:
+                    c_acc_val = str(d_line_def["credit_acc"])
+                    c_idx = (
+                        account_labels.index(c_acc_val)
+                        if c_acc_val in account_labels
+                        else 0
+                    )
+                    credit_acc = st.selectbox(
+                        f"貸方科目 (行 {i + 1})",
+                        account_labels,
+                        index=c_idx,
+                        key=f"edit_credit_acc_{selected_entry.id}_{i}",
+                    )
+
+                with col_c_amt:
+                    credit_amt = st.number_input(
+                        f"貸方金額 (行 {i + 1})",
+                        min_value=0,
+                        value=int(str(d_line_def.get("credit_amt", 0))),
+                        step=1000,
+                        key=f"edit_credit_amt_{selected_entry.id}_{i}",
+                    )
+
+                edit_line_inputs.append(
+                    {
+                        "debit_acc": str(debit_acc),
+                        "debit_amt": int(debit_amt),
+                        "credit_acc": str(credit_acc),
+                        "credit_amt": int(credit_amt),
+                    }
+                )
+
+            # Add / Remove Line Buttons
+            col_l_btn1, col_l_btn2, col_l_sp = st.columns([2, 2, 4])
+            with col_l_btn1:
+                if st.button(
+                    "＋ 行を追加",
+                    type="secondary",
+                    icon=":material/add:",
+                    key=f"edit_add_line_{selected_entry.id}",
+                ):
+                    st.session_state[line_count_key] += 1
+                    st.rerun()
+
+            with col_l_btn2:
+                if curr_lines_num > 1 and st.button(
+                    "－ 最後の行を削除",
+                    type="secondary",
+                    icon=":material/remove:",
+                    key=f"edit_del_line_{selected_entry.id}",
+                ):
+                    st.session_state[line_count_key] -= 1
+                    st.rerun()
+
+            st.markdown("---")
+
+            # Calculate Totals & Balance
+            total_debit_edit: int = sum(
+                int(line["debit_amt"]) for line in edit_line_inputs
+            )
+            total_credit_edit: int = sum(
+                int(line["credit_amt"]) for line in edit_line_inputs
+            )
+            is_edit_balanced = (
+                total_debit_edit == total_credit_edit and total_debit_edit > 0
+            )
+
+            # Realtime Balance Indicators
+            col_b1, col_b2, col_b3 = st.columns(3)
+            with col_b1:
+                st.metric("修正後 借方合計", f"¥{total_debit_edit:,}")
+            with col_b2:
+                st.metric("修正後 貸方合計", f"¥{total_credit_edit:,}")
+            with col_b3:
+                if is_edit_balanced:
+                    st.metric("貸借バランス", "一致 (登録可能) ✅", delta="¥0")
+                elif total_debit_edit == 0 and total_credit_edit == 0:
+                    st.metric("貸借バランス", "金額未入力", delta="¥0")
+                else:
+                    diff = abs(total_debit_edit - total_credit_edit)
+                    st.metric(
+                        "貸借バランス", "不一致 (要確認) ⚠️", delta=f"差額: ¥{diff:,}"
+                    )
+
+            st.markdown("---")
+
+            # Update Submit Button
+            if selected_entry.is_deleted:
+                st.warning("⚠️ この仕訳は削除済みのため編集できません。")
+            else:
+                if st.button(
+                    "💾 修正内容で仕訳を更新する",
+                    type="primary",
+                    icon=":material/save:",
+                    use_container_width=True,
+                    disabled=not is_edit_balanced,
+                    key=f"save_edit_tx_btn_{selected_entry.id}",
+                ):
+                    # Validate inputs
+                    lines_to_save: List[TransactionLine] = []
+                    for item in edit_line_inputs:
+                        d_acc_str = str(item["debit_acc"])
+                        c_acc_str = str(item["credit_acc"])
+                        d_amt_val = int(item["debit_amt"])
+                        c_amt_val = int(item["credit_amt"])
+
+                        d_acc_id_str = account_options.get(d_acc_str)
+                        c_acc_id_str = account_options.get(c_acc_str)
+
+                        if d_acc_id_str and d_amt_val > 0:
+                            lines_to_save.append(
+                                TransactionLine(
+                                    account_id=int(d_acc_id_str),
+                                    debit=d_amt_val,
+                                    credit=0,
+                                )
+                            )
+                        if c_acc_id_str and c_amt_val > 0:
+                            lines_to_save.append(
+                                TransactionLine(
+                                    account_id=int(c_acc_id_str),
+                                    debit=0,
+                                    credit=c_amt_val,
+                                )
+                            )
+
+                    if not lines_to_save:
+                        st.error("有効な借方・貸方の明細行が入力されていません。")
+                    elif total_debit_edit != total_credit_edit:
+                        st.error(
+                            f"借方合計（¥{total_debit_edit:,}）と貸方合計（¥{total_credit_edit:,}）が一致していません。"
+                        )
+                    else:
+                        updated_tx = Transaction(
+                            id=selected_entry.id,
+                            date=edit_tx_date,
+                            description=edit_final_desc,
+                            counterparty=edit_cp,
+                            invoice_number=edit_inv,
+                            evidence_path=selected_entry.evidence_path,
+                            is_deleted=selected_entry.is_deleted,
+                            lines=lines_to_save,
+                        )
+
+                        async def do_update_tx():
+                            async with DI.get_journal_service() as j_service:
+                                return await j_service.update_journal_entry(updated_tx)
+
+                        try:
+                            success = run_async(do_update_tx())
+                            if success:
+                                st.toast(
+                                    f"仕訳 (ID: {selected_entry.id}) を正常に更新しました！",
+                                    icon="✅",
+                                )
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "仕訳の更新に失敗しました（仕訳が見つかりません）。"
+                                )
+                        except Exception as e:
+                            log.error(
+                                "Failed to update journal entry",
+                                error=str(e),
+                                exc_info=True,
+                            )
+                            st.error(f"仕訳更新エラー: {e}")
 
 else:
     st.info("指定した条件に一致する仕訳データはありません。")
