@@ -10,7 +10,7 @@
 
 日本の複式簿記の標準的な帳票様式（振替伝票・仕訳帳・総勘定元帳・合計残高試算表・左右対照 B/S・段階利益 P/L）に完全準拠し、**「PDF/画像の領収書・請求書をアップロードするだけで、AI が自動仕訳を行い振替伝票へ自動展開する」** というシームレスな実務ワークフローを最前面に備えています。
 
-軽量かつ堅牢な **Streamlit** を GUI フレームワークに採用し、**Clean Architecture（クリーンアーキテクチャ）** に基づいて設計されています。すべてのデータはローカルの SQLite（非同期 SQLAlchemy 2.0）に保存され、財務データの完全な主権を手元に保持できます。
+軽量かつ堅牢な **Streamlit** を GUI フレームワークに採用し、**Clean Architecture（クリーンアーキテクチャ）** に基づいて設計されています。すべてのデータはローカルの SQLite（非同期 SQLAlchemy 2.0 / aiosqlite）に保存され、財務データの完全な主権を手元に保持できます。
 
 ---
 
@@ -38,7 +38,7 @@
 * **合計残高試算表 (Trial Balance / T-B):** すべての科目の借方合計/残高および貸方合計/残高を標準 7 列で対照集計し、貸借一致バランスを瞬時に検証。
 * **貸借対照表 (Balance Sheet / B-S):** 左右各区分の高さが完全に一致する左右対照レイアウト。残高 0 円の科目を非表示にする切替スイッチや、小計金額の太字強調表示を搭載。
 * **損益計算書 (Profit & Loss / P-L):** 日本の会計基準・税務申告基準に準拠した段階利益（売上総利益・営業利益・経常利益・税引前当期純利益・当期純利益）の階層表示。
-* **決算書 PDF のワンクリック出力:** バックグラウンド処理により UI をブロックせず、美しい帳票 PDF を生成・ダウンロード。
+* **決算書 PDF のワンクリック出力:** バックグラウンド処理により UI をブロックせず、ReportLab による美しい日本語帳票 PDF を生成・ダウンロード。
 
 ### 3. ⚖️ 期首設定 ＆ 電帳法・インボイス対応
 * **期首残高設定 (B/S):** 事業年度開始時の資産・負債・純資産（元入金等）の残高を、左右対照・貸借一致チェック付きで設定。
@@ -70,16 +70,26 @@ uv sync
 ### 3. 環境設定 (.env)
 プロジェクトルート直下に `.env` ファイルを作成します（`.env.sample` を複製して作成できます）。
 
+```bash
+# Windows (PowerShell)
+Copy-Item .env.sample .env
+
+# macOS / Linux
+cp .env.sample .env
+```
+
+`.env` の主要な設定項目：
+
 ```ini
-# データベース接続文字列（SQLite）
+# データベース接続文字列（SQLite + aiosqlite）
 DATABASE_URL=sqlite+aiosqlite:///data/sten_f.db
 
 # Gemini API Key（AI OCR / 自動仕訳推論機能を利用する場合に設定）
 # ※ Google AI Studio (https://aistudio.google.com/) で取得
-# ※ 画面の「マスタ・システム管理」→「AI・システム設定」から登録することも可能です。
+# ※ 画面の「マスタ・システム管理」→「⚙️ AI・システム設定」から登録することも可能です。
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# 使用する Gemini AI モデルコード（Google公式最新モデル）
+# 使用する Gemini AI モデルコード（Google公式モデル）
 GEMINI_DEFAULT_MODEL=gemini-3.5-flash-lite
 ```
 
@@ -229,29 +239,34 @@ STEN-F/
 
 ## 🧪 開発・テスト手順 (Testing)
 
-STEN-F は CI/CD パイプラインと連携した厳格な品質管理を行っています。
+STEN-F は CI/CD パイプライン（GitHub Actions）と連携した厳格な品質管理を行っています。
 
 ```bash
-# 全単体テスト・結合テストの実行
+# 全テストの実行（ユニットテスト・結合テスト・E2Eテスト）
 uv run pytest
 
-# カバレッジ測定付きテスト実行
-uv run pytest --cov=app --cov-report=term-missing
+# CI環境と同等のテスト・カバレッジ測定
+uv run pytest -v -m "not fuzz" --cov=app
 
 # ファズテスト（Hypothesis によるプロパティテスト）の実行
 uv run pytest -m "fuzz"
 
 # 静的型チェック（mypy）
-uv run mypy app tests
+uv run mypy app
 
 # コードフォーマット・静的解析（ruff）
 uv run ruff check app tests
 uv run ruff format --check app tests
+
+# コードフォーマットの自動適用
+uv run ruff format app tests
 ```
 
 ---
 
 ## 🏗 アーキテクチャ構成 (Clean Architecture)
+
+STEN-F は、責務の分離とテスタビリティを担保するため **クリーンアーキテクチャ** に準拠して設計されています。
 
 ```text
 STEN-F/
@@ -260,24 +275,27 @@ STEN-F/
 ├── start.command               # macOS / Linux 起動スクリプト
 ├── app/
 │   ├── config.py               # Pydantic Settings 設定管理 (.env)
-│   ├── container.py            # 依存関係注入 (Dependency Injection)
-│   ├── core/                   # 共通ユーティリティ (Logging, Resilience)
+│   ├── container.py            # 依存関係注入 (Dependency Injection Container)
+│   ├── core/                   # 共通ユーティリティ (Resilience, Logging)
+│   │   ├── resilience.py       # Tenacity による指数バックオフ・リトライ制御
+│   │   └── utils.py            # 日付・文字列・通貨フォーマット等
 │   ├── domain/                 # ドメイン層 (Pydantic V2 モデル、インターフェース)
-│   │   ├── constants/          # 会計定数・税率定義
-│   │   ├── interfaces/         # リポジトリ抽象インターフェース
-│   │   ├── models/             # 仕訳・勘定科目・年度・領収書・決算書ドメインモデル
-│   │   └── prompts/            # AI OCR 推論プロンプト
+│   │   ├── constants/          # 会計定数・デフォルト勘定科目定義
+│   │   ├── interfaces/         # リポジトリ抽象インターフェース (IJournalRepository, etc.)
+│   │   └── models/             # 仕訳・勘定科目・年度・領収書・決算書ドメインモデル
 │   ├── infrastructure/         # インフラ層 (外部サービス、DB、リポジトリ具象実装)
-│   │   ├── db/                 # SQLAlchemy ORM モデル、セッション管理
-│   │   ├── external/           # Gemini OCR, PDF 生成, バックアップ, ファイル保存
-│   │   └── repositories/       # データアクセス具象実装
+│   │   ├── db/                 # SQLAlchemy 2.0 ORM モデル、セッション管理、初期シード
+│   │   ├── external/           # Gemini OCR 連携, ReportLab PDF 生成, バックアップ, ファイル保存
+│   │   └── repositories/       # データアクセス具象実装 (SQLAlchemy Repository)
 │   ├── application/            # アプリケーションサービス層 (ユースケース)
-│   │   └── services/           # 仕訳・元帳・マスタ・決算サービス
+│   │   └── services/           # 仕訳・元帳・マスタ・決算・年度締めサービス
 │   └── ui/                     # プレゼンテーション層 (Streamlit UI)
 │       ├── views/              # 3 主要統合ワークスペース (journal_view, ledger_view, master_view)
-│       ├── editor.py           # Key Rotation ＆ PK追跡型 汎用会計データエディタコンポーネント
+│       ├── editor.py           # 振替伝票・グリッド形式 会計データエディタコンポーネント
 │       ├── async_helper.py     # Streamlit 非同期実行ヘルパー (nest_asyncio)
-│       └── di.py               # UI からのサービス解決
+│       └── di.py               # UI からのサービス・コンテナ解決ヘルパー
+├── tests/                      # テストスイート (単体・結合・E2E・AppTest)
+└── pyproject.toml              # プロジェクトメタデータ・依存関係定義
 ```
 
 ---
