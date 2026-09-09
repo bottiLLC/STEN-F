@@ -43,16 +43,33 @@ _CORP_STATUS_PATTERN = re.compile(
 
 
 class ReceiptExtractionSchema(BaseModel):
-    merchant_name: Optional[str] = Field(None, description="The name of the store or vendor. If illegible, use null.")
-    transaction_date: Optional[str] = Field(None, description="The date of the transaction (Format: YYYY-MM-DD). If illegible, use null.")
-    total_amount_incl_tax: Optional[int] = Field(None, description="The total amount paid including tax (integer). If illegible, use null.")
-    invoice_registration_number: Optional[str] = Field(None, description="The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.")
+    merchant_name: Optional[str] = Field(
+        None, description="The name of the store or vendor. If illegible, use null."
+    )
+    transaction_date: Optional[str] = Field(
+        None,
+        description="The date of the transaction (Format: YYYY-MM-DD). If illegible, use null.",
+    )
+    total_amount_incl_tax: Optional[int] = Field(
+        None,
+        description="The total amount paid including tax (integer). If illegible, use null.",
+    )
+    invoice_registration_number: Optional[str] = Field(
+        None,
+        description="The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.",
+    )
 
 
 class AccountInferenceSchema(BaseModel):
-    debit_account: Optional[str] = Field(None, description="借方科目の名前（例: 消耗品費, 会議費, 旅費交通費など）")
-    credit_account: Optional[str] = Field(None, description="貸方科目の名前（例: 役員借入金, 普通預金など）")
-    description: Optional[str] = Field(None, description="取引の摘要文（例: 〇〇代として）")
+    debit_account: Optional[str] = Field(
+        None, description="借方科目の名前（例: 消耗品費, 会議費, 旅費交通費など）"
+    )
+    credit_account: Optional[str] = Field(
+        None, description="貸方科目の名前（例: 役員借入金, 普通預金など）"
+    )
+    description: Optional[str] = Field(
+        None, description="取引の摘要文（例: 〇〇代として）"
+    )
 
 
 class GeminiOCRService:
@@ -70,7 +87,11 @@ class GeminiOCRService:
 
         async with container.master_service_scope() as ms:
             settings_obj = await ms.get_system_settings()
-            api_key = settings_obj.ai_api_key or settings.GEMINI_API_KEY or settings.OPENAI_API_KEY
+            api_key = (
+                settings_obj.ai_api_key
+                or settings.GEMINI_API_KEY
+                or settings.OPENAI_API_KEY
+            )
 
         if not api_key:
             raise ValueError(
@@ -89,14 +110,22 @@ class GeminiOCRService:
                 pix = doc.load_page(0).get_pixmap(dpi=200, alpha=False)
                 file_bytes, mime_type = pix.tobytes("png"), "image/png"
             except Exception as e:
-                raise ValueError(f"PDFファイルの読み込み・レンダリングに失敗しました: {str(e)}") from e
+                raise ValueError(
+                    f"PDFファイルの読み込み・レンダリングに失敗しました: {str(e)}"
+                ) from e
         elif ft in ("png", "jpg", "jpeg", "webp"):
             mime_type = "image/jpeg" if ft == "jpg" else f"image/{ft}"
         else:
-            raise ValueError(f"サポートされていないファイル形式です: {file_type} (対応形式: PDF, PNG, JPG, JPEG, WEBP)")
+            raise ValueError(
+                f"サポートされていないファイル形式です: {file_type} (対応形式: PDF, PNG, JPG, JPEG, WEBP)"
+            )
 
         opt_bytes, opt_mime = self._optimize_image(file_bytes, mime_type)
-        cp_str = "\n".join([f"- {cp}" for cp in counterparty_list]) if counterparty_list else ""
+        cp_str = (
+            "\n".join([f"- {cp}" for cp in counterparty_list])
+            if counterparty_list
+            else ""
+        )
         sys_instruct = f"""You are an expert OCR assistant. Extract EXACTLY the following fields from the receipt image.
 Do not make any accounting inferences.
 
@@ -112,14 +141,18 @@ Extract the following fields into a valid JSON object matching the requested sch
 """
         client = genai.Client(api_key=api_key)
         try:
-            resp = await self._call_gemini_api(client, sys_instruct, opt_bytes, opt_mime)
+            resp = await self._call_gemini_api(
+                client, sys_instruct, opt_bytes, opt_mime
+            )
             if not resp:
                 raise ValueError("Gemini APIから応答が得られませんでした。")
 
             try:
                 data = json.loads(self._clean_json_text(resp))
             except json.JSONDecodeError as e:
-                raise ValueError(f"AI解析結果のJSONパースに失敗しました: {str(e)}") from e
+                raise ValueError(
+                    f"AI解析結果のJSONパースに失敗しました: {str(e)}"
+                ) from e
 
             receipt = ReceiptData(
                 merchant_name=data.get("merchant_name"),
@@ -128,7 +161,9 @@ Extract the following fields into a valid JSON object matching the requested sch
                 invoice_registration_number=data.get("invoice_registration_number"),
             )
             if receipt.merchant_name:
-                receipt.merchant_name = unicodedata.normalize("NFKC", receipt.merchant_name).strip()
+                receipt.merchant_name = unicodedata.normalize(
+                    "NFKC", receipt.merchant_name
+                ).strip()
             if receipt.invoice_registration_number:
                 m = re.search(r"(T\d{13})", receipt.invoice_registration_number)
                 receipt.invoice_registration_number = m.group(1) if m else None
@@ -137,16 +172,33 @@ Extract the following fields into a valid JSON object matching the requested sch
                 cps = await master_service.get_counterparties()
                 matched = None
                 if receipt.invoice_registration_number:
-                    matched = next((c for c in cps if c.invoice_number == receipt.invoice_registration_number), None)
+                    matched = next(
+                        (
+                            c
+                            for c in cps
+                            if c.invoice_number == receipt.invoice_registration_number
+                        ),
+                        None,
+                    )
                 if not matched and receipt.merchant_name:
                     norm = self._normalize_name(receipt.merchant_name)
-                    matched = next((c for c in cps if norm == self._normalize_name(c.name)), None)
+                    matched = next(
+                        (c for c in cps if norm == self._normalize_name(c.name)), None
+                    )
 
                 if matched:
                     receipt.merchant_name = matched.name
                     receipt.invoice_registration_number = matched.invoice_number
-                    receipt.inferred_debit_account_id = str(matched.debit_account_id) if matched.debit_account_id else None
-                    receipt.inferred_credit_account_id = str(matched.credit_account_id) if matched.credit_account_id else None
+                    receipt.inferred_debit_account_id = (
+                        str(matched.debit_account_id)
+                        if matched.debit_account_id
+                        else None
+                    )
+                    receipt.inferred_credit_account_id = (
+                        str(matched.credit_account_id)
+                        if matched.credit_account_id
+                        else None
+                    )
                     receipt.description = matched.description_template
                     receipt.is_registered_merchant = True
                     receipt.is_dictionary_matched = True
@@ -174,58 +226,136 @@ Extract the following fields into a valid JSON object matching the requested sch
                                     return str(a.id)
                             return None
 
-                        receipt.inferred_debit_account_id = find_id(fb_data.get("debit_account"))
-                        receipt.inferred_credit_account_id = find_id(fb_data.get("credit_account"))
-                        receipt.description = fb_data.get("description", receipt.merchant_name)
+                        receipt.inferred_debit_account_id = find_id(
+                            fb_data.get("debit_account")
+                        )
+                        receipt.inferred_credit_account_id = find_id(
+                            fb_data.get("credit_account")
+                        )
+                        receipt.description = fb_data.get(
+                            "description", receipt.merchant_name
+                        )
                 except Exception as fb_err:
-                    self.log.warning("Fallback account inference failed", error=str(fb_err))
+                    self.log.warning(
+                        "Fallback account inference failed", error=str(fb_err)
+                    )
 
             return self._validate_receipt(receipt)
         except APIError as e:
-            self.log.error("Gemini API Error", error=str(e), code=getattr(e, "code", None))
+            self.log.error(
+                "Gemini API Error", error=str(e), code=getattr(e, "code", None)
+            )
             raise ValueError(self._format_api_error_message(e)) from e
         except ValueError:
             raise
         except Exception as e:
             self.log.exception("Unexpected OCR extraction failure", error=str(e))
-            raise ValueError(f"AI証憑解析処理中に予期せぬエラーが発生しました: {str(e)}") from e
+            raise ValueError(
+                f"AI証憑解析処理中に予期せぬエラーが発生しました: {str(e)}"
+            ) from e
 
-    @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=True)
-    async def _call_gemini_api(self, client: genai.Client, sys_instruct: str, image_bytes: bytes, mime_type: str) -> str:
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    async def _call_gemini_api(
+        self,
+        client: genai.Client,
+        sys_instruct: str,
+        image_bytes: bytes,
+        mime_type: str,
+    ) -> str:
         model = settings.GEMINI_DEFAULT_MODEL
-        contents: list[Any] = [types.Part.from_bytes(data=image_bytes, mime_type=mime_type), types.Part.from_text(text=sys_instruct)]
-        config = types.GenerateContentConfig(response_mime_type="application/json", response_schema=ReceiptExtractionSchema, temperature=0.0)
-        response = await asyncio.to_thread(lambda: client.models.generate_content(model=model, contents=contents, config=config))
+        contents: list[Any] = [
+            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            types.Part.from_text(text=sys_instruct),
+        ]
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ReceiptExtractionSchema,
+            temperature=0.0,
+        )
+        response = await asyncio.to_thread(
+            lambda: client.models.generate_content(
+                model=model, contents=contents, config=config
+            )
+        )
         result = response.text or ""
         if not result:
             if hasattr(response, "candidates") and response.candidates:
                 fr = getattr(response.candidates[0], "finish_reason", None)
                 fr_str = str(fr).upper() if fr else ""
                 if "SAFETY" in fr_str:
-                    raise ValueError("⚠️ **コンテンツ安全フィルターにより生成がブロックされました**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。")
+                    raise ValueError(
+                        "⚠️ **コンテンツ安全フィルターにより生成がブロックされました**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。"
+                    )
                 if "RECITATION" in fr_str:
-                    raise ValueError("⚠️ **著作権・引用制限（Recitation）により生成がブロックされました**")
+                    raise ValueError(
+                        "⚠️ **著作権・引用制限（Recitation）により生成がブロックされました**"
+                    )
                 if fr:
-                    raise ValueError(f"⚠️ **AIモデルの出力が中断されました (理由: {fr})**")
+                    raise ValueError(
+                        f"⚠️ **AIモデルの出力が中断されました (理由: {fr})**"
+                    )
             raise ValueError("Gemini APIから空の応答が返されました。")
         return result
 
-    @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=True)
-    async def _call_gemini_fallback(self, client: genai.Client, sys_instruct_fallback: str) -> str:
-        config = types.GenerateContentConfig(response_mime_type="application/json", response_schema=AccountInferenceSchema, temperature=0.0)
-        response = await asyncio.to_thread(lambda: client.models.generate_content(model=settings.GEMINI_DEFAULT_MODEL, contents=sys_instruct_fallback, config=config))
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    async def _call_gemini_fallback(
+        self, client: genai.Client, sys_instruct_fallback: str
+    ) -> str:
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=AccountInferenceSchema,
+            temperature=0.0,
+        )
+        response = await asyncio.to_thread(
+            lambda: client.models.generate_content(
+                model=settings.GEMINI_DEFAULT_MODEL,
+                contents=sys_instruct_fallback,
+                config=config,
+            )
+        )
         return response.text or ""
 
     def _format_api_error_message(self, e: APIError) -> str:
         code, raw_msg = getattr(e, "code", None), getattr(e, "message", None) or str(e)
         msg_u = raw_msg.upper()
-        if any(k in msg_u for k in ("API_KEY_INVALID", "API KEY NOT VALID", "AUTHENTICATION", "UNAUTHENTICATED")) or code == 401 or (code == 400 and "API KEY" in msg_u):
+        if (
+            any(
+                k in msg_u
+                for k in (
+                    "API_KEY_INVALID",
+                    "API KEY NOT VALID",
+                    "AUTHENTICATION",
+                    "UNAUTHENTICATED",
+                )
+            )
+            or code == 401
+            or (code == 400 and "API KEY" in msg_u)
+        ):
             return f"⚠️ **Gemini API キーが無効または未設定です**\n\nGoogle AI Studio で取得した有効な API キーが登録されているかご確認ください。\n「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n(詳細エラー: `{raw_msg}`)"
         if "PERMISSION_DENIED" in msg_u or code == 403:
             return f"⚠️ **Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n(詳細エラー: `{raw_msg}`)"
         if any(k in msg_u for k in ("NOT_FOUND", "MODEL_NOT_FOUND")) or code == 404:
             return f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n(詳細エラー: `{raw_msg}`)"
-        if any(k in msg_u for k in ("RESOURCE_EXHAUSTED", "RATE_LIMIT", "QUOTA_EXCEEDED", "TOO_MANY_REQUESTS")) or code == 429:
+        if (
+            any(
+                k in msg_u
+                for k in (
+                    "RESOURCE_EXHAUSTED",
+                    "RATE_LIMIT",
+                    "QUOTA_EXCEEDED",
+                    "TOO_MANY_REQUESTS",
+                )
+            )
+            or code == 429
+        ):
             return f"⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\n(詳細エラー: `{raw_msg}`)"
         if "FAILED_PRECONDITION" in msg_u:
             return f"⚠️ **API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n(詳細エラー: `{raw_msg}`)"
@@ -235,11 +365,15 @@ Extract the following fields into a valid JSON object matching the requested sch
             return f"⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n(詳細エラー: `{raw_msg}`)"
         if "RECITATION" in msg_u or "IMAGE_RECITATION" in msg_u:
             return f"⚠️ **著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n(詳細エラー: `{raw_msg}`)"
-        if any(k in msg_u for k in ("INVALID_REQUEST", "PARAMETER_UNKNOWN")) or (code == 400 and "INVALID_ARGUMENT" in msg_u):
+        if any(k in msg_u for k in ("INVALID_REQUEST", "PARAMETER_UNKNOWN")) or (
+            code == 400 and "INVALID_ARGUMENT" in msg_u
+        ):
             return f"⚠️ **API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n(詳細エラー: `{raw_msg}`)"
         if "DEADLINE_EXCEEDED" in msg_u or code == 504:
             return f"⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\n(詳細エラー: `{raw_msg}`)"
-        if code in (500, 502, 503) or any(k in msg_u for k in ("INTERNAL", "SERVICE_UNAVAILABLE", "UNAVAILABLE")):
+        if code in (500, 502, 503) or any(
+            k in msg_u for k in ("INTERNAL", "SERVICE_UNAVAILABLE", "UNAVAILABLE")
+        ):
             return f"⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n(詳細エラー: `{raw_msg}`)"
         if "CANCELLED" in msg_u or code == 499:
             return f"⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n(詳細エラー: `{raw_msg}`)"
@@ -269,20 +403,44 @@ Extract the following fields into a valid JSON object matching the requested sch
                 t_amt, e_amt = item.tax_amount or 0, item.amount_excl_tax or 0
                 c_tax += t_amt
                 c_excl += e_amt
-                rate_str = "0.10" if "10" in item.tax_rate else "0.08" if "8" in item.tax_rate else "0.00"
+                rate_str = (
+                    "0.10"
+                    if "10" in item.tax_rate
+                    else "0.08"
+                    if "8" in item.tax_rate
+                    else "0.00"
+                )
                 if rate_str != "0.00" and e_amt > 0:
-                    exp_tax = int((Decimal(str(e_amt)) * Decimal(rate_str)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                    exp_tax = int(
+                        (Decimal(str(e_amt)) * Decimal(rate_str)).quantize(
+                            Decimal("1"), rounding=ROUND_HALF_UP
+                        )
+                    )
                     if abs(exp_tax - t_amt) > 1:
-                        msgs.append(f"消費税計算不整合 ({item.tax_rate}: 対象{e_amt}, 税額{t_amt})")
+                        msgs.append(
+                            f"消費税計算不整合 ({item.tax_rate}: 対象{e_amt}, 税額{t_amt})"
+                        )
 
         if data.total_tax_amount is not None and abs(c_tax - data.total_tax_amount) > 1:
-            msgs.append(f"消費税合計不整合 (計算値:{c_tax}, OCR値:{data.total_tax_amount})")
-        if data.total_amount_excl_tax is not None and abs(c_excl - data.total_amount_excl_tax) > 1:
-            msgs.append(f"税抜合計不整合 (計算値:{c_excl}, OCR値:{data.total_amount_excl_tax})")
+            msgs.append(
+                f"消費税合計不整合 (計算値:{c_tax}, OCR値:{data.total_tax_amount})"
+            )
+        if (
+            data.total_amount_excl_tax is not None
+            and abs(c_excl - data.total_amount_excl_tax) > 1
+        ):
+            msgs.append(
+                f"税抜合計不整合 (計算値:{c_excl}, OCR値:{data.total_amount_excl_tax})"
+            )
         if data.total_amount_incl_tax:
             c_grand = (data.total_amount_excl_tax or 0) + (data.total_tax_amount or 0)
-            if abs(c_grand - data.total_amount_incl_tax) > 1 and (data.total_amount_excl_tax or 0) > 0:
-                msgs.append(f"支払合計不整合 (計算値:{c_grand}, OCR値:{data.total_amount_incl_tax})")
+            if (
+                abs(c_grand - data.total_amount_incl_tax) > 1
+                and (data.total_amount_excl_tax or 0) > 0
+            ):
+                msgs.append(
+                    f"支払合計不整合 (計算値:{c_grand}, OCR値:{data.total_amount_incl_tax})"
+                )
 
         if data.transaction_date:
             try:
@@ -296,7 +454,9 @@ Extract the following fields into a valid JSON object matching the requested sch
             if match:
                 data.invoice_registration_number = match.group(1)
             else:
-                msgs.append(f"インボイス番号の形式が不正です: {data.invoice_registration_number}")
+                msgs.append(
+                    f"インボイス番号の形式が不正です: {data.invoice_registration_number}"
+                )
 
         if msgs:
             data.needs_manual_review = True
@@ -309,7 +469,11 @@ Extract the following fields into a valid JSON object matching the requested sch
             with Image.open(io.BytesIO(file_bytes)) as img:
                 dpi = img.info.get("dpi")
                 max_px = 2000
-                if (dpi and dpi[0] > 200) or max(img.size) > max_px or mime_type == "image/png":
+                if (
+                    (dpi and dpi[0] > 200)
+                    or max(img.size) > max_px
+                    or mime_type == "image/png"
+                ):
                     img.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
                     proc: Any = img.convert("RGB") if img.mode != "RGB" else img
                     out = io.BytesIO()

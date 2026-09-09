@@ -52,7 +52,11 @@ class LedgerService:
         for acc in accounts:
             data = tb_map.get(acc.id, {"total_debit": 0, "total_credit": 0})
             debit, credit = data["total_debit"], data["total_credit"]
-            balance = (debit - credit) if acc.type in _DEBIT_POSITIVE_TYPES else (credit - debit)
+            balance = (
+                (debit - credit)
+                if acc.type in _DEBIT_POSITIVE_TYPES
+                else (credit - debit)
+            )
             net_raw = debit - credit
             rows.append(
                 TrialBalanceRow(
@@ -95,15 +99,19 @@ class LedgerService:
             if not line:
                 continue
             debit, credit = line.debit, line.credit
-            running_balance += (debit - credit) if is_debit_positive else (credit - debit)
-            gl_lines.append({
-                "日付": tx.date,
-                "摘要": tx.description,
-                "借方": debit if debit > 0 else 0,
-                "貸方": credit if credit > 0 else 0,
-                "残高": running_balance,
-                "TransactionID": tx.id,
-            })
+            running_balance += (
+                (debit - credit) if is_debit_positive else (credit - debit)
+            )
+            gl_lines.append(
+                {
+                    "日付": tx.date,
+                    "摘要": tx.description,
+                    "借方": debit if debit > 0 else 0,
+                    "貸方": credit if credit > 0 else 0,
+                    "残高": running_balance,
+                    "TransactionID": tx.id,
+                }
+            )
         return pd.DataFrame(gl_lines)
 
     async def generate_financial_report(self, fiscal_year_id: int) -> FinancialReport:
@@ -111,7 +119,9 @@ class LedgerService:
 
         def sec(title: str, t: AccountType) -> FinancialSection:
             s_rows = [r for r in rows if r.account_type == t]
-            return FinancialSection(title=title, rows=s_rows, total=sum(r.balance for r in s_rows))
+            return FinancialSection(
+                title=title, rows=s_rows, total=sum(r.balance for r in s_rows)
+            )
 
         cur_assets = sec("【流動資産】", AccountType.CURRENT_ASSET)
         fix_assets = sec("【固定資産】", AccountType.FIXED_ASSET)

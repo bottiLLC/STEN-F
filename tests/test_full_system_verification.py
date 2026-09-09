@@ -78,7 +78,9 @@ class TestFullSystemE2E:
             target.name = "テスト消耗品費_更新"
             await master_svc.save_account(target)
             accounts_updated = await master_svc.get_accounts()
-            target_updated = next((a for a in accounts_updated if a.code == "9999"), None)
+            target_updated = next(
+                (a for a in accounts_updated if a.code == "9999"), None
+            )
             assert target_updated.name == "テスト消耗品費_更新"
 
             # Delete account
@@ -108,7 +110,9 @@ class TestFullSystemE2E:
             saved_abs = await master_svc.save_abstract(abs_entry)
             assert saved_abs.id is not None
             abs_list = await master_svc.get_abstracts()
-            target_abs = next((a for a in abs_list if a.text == "テスト用定期代支払"), None)
+            target_abs = next(
+                (a for a in abs_list if a.text == "テスト用定期代支払"), None
+            )
             assert target_abs is not None
             await master_svc.delete_abstract(target_abs.id)
 
@@ -125,7 +129,11 @@ class TestFullSystemE2E:
 
         # 1. Save evidence via general method
         saved_path = await file_svc.save_evidence(
-            sample_receipt_bytes, "receipt_test.pdf", date(2025, 5, 20), "消耗品費購入", 15000
+            sample_receipt_bytes,
+            "receipt_test.pdf",
+            date(2025, 5, 20),
+            "消耗品費購入",
+            15000,
         )
         assert os.path.exists(saved_path)
         with open(saved_path, "rb") as f:
@@ -139,11 +147,14 @@ class TestFullSystemE2E:
         assert os.path.exists(tx_saved_path)
         assert "20250520_15000_テスト販売_101.pdf" in tx_saved_path
 
-    async def test_03_journal_entry_lifecycle_and_compound_transactions(self, container):
+    async def test_03_journal_entry_lifecycle_and_compound_transactions(
+        self, container
+    ):
         """Verify compound journal entries, balance checks, opening balances, and soft delete."""
-        async with container.master_service_scope() as master_svc, \
-                   container.journal_service_scope() as journal_svc:
-
+        async with (
+            container.master_service_scope() as master_svc,
+            container.journal_service_scope() as journal_svc,
+        ):
             await seed_accounts_with_service(master_svc)
             accounts = await master_svc.get_accounts()
             cash = next(a for a in accounts if a.type == AccountType.CURRENT_ASSET)
@@ -176,7 +187,9 @@ class TestFullSystemE2E:
             await journal_svc.update_journal_entry(saved_entry)
 
             entries_after_update = await journal_svc.get_entries()
-            updated_entry = next((e for e in entries_after_update if e.id == tx_id), None)
+            updated_entry = next(
+                (e for e in entries_after_update if e.id == tx_id), None
+            )
             assert updated_entry.description == "複合仕訳: 経費の現金支払 (修正後)"
 
             # 3. Soft Delete and Verification
@@ -200,11 +213,12 @@ class TestFullSystemE2E:
         6. Perform Year-End Closing (Rollover into next fiscal year)
         7. Verify closing entries and next year opening balances
         """
-        async with container.master_service_scope() as master_svc, \
-                   container.journal_service_scope() as journal_svc, \
-                   container.ledger_service_scope() as ledger_svc, \
-                   container.fiscal_year_service_scope() as fy_svc:
-
+        async with (
+            container.master_service_scope() as master_svc,
+            container.journal_service_scope() as journal_svc,
+            container.ledger_service_scope() as ledger_svc,
+            container.fiscal_year_service_scope() as fy_svc,
+        ):
             # Seed standard master accounts
             await seed_accounts_with_service(master_svc)
             accounts = await master_svc.get_accounts()
@@ -216,7 +230,9 @@ class TestFullSystemE2E:
             acc_exp = next(a for a in accounts if a.code == "6170")  # 消耗品費
 
             # Clean any old transactions for 2095/2096
-            existing_txs = await journal_svc.get_entries(start_date=date(2095, 1, 1), end_date=date(2096, 12, 31))
+            existing_txs = await journal_svc.get_entries(
+                start_date=date(2095, 1, 1), end_date=date(2096, 12, 31)
+            )
             for t in existing_txs:
                 await journal_svc.delete_entry(t.id)
 
@@ -240,7 +256,9 @@ class TestFullSystemE2E:
             # Cash 500,000 + Bank 500,000 = Capital 1,000,000
             op_debit = {str(acc_cash.id): "500000", str(acc_bank.id): "500000"}
             op_credit = {str(acc_capital.id): "1000000"}
-            await journal_svc.register_opening_balance(date(2095, 1, 1), op_debit, op_credit)
+            await journal_svc.register_opening_balance(
+                date(2095, 1, 1), op_debit, op_credit
+            )
 
             # --- C. Post Transactions ---
             # 1. Sales revenue: Bank +300,000, Sales +300,000
@@ -272,8 +290,12 @@ class TestFullSystemE2E:
             total_debit_bal = sum(r.debit_balance for r in tb_rows)
             total_credit_bal = sum(r.credit_balance for r in tb_rows)
 
-            assert total_debit == total_credit, f"T/B Totals mismatch: {total_debit} != {total_credit}"
-            assert total_debit_bal == total_credit_bal, f"T/B Balances mismatch: {total_debit_bal} != {total_credit_bal}"
+            assert total_debit == total_credit, (
+                f"T/B Totals mismatch: {total_debit} != {total_credit}"
+            )
+            assert total_debit_bal == total_credit_bal, (
+                f"T/B Balances mismatch: {total_debit_bal} != {total_credit_bal}"
+            )
 
             # --- E. Verify Financial Report (B/S & P/L) ---
             report = await ledger_svc.generate_financial_report(saved_fy1.id)

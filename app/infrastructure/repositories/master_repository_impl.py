@@ -74,22 +74,31 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         res = await self.session.execute(select(CorporationTable).limit(1))
         row = res.scalar_one_or_none() or CorporationTable()
         row.name, row.address = corp.name, corp.address
-        row.representative_name, row.representative_title = corp.representative_name, corp.representative_title
+        row.representative_name, row.representative_title = (
+            corp.representative_name,
+            corp.representative_title,
+        )
         return Corporation.model_validate(await self._save_and_refresh(row))
 
     async def get_fiscal_years(self) -> List[FiscalYear]:
-        res = await self.session.execute(select(FiscalYearTable).order_by(FiscalYearTable.start_date.desc()))
+        res = await self.session.execute(
+            select(FiscalYearTable).order_by(FiscalYearTable.start_date.desc())
+        )
         return [FiscalYear.model_validate(r) for r in res.scalars().all()]
 
     async def get_fiscal_year(self, fy_id: int) -> Optional[FiscalYear]:
-        res = await self.session.execute(select(FiscalYearTable).where(FiscalYearTable.id == fy_id))
+        res = await self.session.execute(
+            select(FiscalYearTable).where(FiscalYearTable.id == fy_id)
+        )
         row = res.scalar_one_or_none()
         return FiscalYear.model_validate(row) if row else None
 
     async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
         row = None
         if fy.id:
-            res = await self.session.execute(select(FiscalYearTable).where(FiscalYearTable.id == fy.id))
+            res = await self.session.execute(
+                select(FiscalYearTable).where(FiscalYearTable.id == fy.id)
+            )
             row = res.scalar_one_or_none()
         row = row or FiscalYearTable()
         row.name, row.start_date, row.end_date = fy.name, fy.start_date, fy.end_date
@@ -100,23 +109,34 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         return await self._delete_by_id(FiscalYearTable, fy_id)
 
     async def get_accounts(self) -> List[Account]:
-        res = await self.session.execute(select(AccountTable).order_by(AccountTable.code))
+        res = await self.session.execute(
+            select(AccountTable).order_by(AccountTable.code)
+        )
         return [Account.model_validate(r) for r in res.scalars().all()]
 
     async def save_account(self, account: Account) -> Account:
         row = None
         if account.id:
-            res = await self.session.execute(select(AccountTable).where(AccountTable.id == account.id))
+            res = await self.session.execute(
+                select(AccountTable).where(AccountTable.id == account.id)
+            )
             row = res.scalar_one_or_none()
         row = row or AccountTable()
-        row.code, row.name, row.type, row.description = account.code, account.name, account.type.value, account.description
+        row.code, row.name, row.type, row.description = (
+            account.code,
+            account.name,
+            account.type.value,
+            account.description,
+        )
         return Account.model_validate(await self._save_and_refresh(row))
 
     async def delete_account(self, account_id: int) -> bool:
         return await self._delete_by_id(AccountTable, account_id)
 
     async def get_abstracts(self) -> List[Abstract]:
-        res = await self.session.execute(select(AbstractTable).options(selectinload(AbstractTable.account)))
+        res = await self.session.execute(
+            select(AbstractTable).options(selectinload(AbstractTable.account))
+        )
         out = []
         for r in res.scalars().all():
             d = Abstract.model_validate(r)
@@ -128,7 +148,9 @@ class SQLAlchemyMasterRepository(IMasterRepository):
     async def save_abstract(self, abstract: Abstract) -> Abstract:
         row = None
         if abstract.id:
-            res = await self.session.execute(select(AbstractTable).where(AbstractTable.id == abstract.id))
+            res = await self.session.execute(
+                select(AbstractTable).where(AbstractTable.id == abstract.id)
+            )
             row = res.scalar_one_or_none()
         row = row or AbstractTable()
         row.account_id, row.text = abstract.account_id, abstract.text
@@ -140,29 +162,44 @@ class SQLAlchemyMasterRepository(IMasterRepository):
     async def save_counterparty(self, cp: Counterparty) -> Counterparty:
         row = None
         if cp.id:
-            res = await self.session.execute(select(CounterpartyTable).where(CounterpartyTable.id == cp.id))
+            res = await self.session.execute(
+                select(CounterpartyTable).where(CounterpartyTable.id == cp.id)
+            )
             row = res.scalar_one_or_none()
         elif cp.invoice_number:
-            res = await self.session.execute(select(CounterpartyTable).where(CounterpartyTable.invoice_number == cp.invoice_number))
+            res = await self.session.execute(
+                select(CounterpartyTable).where(
+                    CounterpartyTable.invoice_number == cp.invoice_number
+                )
+            )
             row = res.scalar_one_or_none()
         elif cp.name:
-            res = await self.session.execute(select(CounterpartyTable).where(CounterpartyTable.name == cp.name))
+            res = await self.session.execute(
+                select(CounterpartyTable).where(CounterpartyTable.name == cp.name)
+            )
             row = res.scalar_one_or_none()
 
         row = row or CounterpartyTable()
         row.name, row.name_kana = cp.name, cp.name_kana
         row.invoice_number = cp.invoice_number or None
-        row.debit_account_id, row.credit_account_id = cp.debit_account_id, cp.credit_account_id
+        row.debit_account_id, row.credit_account_id = (
+            cp.debit_account_id,
+            cp.credit_account_id,
+        )
         row.description_template = cp.description_template
         return Counterparty.model_validate(await self._save_and_refresh(row))
 
     async def get_counterparties(self) -> List[Counterparty]:
-        res = await self.session.execute(select(CounterpartyTable).order_by(CounterpartyTable.name))
+        res = await self.session.execute(
+            select(CounterpartyTable).order_by(CounterpartyTable.name)
+        )
         return [Counterparty.model_validate(r) for r in res.scalars().all()]
 
     async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]:
         res = await self.session.execute(
-            select(CounterpartyTable).where(CounterpartyTable.name.ilike(f"%{keyword}%")).limit(1)
+            select(CounterpartyTable)
+            .where(CounterpartyTable.name.ilike(f"%{keyword}%"))
+            .limit(1)
         )
         row = res.scalar_one_or_none()
         return Counterparty.model_validate(row) if row else None

@@ -25,9 +25,16 @@ class LocalFileService:
         self.storage_dir.mkdir(exist_ok=True)
 
     async def save_evidence(
-        self, file_bytes: bytes, original_filename: str, date_obj: date, description: str, amount: int
+        self,
+        file_bytes: bytes,
+        original_filename: str,
+        date_obj: date,
+        description: str,
+        amount: int,
     ) -> str:
-        safe_desc = "".join(c for c in description if c.isalnum() or c in (" ", "_", "-")).strip()
+        safe_desc = "".join(
+            c for c in description if c.isalnum() or c in (" ", "_", "-")
+        ).strip()
         ext = os.path.splitext(original_filename)[1] or ".pdf"
         save_path = self.storage_dir / f"{date_obj}_{safe_desc}_{amount}{ext}"
         async with aiofiles.open(save_path, "wb") as f:
@@ -35,11 +42,26 @@ class LocalFileService:
         return str(save_path)
 
     async def save_evidence_for_transaction(
-        self, file_bytes: bytes, transaction_id: int, date_obj: date, amount: int, corp_name: str
+        self,
+        file_bytes: bytes,
+        transaction_id: int,
+        date_obj: date,
+        amount: int,
+        corp_name: str,
     ) -> str:
-        norm_corp = corp_name.replace("株式会社", "").replace("合同会社", "").replace("有限会社", "").strip()
-        safe_corp = "".join(c for c in norm_corp if c.isalnum() or c in (" ", "_", "-")).strip()
-        save_path = self.storage_dir / f"{date_obj.strftime('%Y%m%d')}_{amount}_{safe_corp}_{transaction_id}.pdf"
+        norm_corp = (
+            corp_name.replace("株式会社", "")
+            .replace("合同会社", "")
+            .replace("有限会社", "")
+            .strip()
+        )
+        safe_corp = "".join(
+            c for c in norm_corp if c.isalnum() or c in (" ", "_", "-")
+        ).strip()
+        save_path = (
+            self.storage_dir
+            / f"{date_obj.strftime('%Y%m%d')}_{amount}_{safe_corp}_{transaction_id}.pdf"
+        )
         async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)
         return str(save_path)

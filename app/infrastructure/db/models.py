@@ -52,8 +52,12 @@ class CounterpartyTable(Base):
     name: Mapped[str] = mapped_column(nullable=False)
     name_kana: Mapped[Optional[str]] = mapped_column(nullable=True)
     invoice_number: Mapped[Optional[str]] = mapped_column(unique=True, nullable=True)
-    debit_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("accounts.id"), nullable=True)
-    credit_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("accounts.id"), nullable=True)
+    debit_account_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("accounts.id"), nullable=True
+    )
+    credit_account_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("accounts.id"), nullable=True
+    )
     description_template: Mapped[Optional[str]] = mapped_column(nullable=True)
 
 
@@ -85,17 +89,25 @@ class TransactionTable(Base):
     counterparty: Mapped[Optional[str]] = mapped_column(nullable=True)
     invoice_number: Mapped[Optional[str]] = mapped_column(nullable=True)
     evidence_path: Mapped[Optional[str]] = mapped_column(nullable=True)
-    lines: Mapped[List["TransactionLineTable"]] = relationship("TransactionLineTable", back_populates="transaction", cascade="all, delete-orphan")
+    lines: Mapped[List["TransactionLineTable"]] = relationship(
+        "TransactionLineTable",
+        back_populates="transaction",
+        cascade="all, delete-orphan",
+    )
 
 
 class TransactionLineTable(Base):
     __tablename__ = "transaction_lines"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), nullable=False)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id"), nullable=False
+    )
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
     debit: Mapped[int] = mapped_column(default=0)
     credit: Mapped[int] = mapped_column(default=0)
-    transaction: Mapped["TransactionTable"] = relationship("TransactionTable", back_populates="lines")
+    transaction: Mapped["TransactionTable"] = relationship(
+        "TransactionTable", back_populates="lines"
+    )
     account: Mapped["AccountTable"] = relationship("AccountTable")
 
 

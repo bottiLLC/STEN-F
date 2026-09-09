@@ -40,6 +40,7 @@ class JournalService:
         if self.master_repository:
             return await self.master_repository.get_fiscal_years()
         from app.container import container
+
         async with container.master_service_scope() as ms:
             return await ms.get_fiscal_years()
 
@@ -51,9 +52,14 @@ class JournalService:
 
         if not any(fy.start_date <= transaction_date <= fy.end_date for fy in open_fys):
             periods = ", ".join(
-                [f"{fy.start_date.strftime('%Y/%m/%d')}〜{fy.end_date.strftime('%Y/%m/%d')}" for fy in open_fys]
+                [
+                    f"{fy.start_date.strftime('%Y/%m/%d')}〜{fy.end_date.strftime('%Y/%m/%d')}"
+                    for fy in open_fys
+                ]
             )
-            raise ValueError(f"指定された日付は、現在「OPEN」な会計年度の範囲外です。\n(入力可能範囲: {periods})")
+            raise ValueError(
+                f"指定された日付は、現在「OPEN」な会計年度の範囲外です。\n(入力可能範囲: {periods})"
+            )
 
     async def add_journal_entry(self, transaction: Transaction) -> int:
         await self._validate_transaction_date(transaction.date)
@@ -63,11 +69,16 @@ class JournalService:
         if transaction.counterparty:
             try:
                 if self.master_repository:
-                    existing = await self.master_repository.get_counterparty_by_keyword(transaction.counterparty)
+                    existing = await self.master_repository.get_counterparty_by_keyword(
+                        transaction.counterparty
+                    )
                 else:
                     from app.container import container
+
                     async with container.master_service_scope() as ms:
-                        existing = await ms.get_counterparty_by_keyword(transaction.counterparty)
+                        existing = await ms.get_counterparty_by_keyword(
+                            transaction.counterparty
+                        )
 
                 if not existing:
                     d_acc, c_acc, max_d, max_c = None, None, -1, -1
@@ -87,10 +98,13 @@ class JournalService:
                         await self.master_repository.save_counterparty(new_tmpl)
                     else:
                         from app.container import container
+
                         async with container.master_service_scope() as ms:
                             await ms.save_counterparty(new_tmpl)
             except Exception as e:
-                self.log.warning("Failed to auto-learn counterparty rules", error=str(e))
+                self.log.warning(
+                    "Failed to auto-learn counterparty rules", error=str(e)
+                )
 
         return tx_id
 
@@ -104,11 +118,15 @@ class JournalService:
         for acc_id_str, val_str in debit_balances.items():
             val = normalize_amount(val_str)
             if val > 0:
-                lines.append(TransactionLine(account_id=int(acc_id_str), debit=val, credit=0))
+                lines.append(
+                    TransactionLine(account_id=int(acc_id_str), debit=val, credit=0)
+                )
         for acc_id_str, val_str in credit_balances.items():
             val = normalize_amount(val_str)
             if val > 0:
-                lines.append(TransactionLine(account_id=int(acc_id_str), debit=0, credit=val))
+                lines.append(
+                    TransactionLine(account_id=int(acc_id_str), debit=0, credit=val)
+                )
 
         if not lines:
             raise ValueError("入力された金額がありません。")
@@ -131,7 +149,9 @@ class JournalService:
         end_date: Optional[date] = None,
         include_deleted: bool = False,
     ) -> List[Transaction]:
-        return await self.repository.get_transactions(start_date, end_date, include_deleted=include_deleted)
+        return await self.repository.get_transactions(
+            start_date, end_date, include_deleted=include_deleted
+        )
 
     async def add_journal_entry_with_evidence(
         self, transaction: Transaction, file_bytes: bytes, file_service
@@ -158,18 +178,47 @@ class JournalService:
         self, start_date: Optional[date] = None, end_date: Optional[date] = None
     ) -> str:
         txs = await self.repository.get_transactions(
-            start_date=start_date, end_date=end_date, include_deleted=False, include_relationships=True
+            start_date=start_date,
+            end_date=end_date,
+            include_deleted=False,
+            include_relationships=True,
         )
         output = io.StringIO()
         w = csv.writer(output)
-        w.writerow(["取引日", "ID", "摘要", "取引先", "登録番号", "勘定科目コード", "勘定科目", "借方金額", "貸方金額"])
+        w.writerow(
+            [
+                "取引日",
+                "ID",
+                "摘要",
+                "取引先",
+                "登録番号",
+                "勘定科目コード",
+                "勘定科目",
+                "借方金額",
+                "貸方金額",
+            ]
+        )
 
         for t in txs:
-            common = [t.date.isoformat(), t.id, t.description, t.counterparty or "", t.invoice_number or ""]
+            common = [
+                t.date.isoformat(),
+                t.id,
+                t.description,
+                t.counterparty or "",
+                t.invoice_number or "",
+            ]
             for line in t.lines:
                 code = line.account.code if line.account else ""
                 name = line.account.name if line.account else f"ID:{line.account_id}"
-                w.writerow(common + [code, name, line.debit if line.debit > 0 else 0, line.credit if line.credit > 0 else 0])
+                w.writerow(
+                    common
+                    + [
+                        code,
+                        name,
+                        line.debit if line.debit > 0 else 0,
+                        line.credit if line.credit > 0 else 0,
+                    ]
+                )
         return output.getvalue()
 
     async def get_frequent_account_ids(self, limit: int = 5) -> List[int]:

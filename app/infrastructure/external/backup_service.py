@@ -36,7 +36,11 @@ class BackupService:
         backup_subdir.mkdir(exist_ok=True)
 
         db_path_str = settings.DATABASE_URL
-        db_path = Path(db_path_str.split("///")[-1]) if db_path_str and "sqlite" in db_path_str else settings.PROJECT_ROOT / "data" / settings.DB_NAME
+        db_path = (
+            Path(db_path_str.split("///")[-1])
+            if db_path_str and "sqlite" in db_path_str
+            else settings.PROJECT_ROOT / "data" / settings.DB_NAME
+        )
 
         if not db_path.exists() or str(db_path) == ":memory:":
             raise RuntimeError("データベースのバックアップに失敗しました。")

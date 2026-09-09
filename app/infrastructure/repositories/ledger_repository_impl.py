@@ -35,13 +35,20 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         self.session = session
 
     async def get_accounts(self) -> List[Account]:
-        res = await self.session.execute(select(AccountTable).order_by(AccountTable.code))
+        res = await self.session.execute(
+            select(AccountTable).order_by(AccountTable.code)
+        )
         return [Account.model_validate(r) for r in res.scalars().all()]
 
     @staticmethod
     def _to_domain(row: TransactionTable) -> Transaction:
         lines = [
-            TransactionLine(id=line.id, account_id=line.account_id, debit=line.debit, credit=line.credit)
+            TransactionLine(
+                id=line.id,
+                account_id=line.account_id,
+                debit=line.debit,
+                credit=line.credit,
+            )
             for line in row.lines
         ]
         return Transaction(
@@ -65,7 +72,11 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
     ) -> List[Transaction]:
         stmt = select(TransactionTable)
         if include_relationships:
-            stmt = stmt.options(selectinload(TransactionTable.lines).selectinload(TransactionLineTable.account))
+            stmt = stmt.options(
+                selectinload(TransactionTable.lines).selectinload(
+                    TransactionLineTable.account
+                )
+            )
         else:
             stmt = stmt.options(selectinload(TransactionTable.lines))
 
@@ -87,7 +98,11 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         end_date: Optional[date] = None,
         include_deleted: bool = False,
     ) -> List[Transaction]:
-        stmt_ids = select(TransactionLineTable.transaction_id).join(TransactionTable).where(TransactionLineTable.account_id == account_id)
+        stmt_ids = (
+            select(TransactionLineTable.transaction_id)
+            .join(TransactionTable)
+            .where(TransactionLineTable.account_id == account_id)
+        )
         if not include_deleted:
             stmt_ids = stmt_ids.where(TransactionTable.is_deleted.is_(False))
 
@@ -95,7 +110,12 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         if not tx_ids:
             return []
 
-        stmt = select(TransactionTable).where(TransactionTable.id.in_(tx_ids)).options(selectinload(TransactionTable.lines)).order_by(TransactionTable.date, TransactionTable.id)
+        stmt = (
+            select(TransactionTable)
+            .where(TransactionTable.id.in_(tx_ids))
+            .options(selectinload(TransactionTable.lines))
+            .order_by(TransactionTable.date, TransactionTable.id)
+        )
         if start_date:
             stmt = stmt.where(TransactionTable.date >= start_date)
         if end_date:
@@ -118,13 +138,20 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
 
         for line in tx.lines:
             self.session.add(
-                TransactionLineTable(transaction_id=db_tx.id, account_id=line.account_id, debit=line.debit, credit=line.credit)
+                TransactionLineTable(
+                    transaction_id=db_tx.id,
+                    account_id=line.account_id,
+                    debit=line.debit,
+                    credit=line.credit,
+                )
             )
         return db_tx.id
 
     async def update_transaction(self, tx: Transaction) -> bool:
         res = await self.session.execute(
-            select(TransactionTable).where(TransactionTable.id == tx.id).options(selectinload(TransactionTable.lines))
+            select(TransactionTable)
+            .where(TransactionTable.id == tx.id)
+            .options(selectinload(TransactionTable.lines))
         )
         db_tx = res.scalar_one_or_none()
         if not db_tx:
@@ -136,17 +163,28 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             db_tx.evidence_path = tx.evidence_path
 
         db_tx.lines = [
-            TransactionLineTable(transaction_id=db_tx.id, account_id=line.account_id, debit=line.debit, credit=line.credit)
+            TransactionLineTable(
+                transaction_id=db_tx.id,
+                account_id=line.account_id,
+                debit=line.debit,
+                credit=line.credit,
+            )
             for line in tx.lines
         ]
         return True
 
     async def has_transactions_for_account(self, account_id: int) -> bool:
-        res = await self.session.execute(select(TransactionLineTable).where(TransactionLineTable.account_id == account_id).limit(1))
+        res = await self.session.execute(
+            select(TransactionLineTable)
+            .where(TransactionLineTable.account_id == account_id)
+            .limit(1)
+        )
         return res.scalar_one_or_none() is not None
 
     async def delete_transaction(self, transaction_id: int) -> bool:
-        res = await self.session.execute(select(TransactionTable).where(TransactionTable.id == transaction_id))
+        res = await self.session.execute(
+            select(TransactionTable).where(TransactionTable.id == transaction_id)
+        )
         db_tx = res.scalar_one_or_none()
         if db_tx:
             db_tx.is_deleted = True
@@ -156,7 +194,9 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         return False
 
     async def get_trial_balance_data(self, fiscal_year_id: int) -> List[Dict[str, Any]]:
-        res = await self.session.execute(select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id))
+        res = await self.session.execute(
+            select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id)
+        )
         fy = res.scalar_one_or_none()
         if not fy:
             return []
@@ -167,7 +207,10 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                 func.sum(TransactionLineTable.debit).label("total_debit"),
                 func.sum(TransactionLineTable.credit).label("total_credit"),
             )
-            .join(TransactionTable, TransactionTable.id == TransactionLineTable.transaction_id)
+            .join(
+                TransactionTable,
+                TransactionTable.id == TransactionLineTable.transaction_id,
+            )
             .where(
                 TransactionTable.date >= fy.start_date,
                 TransactionTable.date <= fy.end_date,
@@ -177,12 +220,18 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         )
         res = await self.session.execute(agg_stmt)
         return [
-            {"account_id": r.account_id, "total_debit": r.total_debit or 0, "total_credit": r.total_credit or 0}
+            {
+                "account_id": r.account_id,
+                "total_debit": r.total_debit or 0,
+                "total_credit": r.total_credit or 0,
+            }
             for r in res.all()
         ]
 
     async def get_fiscal_year(self, fiscal_year_id: int) -> Optional[FiscalYear]:
-        res = await self.session.execute(select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id))
+        res = await self.session.execute(
+            select(FiscalYearTable).where(FiscalYearTable.id == fiscal_year_id)
+        )
         row = res.scalar_one_or_none()
         return FiscalYear.model_validate(row) if row else None
 
@@ -190,7 +239,9 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         await self.session.commit()
 
     async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
-        res = await self.session.execute(select(TransactionTable).where(TransactionTable.id == transaction_id))
+        res = await self.session.execute(
+            select(TransactionTable).where(TransactionTable.id == transaction_id)
+        )
         db_tx = res.scalar_one_or_none()
         if db_tx:
             db_tx.evidence_path = path
@@ -200,7 +251,10 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
     async def get_frequent_account_ids(self, limit: int = 5) -> List[int]:
         stmt = (
             select(TransactionLineTable.account_id)
-            .join(TransactionTable, TransactionTable.id == TransactionLineTable.transaction_id)
+            .join(
+                TransactionTable,
+                TransactionTable.id == TransactionLineTable.transaction_id,
+            )
             .where(TransactionTable.is_deleted.is_(False))
             .group_by(TransactionLineTable.account_id)
             .order_by(func.count(TransactionLineTable.account_id).desc())

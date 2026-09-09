@@ -31,12 +31,15 @@ class PDFService:
     def _register_font():
         if settings.FONT_PATH and settings.FONT_PATH.exists():
             try:
-                pdfmetrics.registerFont(TTFont(settings.FONT_NAME, str(settings.FONT_PATH)))
+                pdfmetrics.registerFont(
+                    TTFont(settings.FONT_NAME, str(settings.FONT_PATH))
+                )
             except Exception:
                 pass
         elif settings.FONT_NAME == "HeiseiMin-W3":
             try:
                 from reportlab.pdfbase import cidfonts
+
                 pdfmetrics.registerFont(cidfonts.UnicodeCIDFont("HeiseiMin-W3"))
             except Exception:
                 pass
@@ -67,7 +70,11 @@ class PDFService:
                 c.drawCentredString(w / 2, h - 26 * mm, sub)
             c.line(mx, h - 30 * mm, w - mx, h - 30 * mm)
 
-        period = f"第 {fiscal_year.period_number} 期" if fiscal_year.period_number else fiscal_year.name
+        period = (
+            f"第 {fiscal_year.period_number} 期"
+            if fiscal_year.period_number
+            else fiscal_year.name
+        )
         drange = f"自 {fiscal_year.start_date.strftime('%Y年%m月%d日')}　至 {fiscal_year.end_date.strftime('%Y年%m月%d日')}"
 
         # 1. 表紙
@@ -76,8 +83,14 @@ class PDFService:
         c.setFont(settings.FONT_NAME, 16)
         c.drawCentredString(w / 2, h / 2 + 20 * mm, period)
         c.setFont(settings.FONT_NAME, 12)
-        c.drawCentredString(w / 2, h / 2 + 10 * mm, f"自　{fiscal_year.start_date.strftime('%Y年%m月%d日')}")
-        c.drawCentredString(w / 2, h / 2, f"至　{fiscal_year.end_date.strftime('%Y年%m月%d日')}")
+        c.drawCentredString(
+            w / 2,
+            h / 2 + 10 * mm,
+            f"自　{fiscal_year.start_date.strftime('%Y年%m月%d日')}",
+        )
+        c.drawCentredString(
+            w / 2, h / 2, f"至　{fiscal_year.end_date.strftime('%Y年%m月%d日')}"
+        )
         c.setFont(settings.FONT_NAME, 18)
         c.drawCentredString(w / 2, h / 2 - 60 * mm, corp.name)
         if corp.address:
@@ -92,7 +105,9 @@ class PDFService:
         def draw_bs_sec(sec: FinancialSection, lbl: str, val: int, cy: float) -> float:
             c.setFont(settings.FONT_NAME, 11)
             is_a = "負債" not in sec.title and "純資産" not in sec.title
-            xt, xl, xv = (30 * mm, 35 * mm, 100 * mm) if is_a else (110 * mm, 115 * mm, 180 * mm)
+            xt, xl, xv = (
+                (30 * mm, 35 * mm, 100 * mm) if is_a else (110 * mm, 115 * mm, 180 * mm)
+            )
             c.drawString(xt, cy, sec.title)
             cy -= 8 * mm
             c.setFont(settings.FONT_NAME, 10)
@@ -108,16 +123,27 @@ class PDFService:
             c.drawRightString(xv, cy, f"{val:,}")
             return cy - 10 * mm
 
-        yl = draw_bs_sec(rpt.current_assets, "流動資産合計", rpt.current_assets.total, y - 6 * mm)
+        yl = draw_bs_sec(
+            rpt.current_assets, "流動資産合計", rpt.current_assets.total, y - 6 * mm
+        )
         yl = draw_bs_sec(rpt.fixed_assets, "固定資産合計", rpt.fixed_assets.total, yl)
         if rpt.deferred_assets.total > 0:
-            yl = draw_bs_sec(rpt.deferred_assets, "繰延資産合計", rpt.deferred_assets.total, yl)
+            yl = draw_bs_sec(
+                rpt.deferred_assets, "繰延資産合計", rpt.deferred_assets.total, yl
+            )
         c.line(35 * mm, yl + 2, 100 * mm, yl + 2)
         c.drawString(35 * mm, yl - 6 * mm, "資産合計")
         c.drawRightString(100 * mm, yl - 6 * mm, f"{rpt.total_assets:,}")
 
-        yr = draw_bs_sec(rpt.current_liabilities, "流動負債合計", rpt.current_liabilities.total, y - 6 * mm)
-        yr = draw_bs_sec(rpt.fixed_liabilities, "固定負債合計", rpt.fixed_liabilities.total, yr)
+        yr = draw_bs_sec(
+            rpt.current_liabilities,
+            "流動負債合計",
+            rpt.current_liabilities.total,
+            y - 6 * mm,
+        )
+        yr = draw_bs_sec(
+            rpt.fixed_liabilities, "固定負債合計", rpt.fixed_liabilities.total, yr
+        )
         c.line(115 * mm, yr + 2, 180 * mm, yr + 2)
         c.drawString(115 * mm, yr - 6 * mm, "負債合計")
         c.drawRightString(180 * mm, yr - 6 * mm, f"{rpt.total_liabilities:,}")
@@ -159,7 +185,9 @@ class PDFService:
                     c.drawString(xl + 5 * mm, y, r.account_name)
                     c.drawRightString(xv - 10 * mm, y, f"{r.balance:,}")
                     y -= 5 * mm
-            c.drawString(xl + 5 * mm, y, f"{sec.title.replace('【', '').replace('】', '')} 合計")
+            c.drawString(
+                xl + 5 * mm, y, f"{sec.title.replace('【', '').replace('】', '')} 合計"
+            )
             c.drawRightString(xv, y, f"{sec.total:,}")
             y -= 8 * mm
 
@@ -196,7 +224,9 @@ class PDFService:
         def draw_dtl(sec: FinancialSection):
             nonlocal y
             c.setFont(settings.FONT_NAME, 11)
-            c.drawString(30 * mm, y, f"{sec.title.replace('【', '').replace('】', '')} 明細")
+            c.drawString(
+                30 * mm, y, f"{sec.title.replace('【', '').replace('】', '')} 明細"
+            )
             y -= 6 * mm
             c.setFont(settings.FONT_NAME, 10)
             pos_rows = [r for r in sec.rows if r.balance > 0]
@@ -223,14 +253,24 @@ class PDFService:
         c.line(mx, y, w - mx, y)
         c.setFont(settings.FONT_NAME, 11)
         c.drawString(30 * mm, y - 10 * mm, "上記の通りご報告申し上げます。")
-        c.drawString(30 * mm, y - 20 * mm, f"報告日：{report_date.strftime('%Y年%m月%d日')}")
+        c.drawString(
+            30 * mm, y - 20 * mm, f"報告日：{report_date.strftime('%Y年%m月%d日')}"
+        )
         c.setFont(settings.FONT_NAME, 12)
         c.drawString(30 * mm, y - 30 * mm, corp.name)
         if corp.representative_title and corp.representative_name:
-            c.drawString(30 * mm, y - 38 * mm, f"{corp.representative_title}  {corp.representative_name}")
+            c.drawString(
+                30 * mm,
+                y - 38 * mm,
+                f"{corp.representative_title}  {corp.representative_name}",
+            )
         c.setFont(settings.FONT_NAME, 11)
-        c.drawString(30 * mm, y - 63 * mm, "監査の結果、適法かつ正確なることを認めます。")
-        c.drawString(30 * mm, y - 73 * mm, f"監査日：{audit_date.strftime('%Y年%m月%d日')}")
+        c.drawString(
+            30 * mm, y - 63 * mm, "監査の結果、適法かつ正確なることを認めます。"
+        )
+        c.drawString(
+            30 * mm, y - 73 * mm, f"監査日：{audit_date.strftime('%Y年%m月%d日')}"
+        )
 
         c.save()
         buffer.seek(0)

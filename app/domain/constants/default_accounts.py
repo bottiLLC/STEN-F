@@ -37,7 +37,12 @@ _RAW_ACCOUNTS = [
     ("2120", "未払金", AccountType.CURRENT_LIABILITY, "本来の営業取引以外の未払い"),
     ("2130", "預り金", AccountType.CURRENT_LIABILITY, "源泉税、社会保険料の預かり区分"),
     ("2140", "仮受金", AccountType.CURRENT_LIABILITY, "内容不明の入金など"),
-    ("2150", "未払法人税等", AccountType.CURRENT_LIABILITY, "決算により確定した未払いの法人税等"),
+    (
+        "2150",
+        "未払法人税等",
+        AccountType.CURRENT_LIABILITY,
+        "決算により確定した未払いの法人税等",
+    ),
     # 固定負債
     ("2210", "長期借入金", AccountType.FIXED_LIABILITY, "1年を超えて返済する借入金"),
     ("2220", "役員借入金", AccountType.FIXED_LIABILITY, "役員からの借入金"),
@@ -72,6 +77,5 @@ _RAW_ACCOUNTS = [
 ]
 
 DEFAULT_ACCOUNTS = [
-    {"code": c, "name": n, "type": t, "description": d}
-    for c, n, t, d in _RAW_ACCOUNTS
+    {"code": c, "name": n, "type": t, "description": d} for c, n, t, d in _RAW_ACCOUNTS
 ]

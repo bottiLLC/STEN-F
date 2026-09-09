@@ -70,7 +70,10 @@ class MasterService:
         return await self.repository.save_account(account)
 
     async def delete_account(self, account_id: int) -> None:
-        if self.ledger_repository and await self.ledger_repository.has_transactions_for_account(account_id):
+        if (
+            self.ledger_repository
+            and await self.ledger_repository.has_transactions_for_account(account_id)
+        ):
             raise ValueError("この勘定科目は仕訳で使用されているため削除できません。")
         await self.repository.delete_account(account_id)
 
@@ -82,7 +85,12 @@ class MasterService:
         for data in DEFAULT_ACCOUNTS:
             if data["code"] not in existing:
                 await self.save_account(
-                    Account(code=data["code"], name=data["name"], type=data["type"], description=data.get("description"))
+                    Account(
+                        code=data["code"],
+                        name=data["name"],
+                        type=data["type"],
+                        description=data.get("description"),
+                    )
                 )
                 count += 1
         return count
@@ -97,13 +105,26 @@ class MasterService:
         await self.repository.delete_abstract(abstract_id)
 
     LEGAL_ENTITY_KANA = [
-        "カブシキガイシャ", "カブシキカイシャ", "カ）", "（カ",
-        "ユウゲンガイシャ", "ユウゲンカイシャ", "ユ）", "（ユ",
-        "ゴウドウガイシャ", "ド）", "（ド",
-        "イッパンシャダンホウジン", "コウエキシャダンホウジン",
-        "ガッコウホウジン", "シュウキョウホウジン", "イリョウホウジン",
-        "シャカイフクシホウジン", "トクテイヒエイリカツドウホウジン",
-        "　", " ",
+        "カブシキガイシャ",
+        "カブシキカイシャ",
+        "カ）",
+        "（カ",
+        "ユウゲンガイシャ",
+        "ユウゲンカイシャ",
+        "ユ）",
+        "（ユ",
+        "ゴウドウガイシャ",
+        "ド）",
+        "（ド",
+        "イッパンシャダンホウジン",
+        "コウエキシャダンホウジン",
+        "ガッコウホウジン",
+        "シュウキョウホウジン",
+        "イリョウホウジン",
+        "シャカイフクシホウジン",
+        "トクテイヒエイリカツドウホウジン",
+        "　",
+        " ",
     ]
 
     async def get_counterparties(self) -> List[Counterparty]:
