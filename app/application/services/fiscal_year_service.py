@@ -31,20 +31,13 @@ class FiscalYearService:
     async def close_fiscal_year(
         self, fiscal_year_id: int, next_fy_name: str | None = None
     ):
+        """会計年度の繰越処理（決算締切）を実行し、次年度の期首残高仕訳を自動生成する。"""
         context_log = self.log.bind(fy_id=fiscal_year_id)
         try:
             context_log.info("Starting fiscal year closing process")
 
-            # 1. Validate Current FY
-            current_fy = await self.master_service.get_fiscal_year_by_id(
-                fiscal_year_id
-            )  # Assuming this method exists or similar
-            # If not, use repository directly? master_service usually wraps it.
-            # Let's verify master_service capabilities.
-            # If master_service doesn't have get_by_id, we might need to add it or use repo.
-            # For now assuming it exists or I'll fix it.
-            # Actually, `ledger_repository` has `get_fiscal_year`.
-            # Let's check `master_service` later. I'll write code assuming `get_fiscal_year` is available via master_service.
+            # 1. 現在の会計年度を取得・検証
+            current_fy = await self.master_service.get_fiscal_year_by_id(fiscal_year_id)
 
             if not current_fy:
                 raise ValueError(f"Fiscal Year {fiscal_year_id} not found")
@@ -52,10 +45,9 @@ class FiscalYearService:
             if current_fy.status != "OPEN":
                 raise ValueError("Fiscal Year is already closed")
 
-            # 2. Calculate Net Income
+            # 2. 当期純損益（Net Income）を算出
             tb_rows = await self.ledger_service.get_trial_balance(fiscal_year_id)
 
-            # revenue calculation was removed because it was unused
             expenses = (
                 sum(
                     r.balance
@@ -66,14 +58,12 @@ class FiscalYearService:
                         AccountType.SGA,
                         AccountType.NON_OPERATING_EXPENSE,
                         AccountType.EXTRAORDINARY_LOSS,
-                        AccountType.TAXES,  # Taxes should be included in expenses for Net Income generally, logic depends on if taxes are already booked.
-                        # User requirement: Revenue - Expenses.
-                        # Expenses usually include CostOfSales, SGA, NonOpExp, ExtraLoss, Taxes.
+                        AccountType.TAXES,
                     ]
                 )
                 or 0
             )
-            # Note: Income types also include NonOpInc, ExtraInc.
+
             income = (
                 sum(
                     r.balance
@@ -91,26 +81,19 @@ class FiscalYearService:
             net_income = income - expenses
             context_log.info("Calculated Net Income", net_income=net_income)
 
-            # 3. Prepare Next FY
+            # 3. 翌会計年度の準備
             next_start = current_fy.end_date + timedelta(days=1)
 
             # 安全な翌年算出処理 (うるう年 2月29日決算対策)
             try:
-                # 平年の場合はそのまま翌年の同月同日を取得
                 next_end_target = next_start.replace(year=next_start.year + 1)
             except ValueError:
-                # 2月29日のまま平年の翌年を作成しようとすると発生するため、月末日の2月28日にフォールバック
                 next_end_target = next_start.replace(
                     year=next_start.year + 1, month=2, day=28
                 )
 
-            # 翌年の同日からマイナス1日したものが、次年度終了日
             next_end = next_end_target - timedelta(days=1)
 
-            # Check if next FY exists
-            # We need a way to check. `get_fiscal_year_by_date`?
-            # Or just try to create.
-            # Let's try to find if next period exists.
             all_fys = await self.master_service.get_fiscal_years()
             next_fy = next(
                 (

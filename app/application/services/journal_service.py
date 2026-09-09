@@ -202,16 +202,14 @@ class JournalService:
             raise
 
     async def get_entries(
-        self, start_date=None, end_date=None, include_deleted: bool = False
-    ):
-        # Renamed get_journal_entries to get_entries to match Step 2567 signature?
-        # Step 2567: async def get_entries(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Transaction]:
-        # Step 2568: async def get_journal_entries(self): (No args)
-        # I MUST match the original signature.
-
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        include_deleted: bool = False,
+    ) -> List[Transaction]:
+        """指定された期間・条件に基づいて仕訳データを取得する。"""
         try:
             self.log.debug("Fetching journal entries")
-            # Step 2567: return await self.repo.get_transactions(start_date, end_date)
             entries = await self.repository.get_transactions(
                 start_date, end_date, include_deleted=include_deleted
             )
@@ -224,6 +222,7 @@ class JournalService:
     async def add_journal_entry_with_evidence(
         self, transaction: Transaction, file_bytes: bytes, file_service
     ) -> int:
+        """証憑ファイルを保存し、そのパスを紐づけて仕訳を新規登録する。"""
         context_log = self.log.bind(
             date=transaction.date.isoformat(),
             description=transaction.description,
@@ -232,11 +231,10 @@ class JournalService:
         try:
             context_log.info("Adding journal entry with evidence")
 
-            # 1. Add Transaction (Flush only)
+            # 1. 仕訳を追加（IDを採番）
             tx_id = await self.repository.add_transaction(transaction)
 
-            # 2. Save Evidence File
-            # Calculate amount from lines for filename
+            # 2. 証憑ファイルをストレージに保存
             total_amount = sum(line.debit for line in transaction.lines)
             corp_name = transaction.counterparty or "Unknown"
 
@@ -248,29 +246,8 @@ class JournalService:
                 corp_name=corp_name,
             )
 
-            # 3. Update DB with path (This requires a way to update the specific field without full save?
-            # Or since we have the object or ID, we can update it.
-            # Ideally Repo has update method.
-            # For brevity/pragmatism in this flow, we can re-fetch or assume attached session object is live?
-            # Actually, `add_transaction` flushes, so the object is in session identity map.
-            # But we don't return the ORM object, we returned ID.
-            # We need a way to update the path. Let's add a quick update method to repo or trust that we can't easily do it without one.
-            # Wait, `add_transaction` in repo created `db_tx`.
-            # If we want to clean UoW, we should probably pass the path IN `transaction` before calling add?
-            # BUT: We need ID to generate filename. So ID must exist first.
-            # So: Insert -> Get ID -> Gen Filename -> Update Path -> Commit.
-            # We need an `update_evidence_path` method in repository, OR use raw SQL in service (bad), OR fetch-modify-flush.
-            # Let's use fetch-modify mechanism or add specialized method.
-            # Adding `update_evidence(id, path)` to interface is cleanest for this specific requirement.
-            # But let's check if we can easier way:
-            # If we rely on SQLAlchemy session, we can fetch, modify, commit.
-
-            # Let's add `update_evidence_path` to Repo for explicit clarity.
-            # Or just use `add_transaction` creates it without path, then we fetch and update.
-            # Let's assume we add `update_evidence_path` to ILedgerRepository.
+            # 3. 証憑パスを更新してコミット
             await self.repository.update_evidence_path(tx_id, evidence_path)
-
-            # 4. Commit
             await self.repository.commit()
 
             context_log.info(
