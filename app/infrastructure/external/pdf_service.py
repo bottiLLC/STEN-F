@@ -23,6 +23,7 @@ import io
 from app.config import settings
 from app.domain.models.corporation import Corporation
 from app.domain.models.financial_report import FinancialReport
+from app.domain.models.fiscal_year import FiscalYear
 
 
 class PDFService:
@@ -49,7 +50,7 @@ class PDFService:
     def generate_annual_report(
         corp: Corporation,
         rpt: FinancialReport,
-        fy_full_obj,
+        fiscal_year: FiscalYear,
         report_date: date,
         audit_date: date,
     ) -> bytes:
@@ -58,7 +59,7 @@ class PDFService:
         c = canvas.Canvas(buffer, pagesize=A4, pdfVersion=(1, 4))
 
         # PDF/A Metadata
-        c.setTitle(f"Annual Report - {corp.name} - {fy_full_obj.name}")
+        c.setTitle(f"Annual Report - {corp.name} - {fiscal_year.name}")
         c.setAuthor(corp.name)
         c.setCreator(settings.APP_TITLE)
 
@@ -79,24 +80,24 @@ class PDFService:
 
         c.setFont(settings.FONT_NAME, 16)
         period_text = (
-            f"第 {fy_full_obj.period_number} 期"
-            if fy_full_obj.period_number
-            else fy_full_obj.name
+            f"第 {fiscal_year.period_number} 期"
+            if fiscal_year.period_number
+            else fiscal_year.name
         )
         c.drawCentredString(width / 2, height / 2 + 20 * mm, period_text)
 
         c.setFont(settings.FONT_NAME, 12)
-        date_range = f"自 {fy_full_obj.start_date.strftime('%Y年%m月%d日')}　至 {fy_full_obj.end_date.strftime('%Y年%m月%d日')}"
+        date_range = f"自 {fiscal_year.start_date.strftime('%Y年%m月%d日')}　至 {fiscal_year.end_date.strftime('%Y年%m月%d日')}"
 
         c.drawCentredString(
             width / 2,
             height / 2 + 10 * mm,
-            f"自　{fy_full_obj.start_date.strftime('%Y年%m月%d日')}",
+            f"自　{fiscal_year.start_date.strftime('%Y年%m月%d日')}",
         )
         c.drawCentredString(
             width / 2,
             height / 2 + 0 * mm,
-            f"至　{fy_full_obj.end_date.strftime('%Y年%m月%d日')}",
+            f"至　{fiscal_year.end_date.strftime('%Y年%m月%d日')}",
         )
 
         c.setFont(settings.FONT_NAME, 18)

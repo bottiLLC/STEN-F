@@ -7,7 +7,6 @@ from app.domain.models.financial_report import (
     FinancialReport,
     FinancialSection,
     TrialBalanceRow,
-    FiscalYear as ReportFiscalYear,
 )
 
 
@@ -21,7 +20,7 @@ def test_generate_annual_report_success():
         representative_name="テスト太郎",
     )
 
-    fy_model = FiscalYear(
+    fiscal_year = FiscalYear(
         id=1,
         name="FY2026",
         start_date=date(2026, 1, 1),
@@ -30,11 +29,8 @@ def test_generate_annual_report_success():
         period_number=10,
     )
 
-    # FinancialReport internally references a simplified FiscalYear model
-    report_fy = ReportFiscalYear(id=1, name="FY2026", period_number=10)
-
     # Helper to generate typical section
-    def create_dummy_section(title, balance=1000):
+    def create_dummy_section(title: str, balance: int = 1000) -> FinancialSection:
         return FinancialSection(
             title=title,
             rows=[
@@ -54,7 +50,7 @@ def test_generate_annual_report_success():
         )
 
     rpt = FinancialReport(
-        fiscal_year=report_fy,
+        fiscal_year=fiscal_year,
         current_assets=create_dummy_section("【流動資産】"),
         fixed_assets=create_dummy_section("【固定資産】"),
         deferred_assets=create_dummy_section(
@@ -84,7 +80,7 @@ def test_generate_annual_report_success():
     pdf_bytes = PDFService.generate_annual_report(
         corp=corp,
         rpt=rpt,
-        fy_full_obj=fy_model,
+        fiscal_year=fiscal_year,
         report_date=date(2027, 2, 28),
         audit_date=date(2027, 3, 10),
     )

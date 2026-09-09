@@ -12,12 +12,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from datetime import date
 from typing import List
 import pandas as pd
 import structlog
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
-from app.domain.models.financial_report import TrialBalanceRow
+from app.domain.models.financial_report import (
+    FinancialReport,
+    FinancialSection,
+    TrialBalanceRow,
+)
 from app.domain.models.account import AccountType
+from app.domain.models.fiscal_year import FiscalYear
 
 log = structlog.get_logger()
 
@@ -188,40 +194,14 @@ class LedgerService:
             context_log.error("Failed to generate General Ledger", error=str(e))
             raise
 
-    async def generate_financial_report(self, fy_id: int):
-        # This was just a stub/wrapper in my previous edit, but in 2570 it had full logic.
-        # I should probably restore full logic if I want to keep parity.
-        # However, for the sake of "Observability", I can just log and call the implementation.
-        # BUT, the logic was INSIDE Service. So I must restore it.
-        pass  # I will skip this for this single file write and do it properly in a moment or include it.
-        # Actually, it's better to verify if `generate_financial_report` is called.
-        # It is called by `financial_statements_tab.py`.
-        # So I MUST restore the logic.
-
-        # ... (Implementation of generate_financial_report with logging) ...
-        # Since the logic is long, I will focus on `get_trial_balance` and `get_general_ledger` first which caused the error,
-        # but I can't leave this method broken.
-
-        # I'll try to include the previous logic or a simplified version if it delegates to `get_trial_balance`.
-        # In 2570, `generate_financial_report` calls `get_trial_balance` then filters.
-        # See Step 2570 lines 52-120.
-
-        # I will include it.
-        return await self._generate_financial_report_logic(fy_id)
-
-    async def _generate_financial_report_logic(self, fiscal_year_id: int):
-        from app.domain.models.financial_report import (
-            FinancialReport,
-            FinancialSection,
-            FiscalYear,
-        )
-
+    async def generate_financial_report(self, fiscal_year_id: int) -> FinancialReport:
+        """Generates the full financial report (B/S and P/L) for a specific fiscal year."""
         context_log = self.log.bind(fy_id=fiscal_year_id)
         try:
             context_log.info("Generating Financial Report")
             rows = await self.get_trial_balance(fiscal_year_id)
 
-            def get_section(title, acc_type):
+            def get_section(title: str, acc_type: AccountType) -> FinancialSection:
                 section_rows = [r for r in rows if r.account_type == acc_type]
                 total = sum(r.balance for r in section_rows)
                 return FinancialSection(title=title, rows=section_rows, total=total)
@@ -256,11 +236,20 @@ class LedgerService:
 
             total_equity_val = equity.total + net_income
 
-            # Mock FY for now
-            dummy_fy = FiscalYear(id=fiscal_year_id, name="Current FY", period_number=1)
+            # Fetch or fallback fiscal year domain entity
+            fy_obj = await self.repository.get_fiscal_year(fiscal_year_id)
+            if not fy_obj:
+                fy_obj = FiscalYear(
+                    id=fiscal_year_id,
+                    name="Current FY",
+                    start_date=date(date.today().year, 1, 1),
+                    end_date=date(date.today().year, 12, 31),
+                    status="OPEN",
+                    period_number=1,
+                )
 
             report = FinancialReport(
-                fiscal_year=dummy_fy,
+                fiscal_year=fy_obj,
                 current_assets=cur_assets,
                 fixed_assets=fix_assets,
                 deferred_assets=def_assets,
