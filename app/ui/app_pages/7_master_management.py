@@ -290,11 +290,19 @@ with tab_acc:
 with tab_cp:
     st.subheader("取引先マスタ")
 
-    async def fetch_cps():
+    async def fetch_cps_and_accs():
         async with DI.get_master_service() as service:
-            return await service.get_counterparties()
+            c_list = await service.get_counterparties()
+            a_list = await service.get_accounts()
+            return c_list, a_list
 
-    cps = run_async(fetch_cps())
+    cps, cp_accs = run_async(fetch_cps_and_accs())
+
+    acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in cp_accs}
+    acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in cp_accs}
+    acc_select_labels = ["(指定なし)"] + [
+        f"{a.code}: {a.name}" for a in sorted(cp_accs, key=lambda x: int(x.code))
+    ]
 
     if cps:
         cp_df = pd.DataFrame(
@@ -303,8 +311,12 @@ with tab_cp:
                     "ID": c.id,
                     "取引先名": c.name,
                     "登録番号 (T番号)": c.invoice_number or "-",
-                    "推奨借方科目ID": c.debit_account_id or "-",
-                    "推奨貸方科目ID": c.credit_account_id or "-",
+                    "標準借方科目ID": f"{c.debit_account_id} ({acc_id_to_label[c.debit_account_id]})"
+                    if c.debit_account_id and c.debit_account_id in acc_id_to_label
+                    else (str(c.debit_account_id) if c.debit_account_id else "-"),
+                    "標準貸方科目ID": f"{c.credit_account_id} ({acc_id_to_label[c.credit_account_id]})"
+                    if c.credit_account_id and c.credit_account_id in acc_id_to_label
+                    else (str(c.credit_account_id) if c.credit_account_id else "-"),
                 }
                 for c in cps
             ]
@@ -313,15 +325,53 @@ with tab_cp:
 
     with st.expander("＋ 新規取引先を追加"):
         with st.form("new_cp_form"):
-            cp_n = st.text_input("取引先名")
-            cp_inv = st.text_input("インボイス登録番号 (T+13桁)")
+            cp_n = st.text_input("取引先名", placeholder="例: ○○商事株式会社")
+            cp_inv = st.text_input(
+                "インボイス登録番号 (T+13桁)",
+                placeholder="例: T1234567890123",
+                help="適格請求書発行事業者の登録番号 (T + 13桁の半角数字)",
+            )
+            col_cp_d, col_cp_c = st.columns(2)
+            with col_cp_d:
+                debit_choice = st.selectbox(
+                    "標準借方科目",
+                    acc_select_labels,
+                    help="この取引先の証憑を読み取った際に、借方科目として自動設定する勘定科目",
+                )
+            with col_cp_c:
+                credit_choice = st.selectbox(
+                    "標準貸方科目",
+                    acc_select_labels,
+                    help="この取引先の証憑を読み取った際に、貸方科目として自動設定する勘定科目（通常は現金・普通預金など）",
+                )
+            cp_desc_tmpl = st.text_input(
+                "標準摘要テンプレート (任意)",
+                placeholder="例: 事務用品・文具購入代",
+                help="この取引先からの仕訳を作成する際に自動設定される摘要",
+            )
 
             if st.form_submit_button("取引先を追加", icon=":material/add:"):
                 if cp_n:
+                    selected_debit_id = (
+                        acc_label_to_id.get(debit_choice)
+                        if debit_choice != "(指定なし)"
+                        else None
+                    )
+                    selected_credit_id = (
+                        acc_label_to_id.get(credit_choice)
+                        if credit_choice != "(指定なし)"
+                        else None
+                    )
+
                     new_c = Counterparty(
-                        name=cp_n,
+                        name=cp_n.strip(),
                         invoice_number=cp_inv.strip().upper()
                         if cp_inv.strip()
+                        else None,
+                        debit_account_id=selected_debit_id,
+                        credit_account_id=selected_credit_id,
+                        description_template=cp_desc_tmpl.strip()
+                        if cp_desc_tmpl.strip()
                         else None,
                     )
 

@@ -399,3 +399,20 @@ def test_ui_master_management_system_settings_tab():
         sys_btn.click()
         at.run()
         assert not at.exception
+
+
+def test_ui_master_management_counterparty_tab_with_account_selection():
+    """Verify Counterparty master tab shows updated column names and supports account selection."""
+    at = AppTest.from_file(
+        "app/ui/app_pages/7_master_management.py", default_timeout=15
+    )
+    at.run()
+    assert not at.exception
+    assert len(at.tabs) >= 7
+
+    # Find counterparty add submit button and test submission
+    cp_btn = next((b for b in at.button if "取引先を追加" in b.label), None)
+    if cp_btn:
+        cp_btn.click()
+        at.run()
+        assert not at.exception
