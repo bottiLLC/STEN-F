@@ -41,6 +41,29 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         rows = result.scalars().all()
         return [Account.model_validate(row) for row in rows]
 
+    @staticmethod
+    def _to_domain(row: TransactionTable) -> Transaction:
+        lines = [
+            TransactionLine(
+                id=line.id,
+                account_id=line.account_id,
+                debit=line.debit,
+                credit=line.credit,
+            )
+            for line in row.lines
+        ]
+        return Transaction(
+            id=row.id,
+            date=row.date,
+            description=row.description or "",
+            lines=lines,
+            is_deleted=row.is_deleted,
+            deleted_at=row.deleted_at,
+            counterparty=row.counterparty,
+            invoice_number=row.invoice_number,
+            evidence_path=row.evidence_path,
+        )
+
     async def get_transactions(
         self,
         start_date: Optional[date] = None,
@@ -72,40 +95,11 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         if end_date:
             stmt = stmt.where(TransactionTable.date <= end_date)
 
-        stmt = stmt.order_by(TransactionTable.date, TransactionTable.id)
+        stmt = stmt.order_by(TransactionTable.date.desc(), TransactionTable.id.desc())
 
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-
-        # Mapping to Domain Models
-        domain_txs = []
-        for row in rows:
-            lines = []
-            for tx_line in row.lines:
-                line_domain = TransactionLine(
-                    id=tx_line.id,
-                    account_id=tx_line.account_id,
-                    debit=tx_line.debit,
-                    credit=tx_line.credit,
-                )
-                if include_relationships and tx_line.account:
-                    line_domain.account = Account.model_validate(tx_line.account)
-                lines.append(line_domain)
-
-            domain_txs.append(
-                Transaction(
-                    id=row.id,
-                    date=row.date,
-                    description=row.description or "",
-                    lines=lines,
-                    is_deleted=row.is_deleted,
-                    deleted_at=row.deleted_at,
-                    counterparty=row.counterparty,
-                    invoice_number=row.invoice_number,
-                    evidence_path=row.evidence_path,
-                )
-            )
-        return domain_txs
+        return [self._to_domain(row) for row in rows]
 
     async def get_transactions_by_account(
         self,
@@ -150,33 +144,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
 
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-
-        # Mapping to Domain Models
-        domain_txs = []
-        for row in rows:
-            lines = [
-                TransactionLine(
-                    id=tx_line.id,
-                    account_id=tx_line.account_id,
-                    debit=tx_line.debit,
-                    credit=tx_line.credit,
-                )
-                for tx_line in row.lines
-            ]
-            domain_txs.append(
-                Transaction(
-                    id=row.id,
-                    date=row.date,
-                    description=row.description or "",
-                    lines=lines,
-                    is_deleted=row.is_deleted,
-                    deleted_at=row.deleted_at,
-                    counterparty=row.counterparty,
-                    invoice_number=row.invoice_number,
-                    evidence_path=row.evidence_path,
-                )
-            )
-        return domain_txs
+        return [self._to_domain(row) for row in rows]
 
     async def add_transaction(self, transaction: Transaction) -> int:
         db_tx = TransactionTable(

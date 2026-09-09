@@ -14,7 +14,6 @@
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-
 from app.infrastructure.db.session import AsyncSessionLocal
 from app.infrastructure.repositories.ledger_repository_impl import (
     SQLAlchemyLedgerRepository,
@@ -31,19 +30,13 @@ from app.application.services.fiscal_year_service import FiscalYearService
 
 
 class Container:
-    """
-    Dependency Injection Container ensuring scoped session management.
-    """
+    """極小軽量DIコンテナ（セッションスコープ自動管理）"""
 
     @asynccontextmanager
     async def session_scope(self):
-        """Provide a transactional scope."""
         session = AsyncSessionLocal()
         try:
             yield session
-            # Commit is usually handled by Service or Repository commit() methods explicitly
-            # But we could auto-commit here if we wanted.
-            # For now, we leave it to explicit commit in services.
         except Exception:
             await session.rollback()
             raise
@@ -52,44 +45,39 @@ class Container:
 
     @asynccontextmanager
     async def journal_service_scope(self) -> AsyncGenerator[JournalService, None]:
-        async with self.session_scope() as session:
-            repo = SQLAlchemyLedgerRepository(session)
-            master_repo = SQLAlchemyMasterRepository(session)
-            service = JournalService(repo, master_repository=master_repo)
-            yield service
+        async with self.session_scope() as s:
+            yield JournalService(
+                SQLAlchemyLedgerRepository(s),
+                master_repository=SQLAlchemyMasterRepository(s),
+            )
 
     @asynccontextmanager
     async def master_service_scope(self) -> AsyncGenerator[MasterService, None]:
-        async with self.session_scope() as session:
-            repo = SQLAlchemyMasterRepository(session)
-            ledger_repo = SQLAlchemyLedgerRepository(session)
-            service = MasterService(repo, ledger_repository=ledger_repo)
-            yield service
+        async with self.session_scope() as s:
+            yield MasterService(
+                SQLAlchemyMasterRepository(s),
+                ledger_repository=SQLAlchemyLedgerRepository(s),
+            )
 
     @asynccontextmanager
     async def ledger_service_scope(self) -> AsyncGenerator[LedgerService, None]:
-        async with self.session_scope() as session:
-            repo = SQLAlchemyLedgerRepository(session)
-            service = LedgerService(repo)
-            yield service
+        async with self.session_scope() as s:
+            yield LedgerService(SQLAlchemyLedgerRepository(s))
 
     @asynccontextmanager
     async def fiscal_year_service_scope(
         self,
     ) -> AsyncGenerator[FiscalYearService, None]:
-        # FY Service needs Master, Ledger, Journal services.
-        # They should share the SAME session for consistency.
-        async with self.session_scope() as session:
-            master_repo = SQLAlchemyMasterRepository(session)
-            ledger_repo = SQLAlchemyLedgerRepository(session)
-
-            # Construct services sharing the repos (and thus the session)
-            master_service = MasterService(master_repo, ledger_repository=ledger_repo)
-            ledger_service = LedgerService(ledger_repo)
-            journal_service = JournalService(ledger_repo, master_repository=master_repo)
-
-            service = FiscalYearService(master_service, ledger_service, journal_service)
-            yield service
+        async with self.session_scope() as s:
+            m_repo, l_repo = (
+                SQLAlchemyMasterRepository(s),
+                SQLAlchemyLedgerRepository(s),
+            )
+            yield FiscalYearService(
+                MasterService(m_repo, ledger_repository=l_repo),
+                LedgerService(l_repo),
+                JournalService(l_repo, master_repository=m_repo),
+            )
 
     def get_ocr_service(self) -> GeminiOCRService:
         return GeminiOCRService()
@@ -108,5 +96,4 @@ class Container:
         return BackupService()
 
 
-# Global instance
 container = Container()

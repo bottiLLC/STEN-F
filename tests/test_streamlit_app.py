@@ -14,6 +14,8 @@
 
 import pytest
 import asyncio
+from pathlib import Path
+import py_compile
 from app.ui.async_helper import run_async
 from app.ui.di import DI
 
@@ -43,29 +45,18 @@ async def test_di_container_resolution(container):
 
 
 def test_page_files_syntax():
-    """Verify all Streamlit page scripts can be compiled and parsed without syntax errors."""
-    import py_compile
-    from pathlib import Path
-
-    pages_dir = Path("app/ui/app_pages")
-    page_files = list(pages_dir.glob("*.py"))
-    assert len(page_files) == 7
+    """Verify all consolidated view scripts can be compiled and parsed without syntax errors."""
+    views_dir = Path("app/ui/views")
+    view_files = list(views_dir.glob("*.py"))
+    assert len(view_files) == 3
 
     expected_filenames = {
-        "1_journal_entry.py",
-        "2_journal_history.py",
-        "3_general_ledger.py",
-        "4_trial_balance.py",
-        "5_financial_statements.py",
-        "6_opening_balance.py",
-        "7_master_management.py",
+        "journal_view.py",
+        "ledger_view.py",
+        "master_view.py",
     }
-    actual_filenames = {pf.name for pf in page_files}
+    actual_filenames = {f.name for f in view_files}
     assert actual_filenames == expected_filenames
 
-    for pf in page_files:
-        py_compile.compile(str(pf), doraise=True)
-
-    # Also check app.py and styles.py
-    py_compile.compile("app.py", doraise=True)
-    py_compile.compile("app/ui/styles.py", doraise=True)
+    for page_file in view_files:
+        py_compile.compile(str(page_file), doraise=True)

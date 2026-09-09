@@ -274,10 +274,10 @@ STEN-F/
 │   ├── application/            # アプリケーションサービス層 (ユースケース)
 │   │   └── services/           # 仕訳・元帳・マスタ・決算サービス
 │   └── ui/                     # プレゼンテーション層 (Streamlit UI)
-│       ├── app_pages/          # 各画面 (1_仕訳入力, 2_仕訳帳, 3_総勘定元帳, 4_試算表, 5_決算書, 6_期首残高, 7_マスタ管理)
+│       ├── views/              # 3 主要統合ワークスペース (journal_view, ledger_view, master_view)
+│       ├── editor.py           # Key Rotation ＆ PK追跡型 汎用会計データエディタコンポーネント
 │       ├── async_helper.py     # Streamlit 非同期実行ヘルパー (nest_asyncio)
-│       ├── di.py               # UI からのサービス解決
-│       └── styles.py           # 会計ソフト・簿記専用の共通CSSスタイル (1280px レスポンシブ対応)
+│       └── di.py               # UI からのサービス解決
 ```
 
 ---
