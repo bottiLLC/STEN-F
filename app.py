@@ -39,9 +39,9 @@ if "initialized" not in st.session_state:
         log.error("Startup seeding error", error=str(e))
 
 pages = [
-    st.Page("app/ui/views/journal_view.py", title="仕訳・記帳ワークスペース", icon=":material/edit_note:", default=True),
-    st.Page("app/ui/views/ledger_view.py", title="元帳・決算ワークスペース", icon=":material/analytics:"),
-    st.Page("app/ui/views/master_view.py", title="マスタ・設定ワークスペース", icon=":material/settings:"),
+    st.Page("app/ui/views/journal_view.py", title="仕訳・記帳", icon=":material/edit_note:", default=True),
+    st.Page("app/ui/views/ledger_view.py", title="元帳・決算", icon=":material/analytics:"),
+    st.Page("app/ui/views/master_view.py", title="マスタ・設定", icon=":material/settings:"),
 ]
 nav = st.navigation(pages)
 

@@ -22,7 +22,7 @@ from app.ui.di import DI
 
 log = structlog.get_logger()
 
-st.header("帳簿・決算ワークスペース", divider="blue")
+st.header("帳簿・決算", divider="blue")
 st.caption(
     "総勘定元帳の閲覧、合計残高試算表 (T/B) による貸借検証、および貸借対照表 (B/S)・損益計算書 (P/L) の確認・PDF 出力を一元的に行います。"
 )
@@ -35,9 +35,7 @@ async def fetch_fys():
 
 fys = run_async(fetch_fys())
 if not fys:
-    st.warning(
-        "会計年度が登録されていません。マスタ・設定ワークスペースから登録してください。"
-    )
+    st.warning("会計年度が登録されていません。マスタ・設定から登録してください。")
     st.stop()
 
 fy_map = {

@@ -25,7 +25,7 @@ from app.ui.di import DI
 
 log = structlog.get_logger()
 
-st.header("仕訳・記帳ワークスペース", divider="blue")
+st.header("仕訳・記帳", divider="blue")
 st.caption(
     "AI OCR（領収書・請求書自動読取）起点での振替伝票作成、および仕訳帳の一覧・検索・CSV出力を一元的に行います。"
 )
@@ -84,7 +84,7 @@ with tab_entry:
 
     ocr = st.session_state.get("ocr_result")
     st.markdown("---")
-    st.subheader("Step 2: 振替伝票入力 (Header固定 ＆ Linesエディタ)")
+    st.subheader("Step 2: 振替伝票入力")
 
     ocr_date = date.today()
     if ocr and ocr.transaction_date:

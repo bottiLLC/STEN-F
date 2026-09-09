@@ -29,7 +29,7 @@ from app.ui.editor import render_accounting_editor
 
 log = structlog.get_logger()
 
-st.header("マスタ・システム設定ワークスペース", divider="blue")
+st.header("マスタ・システム設定", divider="blue")
 st.caption(
     "事業者情報、会計年度・決算締め処理、期首残高、勘定科目・取引先・摘要マスタ、バックアップ、AI設定を一括管理します。"
 )
@@ -296,7 +296,9 @@ with tab_acc:
                 "id": a.id,
                 "code": a.code,
                 "name": a.name,
-                "type": a.type.value if hasattr(a.type, "value") else str(a.type),
+                "type": a.type.label
+                if hasattr(a.type, "label")
+                else (a.type.value if hasattr(a.type, "value") else str(a.type)),
                 "description": a.description or "",
             }
             for a in sorted(acc_list, key=lambda x: int(x.code))
@@ -308,23 +310,36 @@ with tab_acc:
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("code") and r.get("name") and r.get("type"):
+                        t_val = str(r["type"])
+                        try:
+                            acc_type = AccountType.from_label(t_val)
+                        except ValueError:
+                            acc_type = AccountType(t_val)
                         await s.save_account(
                             Account(
                                 code=str(r["code"]),
                                 name=str(r["name"]),
-                                type=AccountType(r["type"]),
+                                type=acc_type,
                                 description=r.get("description"),
                             )
                         )
                 for pk, chg in edited.items():
                     cur = next((a for a in acc_list if a.id == pk), None)
                     if cur:
+                        if "type" in chg:
+                            t_val = str(chg["type"])
+                            try:
+                                acc_type = AccountType.from_label(t_val)
+                            except ValueError:
+                                acc_type = AccountType(t_val)
+                        else:
+                            acc_type = cur.type
                         await s.save_account(
                             Account(
                                 id=pk,
                                 code=str(chg.get("code", cur.code)),
                                 name=str(chg.get("name", cur.name)),
-                                type=AccountType(chg.get("type", cur.type)),
+                                type=acc_type,
                                 description=chg.get("description", cur.description),
                             )
                         )
@@ -338,7 +353,7 @@ with tab_acc:
         "code": st.column_config.TextColumn("科目コード", required=True),
         "name": st.column_config.TextColumn("科目名", required=True),
         "type": st.column_config.SelectboxColumn(
-            "勘定区分", options=[t.value for t in AccountType], required=True
+            "勘定区分", options=[t.label for t in AccountType], required=True
         ),
         "description": st.column_config.TextColumn("説明・用途"),
     }
