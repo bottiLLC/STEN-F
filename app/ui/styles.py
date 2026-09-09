@@ -208,8 +208,101 @@ div[data-testid="stTabs"] button[role="tab"] {
     background-color: rgba(100, 116, 139, 0.08);
     border-left: 4px solid #3b82f6;
     border-radius: 0 4px 4px 0;
-    margin-top: 10px;
+    margin-top: 6px;
     margin-bottom: 6px;
+}
+
+/* 決算書 小計行 (流動資産合計・流動負債合計・固定資産合計など) */
+.statement-subtotal {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 12px;
+    margin: 4px 0 10px 0;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.statement-subtotal .subtotal-label {
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+.statement-subtotal .subtotal-amount {
+    font-size: 1.05rem;
+    font-weight: 800;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #0f172a;
+}
+
+/* 決算書 資産合計ハイライト */
+.statement-assets-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(37, 99, 235, 0.08);
+    border: 1.5px solid #2563eb;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 6px 0 10px 0;
+    font-size: 1rem;
+    font-weight: 800;
+    color: #1d4ed8;
+}
+
+.statement-assets-total .total-amount {
+    font-size: 1.2rem;
+    font-weight: 800;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #1e40af;
+}
+
+/* 決算書 負債合計ハイライト */
+.statement-liabilities-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(16, 185, 129, 0.08);
+    border: 1.5px solid #10b981;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 6px 0 10px 0;
+    font-size: 1rem;
+    font-weight: 800;
+    color: #047857;
+}
+
+.statement-liabilities-total .total-amount {
+    font-size: 1.2rem;
+    font-weight: 800;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #065f46;
+}
+
+/* 決算書 負債・純資産合計ハイライト */
+.statement-grand-highlight {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(99, 102, 241, 0.08);
+    border: 2px solid #6366f1;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0 12px 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #4338ca;
+}
+
+.statement-grand-highlight .grand-amount {
+    font-size: 1.25rem;
+    font-weight: 800;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #3730a3;
 }
 
 .statement-total-row {

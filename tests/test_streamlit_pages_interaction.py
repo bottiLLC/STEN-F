@@ -200,6 +200,12 @@ def test_financial_statements_page_interactions():
         f"5_financial_statements.py raised exception: {at.exception}"
     )
     assert len(at.tabs) >= 1
+    assert len(at.checkbox) >= 1  # hide_zero checkbox
+
+    # Toggle hide_zero checkbox
+    at.checkbox[0].uncheck()
+    at.run()
+    assert not at.exception
 
     # Click PDF generation button
     pdf_btn = next((b for b in at.button if "PDF" in b.label), None)
