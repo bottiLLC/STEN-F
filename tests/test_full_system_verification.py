@@ -25,11 +25,13 @@ Exhaustively verifies:
 """
 
 import os
+from pathlib import Path
 import tempfile
 from datetime import date
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from app.config import settings
 from app.domain.models.account import Account, AccountType
 from app.domain.models.corporation import Corporation
 from app.domain.models.counterparty import Counterparty
@@ -340,12 +342,23 @@ class TestFullSystemE2E:
         """Verify automated database backup creation and folder integrity."""
         backup_svc = container.get_backup_service()
         with tempfile.TemporaryDirectory() as tmpdir:
-            backup_folder_path = await backup_svc.create_backup(tmpdir)
-            assert os.path.exists(backup_folder_path)
-            assert os.path.isdir(backup_folder_path)
-            # Verify backed up files
-            files = os.listdir(backup_folder_path)
-            assert any(".db" in f or "bookkeeping" in f for f in files)
+            tmp_path = Path(tmpdir)
+            dummy_db = tmp_path / "sten_f.db"
+            dummy_db.write_text("DUMMY_DB_DATA", encoding="utf-8")
+
+            orig_url = settings.DATABASE_URL
+            try:
+                settings.DATABASE_URL = f"sqlite+aiosqlite:///{dummy_db}"
+                backup_folder_path = await backup_svc.create_backup(
+                    str(tmp_path / "backups")
+                )
+                assert os.path.exists(backup_folder_path)
+                assert os.path.isdir(backup_folder_path)
+                # Verify backed up files
+                files = os.listdir(backup_folder_path)
+                assert any("sten_f.db" in f for f in files)
+            finally:
+                settings.DATABASE_URL = orig_url
 
 
 def test_06_streamlit_full_ui_navigation():
