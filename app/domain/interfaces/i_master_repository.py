@@ -14,89 +14,48 @@
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from app.domain.models.corporation import Corporation
-from app.domain.models.fiscal_year import FiscalYear
-from app.domain.models.account import Account
 from app.domain.models.abstract import Abstract
+from app.domain.models.account import Account
+from app.domain.models.corporation import Corporation
 from app.domain.models.counterparty import Counterparty
+from app.domain.models.fiscal_year import FiscalYear
 from app.domain.models.system import SystemSettings
 
 
 class IMasterRepository(ABC):
-    # System Settings
     @abstractmethod
-    async def get_system_settings(self) -> SystemSettings:
-        pass
-
+    async def get_system_settings(self) -> SystemSettings: ...
     @abstractmethod
-    async def save_system_settings(self, settings: SystemSettings) -> SystemSettings:
-        pass
-
-    # Corporation
+    async def save_system_settings(self, settings: SystemSettings) -> SystemSettings: ...
     @abstractmethod
-    async def get_corporation(self) -> Optional[Corporation]:
-        pass
-
+    async def get_corporation(self) -> Optional[Corporation]: ...
     @abstractmethod
-    async def save_corporation(self, corp: Corporation) -> Corporation:
-        pass
-
-    # Fiscal Year
+    async def save_corporation(self, corp: Corporation) -> Corporation: ...
     @abstractmethod
-    async def get_fiscal_years(self) -> List[FiscalYear]:
-        pass
-
+    async def get_fiscal_years(self) -> List[FiscalYear]: ...
     @abstractmethod
-    async def get_fiscal_year(self, fy_id: int) -> Optional[FiscalYear]:
-        pass
-
-    # Counterparty
+    async def get_fiscal_year(self, fy_id: int) -> Optional[FiscalYear]: ...
     @abstractmethod
-    async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
-        pass
-
+    async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear: ...
     @abstractmethod
-    async def get_counterparties(self) -> List[Counterparty]:
-        pass
-
+    async def delete_fiscal_year(self, fy_id: int) -> bool: ...
     @abstractmethod
-    async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]:
-        pass
-
+    async def get_counterparties(self) -> List[Counterparty]: ...
     @abstractmethod
-    async def delete_counterparty(self, cp_id: int) -> bool:
-        pass
-
+    async def save_counterparty(self, counterparty: Counterparty) -> Counterparty: ...
     @abstractmethod
-    async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
-        pass
-
+    async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]: ...
     @abstractmethod
-    async def delete_fiscal_year(self, fy_id: int) -> bool:
-        pass
-
-    # Account
+    async def delete_counterparty(self, cp_id: int) -> bool: ...
     @abstractmethod
-    async def get_accounts(self) -> List[Account]:
-        pass
-
+    async def get_accounts(self) -> List[Account]: ...
     @abstractmethod
-    async def save_account(self, account: Account) -> Account:
-        pass
-
+    async def save_account(self, account: Account) -> Account: ...
     @abstractmethod
-    async def delete_account(self, account_id: int) -> bool:
-        pass
-
-    # Abstract
+    async def delete_account(self, account_id: int) -> bool: ...
     @abstractmethod
-    async def get_abstracts(self) -> List[Abstract]:
-        pass
-
+    async def get_abstracts(self) -> List[Abstract]: ...
     @abstractmethod
-    async def save_abstract(self, abstract: Abstract) -> Abstract:
-        pass
-
+    async def save_abstract(self, abstract: Abstract) -> Abstract: ...
     @abstractmethod
-    async def delete_abstract(self, abs_id: int) -> bool:
-        pass
+    async def delete_abstract(self, abs_id: int) -> bool: ...

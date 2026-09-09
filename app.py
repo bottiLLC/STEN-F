@@ -16,11 +16,11 @@ import nest_asyncio
 import streamlit as st
 import structlog
 
-nest_asyncio.apply()
-
+from app.infrastructure.db.seed_data import seed_accounts
 from app.ui.async_helper import run_async
 from app.ui.di import DI
-from app.infrastructure.db.seed_data import seed_accounts
+
+nest_asyncio.apply()
 
 log = structlog.get_logger()
 
@@ -31,55 +31,32 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+if "initialized" not in st.session_state:
+    try:
+        run_async(seed_accounts())
+        st.session_state.initialized = True
+    except Exception as e:
+        log.error("Startup seeding error", error=str(e))
 
-def init_app_state():
-    if "initialized" not in st.session_state:
-        try:
-            run_async(seed_accounts())
-            st.session_state.initialized = True
-        except Exception as e:
-            log.error("Startup seeding error", error=str(e))
-
-
-init_app_state()
-
-# 3 主要ワークスペースへの統合ルーティング
 pages = [
-    st.Page(
-        "app/ui/views/journal_view.py",
-        title="仕訳・記帳ワークスペース",
-        icon=":material/edit_note:",
-        default=True,
-    ),
-    st.Page(
-        "app/ui/views/ledger_view.py",
-        title="元帳・決算ワークスペース",
-        icon=":material/analytics:",
-    ),
-    st.Page(
-        "app/ui/views/master_view.py",
-        title="マスタ・設定ワークスペース",
-        icon=":material/settings:",
-    ),
+    st.Page("app/ui/views/journal_view.py", title="仕訳・記帳ワークスペース", icon=":material/edit_note:", default=True),
+    st.Page("app/ui/views/ledger_view.py", title="元帳・決算ワークスペース", icon=":material/analytics:"),
+    st.Page("app/ui/views/master_view.py", title="マスタ・設定ワークスペース", icon=":material/settings:"),
 ]
-
 nav = st.navigation(pages)
 
 with st.sidebar:
     st.title("STEN-F 会計")
     st.caption("Simple Tough Effective Next-generation Finance")
     st.divider()
-
     try:
-        async def fetch_global_info():
+        async def fetch_info():
             async with DI.get_master_service() as s:
                 c = await s.get_corporation()
                 f = await s.get_fiscal_years()
-                o = next((x for x in f if x.status == "OPEN"), None)
-                return c, o
+                return c, next((x for x in f if x.status == "OPEN"), None)
 
-        corp_info, open_fy = run_async(fetch_global_info())
-
+        corp_info, open_fy = run_async(fetch_info())
         if corp_info and corp_info.name:
             st.markdown(f"🏢 **{corp_info.name}**")
             if corp_info.representative_name:
@@ -88,7 +65,6 @@ with st.sidebar:
             st.caption("🏢 ※ 自社情報未設定 (マスタ管理で登録)")
 
         st.markdown("---")
-
         if open_fy:
             st.info(f"📅 **進行中の会計年度**\n\n**{open_fy.name}**\n\n`{open_fy.start_date}` 〜 `{open_fy.end_date}`")
         else:

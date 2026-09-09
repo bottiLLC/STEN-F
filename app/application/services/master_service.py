@@ -12,16 +12,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import List, Optional
 import structlog
-from app.domain.interfaces.i_master_repository import IMasterRepository
-from app.domain.models.corporation import Corporation
-from app.domain.models.fiscal_year import FiscalYear
-from app.domain.models.account import Account
-from app.domain.models.abstract import Abstract
-from app.domain.models.counterparty import Counterparty
-from app.domain.models.system import SystemSettings
-
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
+from app.domain.interfaces.i_master_repository import IMasterRepository
+from app.domain.models.abstract import Abstract
+from app.domain.models.account import Account
+from app.domain.models.corporation import Corporation
+from app.domain.models.counterparty import Counterparty
+from app.domain.models.fiscal_year import FiscalYear
+from app.domain.models.system import SystemSettings
 
 log = structlog.get_logger()
 
@@ -30,172 +30,101 @@ class MasterService:
     def __init__(
         self,
         repository: IMasterRepository,
-        ledger_repository: ILedgerRepository | None = None,
+        ledger_repository: Optional[ILedgerRepository] = None,
     ):
         self.repository = repository
         self.ledger_repository = ledger_repository
         self.log = log.bind(service="MasterService")
 
-    # --- System Settings ---
     async def get_system_settings(self) -> SystemSettings:
         return await self.repository.get_system_settings()
 
     async def save_system_settings(self, settings: SystemSettings) -> SystemSettings:
-        self.log.info("Saving System Settings")
-        saved = await self.repository.save_system_settings(settings)
-        self.log.info("System Settings saved")
-        return saved
+        return await self.repository.save_system_settings(settings)
 
-    # --- Corporation ---
-    async def get_corporation(self) -> Corporation | None:
+    async def get_corporation(self) -> Optional[Corporation]:
         return await self.repository.get_corporation()
 
-    async def save_corporation(self, corp: Corporation):
-        self.log.info("Saving Corporation data", name=corp.name)
+    async def save_corporation(self, corp: Corporation) -> None:
         await self.repository.save_corporation(corp)
-        self.log.info("Corporation data saved")
 
-    # --- Fiscal Year ---
-    async def get_fiscal_years(self) -> list[FiscalYear]:
+    async def get_fiscal_years(self) -> List[FiscalYear]:
         return await self.repository.get_fiscal_years()
 
-    async def get_fiscal_year_by_id(self, fy_id: int) -> FiscalYear | None:
+    async def get_fiscal_year_by_id(self, fy_id: int) -> Optional[FiscalYear]:
         return await self.repository.get_fiscal_year(fy_id)
 
-    async def save_fiscal_year(self, fy: FiscalYear):
-        self.log.info("Saving Fiscal Year", name=fy.name, period=fy.period_number)
-        saved = await self.repository.save_fiscal_year(fy)
-        self.log.info("Fiscal Year saved")
-        return saved
+    async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
+        return await self.repository.save_fiscal_year(fy)
 
-    async def create_fiscal_year(self, fy: FiscalYear):
+    async def create_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
         return await self.save_fiscal_year(fy)
 
-    async def delete_fiscal_year(self, fy_id: int):
-        self.log.info("Deleting Fiscal Year", fy_id=fy_id)
+    async def delete_fiscal_year(self, fy_id: int) -> None:
         await self.repository.delete_fiscal_year(fy_id)
-        self.log.info("Fiscal Year deleted")
 
-    # --- Account ---
-    async def get_accounts(self) -> list[Account]:
+    async def get_accounts(self) -> List[Account]:
         return await self.repository.get_accounts()
 
-    async def save_account(self, account: Account):
-        self.log.info("Saving Account", code=account.code, name=account.name)
-        await self.repository.save_account(account)
-        self.log.info("Account saved")
+    async def save_account(self, account: Account) -> Account:
+        return await self.repository.save_account(account)
 
-    async def delete_account(self, account_id: int):
-        self.log.info("Deleting Account", account_id=account_id)
-
-        if self.ledger_repository:
-            has_tx = await self.ledger_repository.has_transactions_for_account(
-                account_id
-            )
-            if has_tx:
-                self.log.warning(
-                    "Cannot delete account with existing transactions",
-                    account_id=account_id,
-                )
-                raise ValueError(
-                    "この勘定科目は仕訳で使用されているため削除できません。"
-                )
-
+    async def delete_account(self, account_id: int) -> None:
+        if self.ledger_repository and await self.ledger_repository.has_transactions_for_account(account_id):
+            raise ValueError("この勘定科目は仕訳で使用されているため削除できません。")
         await self.repository.delete_account(account_id)
-        self.log.info("Account deleted")
 
     async def initialize_default_accounts(self) -> int:
-        """Initializes default accounts if they don't exist."""
         from app.domain.constants.default_accounts import DEFAULT_ACCOUNTS
 
-        self.log.info("Initializing default accounts")
-        existing_accounts = await self.get_accounts()
-        existing_codes = {acc.code for acc in existing_accounts}
-
+        existing = {a.code for a in await self.get_accounts()}
         count = 0
         for data in DEFAULT_ACCOUNTS:
-            if data["code"] not in existing_codes:
-                new_acc = Account(
-                    code=data["code"],
-                    name=data["name"],
-                    type=data["type"],
-                    description=data["description"],
+            if data["code"] not in existing:
+                await self.save_account(
+                    Account(code=data["code"], name=data["name"], type=data["type"], description=data.get("description"))
                 )
-                await self.save_account(new_acc)
                 count += 1
-
-        self.log.info("Default accounts initialized", count=count)
         return count
 
-    # --- Abstract ---
-    async def get_abstracts(self) -> list[Abstract]:
+    async def get_abstracts(self) -> List[Abstract]:
         return await self.repository.get_abstracts()
 
     async def save_abstract(self, abstract: Abstract) -> Abstract:
-        self.log.info("Saving Abstract", text=abstract.text)
-        saved = await self.repository.save_abstract(abstract)
-        self.log.info("Abstract saved")
-        return saved
+        return await self.repository.save_abstract(abstract)
 
-    async def delete_abstract(self, abstract_id: int):
-        self.log.info("Deleting Abstract", abstract_id=abstract_id)
+    async def delete_abstract(self, abstract_id: int) -> None:
         await self.repository.delete_abstract(abstract_id)
-        self.log.info("Abstract deleted")
 
-    # --- Counterparty ---
-    async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
-        self.log.info("Saving Counterparty", name=counterparty.name)
-        saved = await self.repository.save_counterparty(counterparty)
-        self.log.info("Counterparty saved")
-        return saved
-
-    # Common legal entity strings (Kana) to remove for sorting
     LEGAL_ENTITY_KANA = [
-        "カブシキガイシャ",
-        "カブシキカイシャ",
-        "カ）",
-        "（カ",
-        "ユウゲンガイシャ",
-        "ユウゲンカイシャ",
-        "ユ）",
-        "（ユ",
-        "ゴウドウガイシャ",
-        "ド）",
-        "（ド",
-        "イッパンシャダンホウジン",
-        "コウエキシャダンホウジン",
-        "ガッコウホウジン",
-        "シュウキョウホウジン",
-        "イリョウホウジン",
-        "シャカイフクシホウジン",
-        "トクテイヒエイリカツドウホウジン",  # NPO
-        "　",
-        " ",  # Spaces
+        "カブシキガイシャ", "カブシキカイシャ", "カ）", "（カ",
+        "ユウゲンガイシャ", "ユウゲンカイシャ", "ユ）", "（ユ",
+        "ゴウドウガイシャ", "ド）", "（ド",
+        "イッパンシャダンホウジン", "コウエキシャダンホウジン",
+        "ガッコウホウジン", "シュウキョウホウジン", "イリョウホウジン",
+        "シャカイフクシホウジン", "トクテイヒエイリカツドウホウジン",
+        "　", " ",
     ]
 
-    async def get_counterparties(self) -> list[Counterparty]:
+    async def get_counterparties(self) -> List[Counterparty]:
         cps = await self.repository.get_counterparties()
 
         def sort_key(cp: Counterparty):
-            # 1. Use kana if available, else name
             key = cp.name_kana if cp.name_kana else cp.name
-
-            # 2. Normalize: Remove common legal entity strings
             for word in self.LEGAL_ENTITY_KANA:
                 key = key.replace(word, "")
-
             return key
 
-        # Python's sort is stable
         cps.sort(key=sort_key)
         return cps
 
-    async def get_counterparty_by_keyword(self, keyword: str) -> Counterparty | None:
+    async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
+        return await self.repository.save_counterparty(counterparty)
+
+    async def delete_counterparty(self, counterparty_id: int) -> None:
+        await self.repository.delete_counterparty(counterparty_id)
+
+    async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]:
         if not keyword:
             return None
         return await self.repository.get_counterparty_by_keyword(keyword)
-
-    async def delete_counterparty(self, cp_id: int):
-        self.log.info("Deleting Counterparty", cp_id=cp_id)
-        await self.repository.delete_counterparty(cp_id)
-        self.log.info("Counterparty deleted")

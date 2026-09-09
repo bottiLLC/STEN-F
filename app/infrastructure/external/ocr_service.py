@@ -13,18 +13,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
+from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 import io
 import json
 import re
+from typing import Any, List, Optional, Tuple
 import unicodedata
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Optional
-import fitz  # PyMuPDF
-from PIL import Image
-from pydantic import BaseModel, Field
+import fitz
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
+from PIL import Image
+from pydantic import BaseModel, Field
 import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -33,50 +34,28 @@ from app.domain.models.receipt import ReceiptData
 
 log = structlog.get_logger()
 
+_CORP_STATUS_PATTERN = re.compile(
+    r"株式会社|有限会社|合同会社|合名会社|合資会社|一般社団法人|公益社団法人|"
+    r"一般財団法人|公益財団法人|医療法人|学校法人|宗教法人|社会福祉法人|"
+    r"特定非営利活動法人|NPO法人|\(株\)|\(有\)|\(同\)|\(名\)|\(資\)|\(財\)|\(社\)|"
+    r"㈱|㈲|㈇|㈆|㈅|㈄|㈃|㈂|㈁"
+)
+
 
 class ReceiptExtractionSchema(BaseModel):
-    """
-    Gemini Structured Output 専用の領収書・証憑抽出スキーマ
-    """
-
-    merchant_name: Optional[str] = Field(
-        None, description="The name of the store or vendor. If illegible, use null."
-    )
-    transaction_date: Optional[str] = Field(
-        None,
-        description="The date of the transaction (Format: YYYY-MM-DD). If illegible, use null.",
-    )
-    total_amount_incl_tax: Optional[int] = Field(
-        None,
-        description="The total amount paid including tax (integer). If illegible, use null.",
-    )
-    invoice_registration_number: Optional[str] = Field(
-        None,
-        description="The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.",
-    )
+    merchant_name: Optional[str] = Field(None, description="The name of the store or vendor. If illegible, use null.")
+    transaction_date: Optional[str] = Field(None, description="The date of the transaction (Format: YYYY-MM-DD). If illegible, use null.")
+    total_amount_incl_tax: Optional[int] = Field(None, description="The total amount paid including tax (integer). If illegible, use null.")
+    invoice_registration_number: Optional[str] = Field(None, description="The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.")
 
 
 class AccountInferenceSchema(BaseModel):
-    """
-    Gemini Structured Output 専用の勘定科目・摘要推論スキーマ
-    """
-
-    debit_account: Optional[str] = Field(
-        None, description="借方科目の名前（例: 消耗品費, 会議費, 旅費交通費など）"
-    )
-    credit_account: Optional[str] = Field(
-        None, description="貸方科目の名前（例: 役員借入金, 普通預金など）"
-    )
-    description: Optional[str] = Field(
-        None, description="取引の摘要文（例: 〇〇代として）"
-    )
+    debit_account: Optional[str] = Field(None, description="借方科目の名前（例: 消耗品費, 会議費, 旅費交通費など）")
+    credit_account: Optional[str] = Field(None, description="貸方科目の名前（例: 役員借入金, 普通預金など）")
+    description: Optional[str] = Field(None, description="取引の摘要文（例: 〇〇代として）")
 
 
 class GeminiOCRService:
-    """
-    Google Gemini API (gemini-3.5-flash-lite) を利用した領収書・証憑OCRおよび仕訳推論サービス。
-    """
-
     def __init__(self):
         self.log = log.bind(service="GeminiOCRService")
 
@@ -84,682 +63,260 @@ class GeminiOCRService:
         self,
         file_bytes: bytes,
         file_type: str,
-        account_list: list[str] | None = None,
-        counterparty_list: list[str] | None = None,
+        account_list: Optional[List[str]] = None,
+        counterparty_list: Optional[List[str]] = None,
     ) -> ReceiptData:
-        # Include all function input parameters in log context, masking sensitive keys
-        local_log = self.log.bind(
-            file_type=file_type,
-            file_bytes_len=len(file_bytes),
-            account_list=account_list,
-            counterparty_list=counterparty_list,
-        )
-        local_log.info("extract_receipt_data_start")
-
         from app.container import container
 
         async with container.master_service_scope() as ms:
-            system_settings = await ms.get_system_settings()
-            api_key = system_settings.ai_api_key
-
-        # Fallback to config settings (which reads from .env)
-        if not api_key:
-            api_key = settings.GEMINI_API_KEY or settings.OPENAI_API_KEY
-
-        masked_api_key = api_key[:8] + "..." if api_key else None
-        local_log = local_log.bind(api_key=masked_api_key)
+            settings_obj = await ms.get_system_settings()
+            api_key = settings_obj.ai_api_key or settings.GEMINI_API_KEY or settings.OPENAI_API_KEY
 
         if not api_key:
-            local_log.error("API Key not configured.")
             raise ValueError(
                 "AI連携用のAPIキー（Gemini）が設定されていません。\n"
                 "「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または .env ファイルに GEMINI_API_KEY を登録してください。"
             )
-
-        if not file_bytes or len(file_bytes) == 0:
+        if not file_bytes:
             raise ValueError("アップロードされたファイルが空です。")
 
-        # Determine MIME type and preprocess
-        mime_type = "image/jpeg"
-        if file_type.lower() == "pdf":
+        ft = file_type.lower()
+        if ft == "pdf":
             try:
-                # PDFの場合は最初のページをPNG画像にレンダリングする
                 doc = fitz.open(stream=file_bytes, filetype="pdf")
-                if len(doc) > 0:
-                    page = doc.load_page(0)
-                    pix = page.get_pixmap(dpi=200, alpha=False)
-                    file_bytes = pix.tobytes("png")
-                    mime_type = "image/png"
-                else:
+                if len(doc) == 0:
                     raise ValueError("PDFファイルが空（0ページ）です。")
+                pix = doc.load_page(0).get_pixmap(dpi=200, alpha=False)
+                file_bytes, mime_type = pix.tobytes("png"), "image/png"
             except Exception as e:
-                self.log.error("PDF page rendering failed", error=str(e), exc_info=True)
-                raise ValueError(
-                    f"PDFファイルの読み込み・レンダリングに失敗しました: {str(e)}"
-                ) from e
-        elif file_type.lower() in ["png", "jpg", "jpeg", "webp"]:
-            mime_type = f"image/{file_type.lower()}"
-            if mime_type == "image/jpg":
-                mime_type = "image/jpeg"
+                raise ValueError(f"PDFファイルの読み込み・レンダリングに失敗しました: {str(e)}") from e
+        elif ft in ("png", "jpg", "jpeg", "webp"):
+            mime_type = "image/jpeg" if ft == "jpg" else f"image/{ft}"
         else:
-            raise ValueError(
-                f"サポートされていないファイル形式です: {file_type} (対応形式: PDF, PNG, JPG, JPEG, WEBP)"
-            )
+            raise ValueError(f"サポートされていないファイル形式です: {file_type} (対応形式: PDF, PNG, JPG, JPEG, WEBP)")
 
-        # Optimize image size/DPI
-        optimized_bytes, final_mime_type = self._optimize_image(file_bytes, mime_type)
-
-        # Format counterparty list for prompt
-        cp_list_str = ""
-        if counterparty_list:
-            cp_list_str = "\n".join([f"- {cp}" for cp in counterparty_list])
-
-        sys_instruct = f"""
-You are an expert OCR assistant. Extract EXACTLY the following fields from the receipt image.
+        opt_bytes, opt_mime = self._optimize_image(file_bytes, mime_type)
+        cp_str = "\n".join([f"- {cp}" for cp in counterparty_list]) if counterparty_list else ""
+        sys_instruct = f"""You are an expert OCR assistant. Extract EXACTLY the following fields from the receipt image.
 Do not make any accounting inferences.
 
 ### Registered Counterparty List
 If the merchant name matches or resembles one of these, use the EXACT name from this list for "merchant_name".
-{cp_list_str}
+{cp_str}
 
 Extract the following fields into a valid JSON object matching the requested schema:
 1. **merchant_name**: The name of the store or vendor. If illegible, use null.
-2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD). 
+2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD).
 3. **total_amount_incl_tax**: The total amount paid including tax (integer).
 4. **invoice_registration_number**: The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.
 """
-
         client = genai.Client(api_key=api_key)
         try:
-            # Step 1: Raw Extraction via Gemini
-            response_text = await self._call_gemini_api(
-                client, sys_instruct, optimized_bytes, final_mime_type
-            )
-
-            if not response_text:
+            resp = await self._call_gemini_api(client, sys_instruct, opt_bytes, opt_mime)
+            if not resp:
                 raise ValueError("Gemini APIから応答が得られませんでした。")
 
-            cleaned_json = self._clean_json_text(response_text)
             try:
-                data = json.loads(cleaned_json)
+                data = json.loads(self._clean_json_text(resp))
             except json.JSONDecodeError as e:
-                self.log.error("JSON decode error", raw=response_text, error=str(e))
-                raise ValueError(
-                    f"AI解析結果のJSONパースに失敗しました: {str(e)}"
-                ) from e
+                raise ValueError(f"AI解析結果のJSONパースに失敗しました: {str(e)}") from e
 
-            # Create ReceiptData model
             receipt = ReceiptData(
                 merchant_name=data.get("merchant_name"),
                 transaction_date=data.get("transaction_date"),
                 total_amount_incl_tax=data.get("total_amount_incl_tax"),
                 invoice_registration_number=data.get("invoice_registration_number"),
             )
-
-            # カタカナの全角正規化 (NFKC)
             if receipt.merchant_name:
-                receipt.merchant_name = unicodedata.normalize(
-                    "NFKC", receipt.merchant_name
-                ).strip()
-
-            # インボイス番号のクレンジング (T+13桁)
+                receipt.merchant_name = unicodedata.normalize("NFKC", receipt.merchant_name).strip()
             if receipt.invoice_registration_number:
-                match = re.search(r"(T\d{13})", receipt.invoice_registration_number)
-                receipt.invoice_registration_number = match.group(1) if match else None
+                m = re.search(r"(T\d{13})", receipt.invoice_registration_number)
+                receipt.invoice_registration_number = m.group(1) if m else None
 
-            # Step 2: Journal Template (Dictionary) Matching
             async with container.master_service_scope() as master_service:
                 cps = await master_service.get_counterparties()
-                matched_template = None
-
-                # 1. インボイス登録番号によるマッチング (T+13桁) を最優先
+                matched = None
                 if receipt.invoice_registration_number:
-                    matched_template = next(
-                        (
-                            c
-                            for c in cps
-                            if c.invoice_number == receipt.invoice_registration_number
-                        ),
-                        None,
-                    )
+                    matched = next((c for c in cps if c.invoice_number == receipt.invoice_registration_number), None)
+                if not matched and receipt.merchant_name:
+                    norm = self._normalize_name(receipt.merchant_name)
+                    matched = next((c for c in cps if norm == self._normalize_name(c.name)), None)
 
-                # 2. 取引先名によるマッチング (インボイス番号で見つからなかった場合)
-                if not matched_template and receipt.merchant_name:
-                    norm_ocr = self._normalize_name(receipt.merchant_name)
-                    for cp in cps:
-                        if norm_ocr == self._normalize_name(cp.name):
-                            matched_template = cp
-                            break
-
-                # マスタと一致した場合、マスタデータを適用する
-                if matched_template:
-                    receipt.merchant_name = matched_template.name
-                    receipt.invoice_registration_number = (
-                        matched_template.invoice_number
-                    )
-                    receipt.inferred_debit_account_id = (
-                        str(matched_template.debit_account_id)
-                        if matched_template.debit_account_id
-                        else None
-                    )
-                    receipt.inferred_credit_account_id = (
-                        str(matched_template.credit_account_id)
-                        if matched_template.credit_account_id
-                        else None
-                    )
-                    receipt.description = matched_template.description_template
+                if matched:
+                    receipt.merchant_name = matched.name
+                    receipt.invoice_registration_number = matched.invoice_number
+                    receipt.inferred_debit_account_id = str(matched.debit_account_id) if matched.debit_account_id else None
+                    receipt.inferred_credit_account_id = str(matched.credit_account_id) if matched.credit_account_id else None
+                    receipt.description = matched.description_template
                     receipt.is_registered_merchant = True
                     receipt.is_dictionary_matched = True
                     return self._validate_receipt(receipt)
 
-                # Step 3: LLM Fallback Inference for unknown counterparties (Fault-tolerant)
                 try:
-                    acc_list_str = (
-                        chr(10).join(account_list) if account_list else "一覧なし"
-                    )
-                    sys_instruct_fallback = f"""
-あなたは免税事業者の経理担当です。
-先ほど、取引先『{receipt.merchant_name or "不明"}』で『{receipt.total_amount_incl_tax or 0}円』支払った。
-以下の【勘定科目一覧】の中から、適切な借方科目と貸方科目を推論し、JSON形式で返答してください。
-
-【貸方の推論ルール（極めて重要）】
-- 当社は法人名義の口座引き落とし以外は、ほぼ全て代表個人のポケットマネーからの立替払いである。
-- そのため、貸方科目はデフォルトで「役員借入金」を優先的に推論すること。
-
-【借方の推論ルール（極めて重要）】
-- 当社の自家用車は法人に賃貸しているため、法人の固定資産にはならない。
-- 車用・車関係であっても、「車両運搬具」などの科目は推論結果に絶対に含めないこと。
-
-【勘定科目一覧】
-{acc_list_str}
-
-出力形式 (JSON):
-{{
-  "debit_account": "借方科目の名前",
-  "credit_account": "貸方科目の名前（迷ったら役員借入金）",
-  "description": "摘要文（例：〇〇代として）"
-}}
-"""
-                    fallback_response_text = await self._call_gemini_fallback(
-                        client, sys_instruct_fallback
-                    )
-
-                    if fallback_response_text:
-                        fallback_clean = self._clean_json_text(fallback_response_text)
-                        fallback_data = json.loads(fallback_clean)
+                    acc_str = "\n".join(account_list) if account_list else "一覧なし"
+                    sys_fb = f"""あなたは免税事業者の経理担当です。
+取引先『{receipt.merchant_name or "不明"}』で『{receipt.total_amount_incl_tax or 0}円』支払った。
+適切な借方科目と貸方科目を推論しJSON形式で返答してください。
+【貸方推論ルール】当社はほぼ全て代表個人のポケットマネーからの立替払いであるため「役員借入金」を優先推論すること。
+【借方推論ルール】当社の自家用車は法人賃貸のため「車両運搬具」は絶対に含めないこと。
+【勘定科目一覧】\n{acc_str}
+出力形式 (JSON): {{"debit_account": "借方科目名", "credit_account": "貸方科目名", "description": "摘要文"}}"""
+                    fb_text = await self._call_gemini_fallback(client, sys_fb)
+                    if fb_text:
+                        fb_data = json.loads(self._clean_json_text(fb_text))
                         accounts_db = await master_service.get_accounts()
 
-                        def find_acc_id(name):
+                        def find_id(name: Optional[str]) -> Optional[str]:
                             if not name:
                                 return None
-                            # Try exact match or find in code: name string
-                            for acc in accounts_db:
-                                if (
-                                    acc.name == name
-                                    or name in f"{acc.code}: {acc.name}"
-                                ):
-                                    return str(acc.id)
+                            for a in accounts_db:
+                                if a.name == name or name in f"{a.code}: {a.name}":
+                                    return str(a.id)
                             return None
 
-                        receipt.inferred_debit_account_id = find_acc_id(
-                            fallback_data.get("debit_account")
-                        )
-                        receipt.inferred_credit_account_id = find_acc_id(
-                            fallback_data.get("credit_account")
-                        )
-                        receipt.description = fallback_data.get(
-                            "description", receipt.merchant_name
-                        )
+                        receipt.inferred_debit_account_id = find_id(fb_data.get("debit_account"))
+                        receipt.inferred_credit_account_id = find_id(fb_data.get("credit_account"))
+                        receipt.description = fb_data.get("description", receipt.merchant_name)
                 except Exception as fb_err:
-                    self.log.warning(
-                        "Fallback account inference failed (continuing with raw OCR)",
-                        error=str(fb_err),
-                    )
+                    self.log.warning("Fallback account inference failed", error=str(fb_err))
 
             return self._validate_receipt(receipt)
-
         except APIError as e:
-            self.log.error(
-                "Gemini API Error", error=str(e), code=getattr(e, "code", None)
-            )
-            friendly_msg = self._format_api_error_message(e)
-            raise ValueError(friendly_msg) from e
-        except ValueError as e:
-            self.log.error("Validation/Config Error", error=str(e))
-            raise e
+            self.log.error("Gemini API Error", error=str(e), code=getattr(e, "code", None))
+            raise ValueError(self._format_api_error_message(e)) from e
+        except ValueError:
+            raise
         except Exception as e:
             self.log.exception("Unexpected OCR extraction failure", error=str(e))
-            raise ValueError(
-                f"AI証憑解析処理中に予期せぬエラーが発生しました: {str(e)}"
-            ) from e
+            raise ValueError(f"AI証憑解析処理中に予期せぬエラーが発生しました: {str(e)}") from e
 
-    @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(3),
-        reraise=True,
-    )
-    async def _call_gemini_api(
-        self,
-        client: genai.Client,
-        sys_instruct: str,
-        image_bytes: bytes,
-        mime_type: str,
-    ) -> str:
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=True)
+    async def _call_gemini_api(self, client: genai.Client, sys_instruct: str, image_bytes: bytes, mime_type: str) -> str:
         model = settings.GEMINI_DEFAULT_MODEL
-        self.log.info("call_gemini_api_start", model=model)
-
-        contents: list[Any] = [
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            types.Part.from_text(text=sys_instruct),
-        ]
-
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=ReceiptExtractionSchema,
-            temperature=0.0,
-        )
-
-        def _sync_generate():
-            return client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=config,
-            )
-
-        response = await asyncio.to_thread(_sync_generate)
+        contents: list[Any] = [types.Part.from_bytes(data=image_bytes, mime_type=mime_type), types.Part.from_text(text=sys_instruct)]
+        config = types.GenerateContentConfig(response_mime_type="application/json", response_schema=ReceiptExtractionSchema, temperature=0.0)
+        response = await asyncio.to_thread(lambda: client.models.generate_content(model=model, contents=contents, config=config))
         result = response.text or ""
-
-        # Check finish reason if text is empty
         if not result:
             if hasattr(response, "candidates") and response.candidates:
-                candidate = response.candidates[0]
-                finish_reason = getattr(candidate, "finish_reason", None)
-                if finish_reason and str(finish_reason).upper() in (
-                    "SAFETY",
-                    "IMAGE_SAFETY",
-                ):
-                    raise ValueError(
-                        "⚠️ **コンテンツ安全フィルターにより生成がブロックされました**\n\n"
-                        "領収書・証憑の画像が安全基準（個人情報・禁止コンテンツ等の制限）に抵触した可能性があります。\n"
-                        "画像内容をご確認の上、鮮明な別の画像でお試しください。"
-                    )
-                elif finish_reason and str(finish_reason).upper() in (
-                    "RECITATION",
-                    "IMAGE_RECITATION",
-                ):
-                    raise ValueError(
-                        "⚠️ **著作権・引用制限（Recitation）により生成がブロックされました**\n\n"
-                        "別の証憑画像でお試しください。"
-                    )
-                elif finish_reason:
-                    raise ValueError(
-                        f"⚠️ **AIモデルの出力が中断されました (理由: {finish_reason})**"
-                    )
+                fr = getattr(response.candidates[0], "finish_reason", None)
+                fr_str = str(fr).upper() if fr else ""
+                if "SAFETY" in fr_str:
+                    raise ValueError("⚠️ **コンテンツ安全フィルターにより生成がブロックされました**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。")
+                if "RECITATION" in fr_str:
+                    raise ValueError("⚠️ **著作権・引用制限（Recitation）により生成がブロックされました**")
+                if fr:
+                    raise ValueError(f"⚠️ **AIモデルの出力が中断されました (理由: {fr})**")
             raise ValueError("Gemini APIから空の応答が返されました。")
-
-        self.log.info("call_gemini_api_success")
         return result
 
-    @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(3),
-        reraise=True,
-    )
-    async def _call_gemini_fallback(
-        self, client: genai.Client, sys_instruct_fallback: str
-    ) -> str:
-        model = settings.GEMINI_DEFAULT_MODEL
-        self.log.info("call_gemini_fallback_start", model=model)
-
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=AccountInferenceSchema,
-            temperature=0.0,
-        )
-
-        def _sync_generate():
-            return client.models.generate_content(
-                model=model,
-                contents=sys_instruct_fallback,
-                config=config,
-            )
-
-        response = await asyncio.to_thread(_sync_generate)
-        result = response.text or ""
-        self.log.info("call_gemini_fallback_success")
-        return result
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=True)
+    async def _call_gemini_fallback(self, client: genai.Client, sys_instruct_fallback: str) -> str:
+        config = types.GenerateContentConfig(response_mime_type="application/json", response_schema=AccountInferenceSchema, temperature=0.0)
+        response = await asyncio.to_thread(lambda: client.models.generate_content(model=settings.GEMINI_DEFAULT_MODEL, contents=sys_instruct_fallback, config=config))
+        return response.text or ""
 
     def _format_api_error_message(self, e: APIError) -> str:
-        """
-        Gemini API公式仕様（Standard Error Codes, Generation Blocked Codes, HTTP Status）
-        に基づき、エラー内容をユーザーフレンドリーな日本語診断案内文に変換する。
-        """
-        code = getattr(e, "code", None)
-        raw_msg = getattr(e, "message", None) or str(e)
-        msg_upper = raw_msg.upper()
-
-        # 1. 認証・APIキー関連 (401 / 400 API_KEY_INVALID / authentication)
-        if (
-            "API_KEY_INVALID" in msg_upper
-            or "API KEY NOT VALID" in msg_upper
-            or "AUTHENTICATION" in msg_upper
-            or "UNAUTHENTICATED" in msg_upper
-            or code == 401
-            or (code == 400 and "API KEY" in msg_upper)
-        ):
-            return (
-                "⚠️ **Gemini API キーが無効または未設定です**\n\n"
-                "Google AI Studio で取得した有効な API キーが登録されているかご確認ください。\n"
-                "「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 2. アクセス権限不足 (403 / permission_denied)
-        if "PERMISSION_DENIED" in msg_upper or code == 403:
-            return (
-                "⚠️ **Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n"
-                "API キーの権限設定、Google Cloud プロジェクトの有効化状態、またはアクセス制限をご確認ください。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 3. リソース・モデル未検出 (404 / not_found / model_not_found)
-        if "NOT_FOUND" in msg_upper or "MODEL_NOT_FOUND" in msg_upper or code == 404:
-            return (
-                f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n"
-                "モデルコードが正しいか、またはご利用のアカウントで利用可能なモデルかをご確認ください。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 4. レート制限・クォータ枯渇 (429 / rate_limit_exceeded / quota_exceeded / RESOURCE_EXHAUSTED)
-        if (
-            "RESOURCE_EXHAUSTED" in msg_upper
-            or "RATE_LIMIT" in msg_upper
-            or "QUOTA_EXCEEDED" in msg_upper
-            or "TOO_MANY_REQUESTS" in msg_upper
-            or code == 429
-        ):
-            return (
-                "⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\n"
-                "短時間の間にリクエストが集中したか、1日のクォータ上限に達しています。\n"
-                "しばらく時間をおいてから再度お試しいただくか、Google AI Studio で利用状況をご確認ください。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 5. リクエスト前提条件・パラメータ不正 (400 / failed_precondition / invalid_request / out_of_range)
-        if "FAILED_PRECONDITION" in msg_upper:
-            return (
-                "⚠️ **API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n"
-                "Google Cloud プロジェクトの請求設定（Billing）やアカウント前提条件をご確認ください。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-        if "OUT_OF_RANGE" in msg_upper or code == 416:
-            return (
-                "⚠️ **リクエストパラメータが許容範囲外です (416 Out of Range)**\n\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-        if (
-            "INVALID_REQUEST" in msg_upper
-            or "PARAMETER_UNKNOWN" in msg_upper
-            or (code == 400 and "INVALID_ARGUMENT" in msg_upper)
-        ):
-            return (
-                "⚠️ **API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n"
-                "画像データが破損しているか、対応していない形式の可能性があります。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 6. 安全性・ポリシー制限 (Generation Blocked Codes)
-        if "SAFETY" in msg_upper or "IMAGE_SAFETY" in msg_upper:
-            return (
-                "⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n"
-                "画像やテキストが Google の安全基準（有害・禁止コンテンツ制限）に抵触した可能性があります。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-        if "RECITATION" in msg_upper or "IMAGE_RECITATION" in msg_upper:
-            return (
-                "⚠️ **著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-        if (
-            "PROHIBITED_CONTENT" in msg_upper
-            or "BLOCKLIST" in msg_upper
-            or "SPII" in msg_upper
-        ):
-            return (
-                "⚠️ **ポリシーまたは機密情報保護制限（SPII/Blocklist）によりブロックされました**\n\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 7. サーバー一時障害・タイムアウト (500 / 502 / 503 / 504 / service_unavailable / deadline_exceeded)
-        if "DEADLINE_EXCEEDED" in msg_upper or code == 504:
-            return (
-                "⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\n"
-                "通信環境をご確認の上、再度お試しください。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-        if (
-            code in (500, 502, 503)
-            or "INTERNAL" in msg_upper
-            or "SERVICE_UNAVAILABLE" in msg_upper
-            or "UNAVAILABLE" in msg_upper
-        ):
-            return (
-                "⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n"
-                "Google のサービス稼働状態をご確認の上、しばらく待ってから再度お試しください。\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-        if "UNIMPLEMENTED" in msg_upper or code == 501:
-            return (
-                "⚠️ **要求された操作は現在サポートされていません (501 Not Implemented)**\n\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 8. クライアント切断 (499 / cancelled)
-        if "CANCELLED" in msg_upper or code == 499:
-            return (
-                "⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n"
-                f"(詳細エラー: `{raw_msg}`)"
-            )
-
-        # 9. その他汎用
+        code, raw_msg = getattr(e, "code", None), getattr(e, "message", None) or str(e)
+        msg_u = raw_msg.upper()
+        if any(k in msg_u for k in ("API_KEY_INVALID", "API KEY NOT VALID", "AUTHENTICATION", "UNAUTHENTICATED")) or code == 401 or (code == 400 and "API KEY" in msg_u):
+            return f"⚠️ **Gemini API キーが無効または未設定です**\n\nGoogle AI Studio で取得した有効な API キーが登録されているかご確認ください。\n「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n(詳細エラー: `{raw_msg}`)"
+        if "PERMISSION_DENIED" in msg_u or code == 403:
+            return f"⚠️ **Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n(詳細エラー: `{raw_msg}`)"
+        if any(k in msg_u for k in ("NOT_FOUND", "MODEL_NOT_FOUND")) or code == 404:
+            return f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n(詳細エラー: `{raw_msg}`)"
+        if any(k in msg_u for k in ("RESOURCE_EXHAUSTED", "RATE_LIMIT", "QUOTA_EXCEEDED", "TOO_MANY_REQUESTS")) or code == 429:
+            return f"⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\n(詳細エラー: `{raw_msg}`)"
+        if "FAILED_PRECONDITION" in msg_u:
+            return f"⚠️ **API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n(詳細エラー: `{raw_msg}`)"
+        if "OUT_OF_RANGE" in msg_u or code == 416:
+            return f"⚠️ **リクエストパラメータが許容範囲外です (416 Out of Range)**\n\n(詳細エラー: `{raw_msg}`)"
+        if "SAFETY" in msg_u or "IMAGE_SAFETY" in msg_u:
+            return f"⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n(詳細エラー: `{raw_msg}`)"
+        if "RECITATION" in msg_u or "IMAGE_RECITATION" in msg_u:
+            return f"⚠️ **著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n(詳細エラー: `{raw_msg}`)"
+        if any(k in msg_u for k in ("INVALID_REQUEST", "PARAMETER_UNKNOWN")) or (code == 400 and "INVALID_ARGUMENT" in msg_u):
+            return f"⚠️ **API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n(詳細エラー: `{raw_msg}`)"
+        if "DEADLINE_EXCEEDED" in msg_u or code == 504:
+            return f"⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\n(詳細エラー: `{raw_msg}`)"
+        if code in (500, 502, 503) or any(k in msg_u for k in ("INTERNAL", "SERVICE_UNAVAILABLE", "UNAVAILABLE")):
+            return f"⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n(詳細エラー: `{raw_msg}`)"
+        if "CANCELLED" in msg_u or code == 499:
+            return f"⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n(詳細エラー: `{raw_msg}`)"
         return f"⚠️ **Gemini API エラー (Code: {code or '不明'})**\n\n{raw_msg}"
 
     def _clean_json_text(self, text: str) -> str:
-        """Markdownコードブロックなどを安全に除去してJSON文字列を取り出す"""
-        clean = text.strip()
-        if clean.startswith("```json"):
-            clean = clean[7:]
-        elif clean.startswith("```"):
-            clean = clean[3:]
-        if clean.endswith("```"):
-            clean = clean[:-3]
-        return clean.strip()
+        c = text.strip()
+        if c.startswith("```json"):
+            c = c[7:]
+        elif c.startswith("```"):
+            c = c[3:]
+        if c.endswith("```"):
+            c = c[:-3]
+        return c.strip()
 
     def _normalize_name(self, name: str) -> str:
-        """
-        Normalize company name for fuzzy matching.
-        1. Convert to NFKC (converts half-width Katakana to full-width Katakana).
-        2. Remove spaces (full/half).
-        3. Remove corporate status (株式会社, etc).
-        """
         if not name:
             return ""
-
-        name = unicodedata.normalize("NFKC", name)
-
-        # 2. Remove spaces
-        name = name.replace(" ", "").replace("　", "")
-
-        # 3. Remove corporate statuses (Common ones)
-        statuses = [
-            "株式会社",
-            "有限会社",
-            "合同会社",
-            "合名会社",
-            "合資会社",
-            "一般社団法人",
-            "公益社団法人",
-            "一般財団法人",
-            "公益財団法人",
-            "医療法人",
-            "学校法人",
-            "宗教法人",
-            "社会福祉法人",
-            "特定非営利活動法人",
-            "NPO法人",
-            "(株)",
-            "(有)",
-            "(同)",
-            "(名)",
-            "(資)",
-            "(財)",
-            "(社)",
-            "㈱",
-            "㈲",
-            "㈇",
-            "㈆",
-            "㈅",
-            "㈄",
-            "㈃",
-            "㈂",
-            "㈁",
-        ]
-
-        for status in statuses:
-            name = name.replace(status, "")
-
-        return name
+        norm = unicodedata.normalize("NFKC", name).replace(" ", "").replace("　", "")
+        return _CORP_STATUS_PATTERN.sub("", norm)
 
     def _validate_receipt(self, data: ReceiptData) -> ReceiptData:
-        messages = []
-
-        # 1. Math Validation
-        calc_total_tax = 0
-        calc_total_excl = 0
-
+        msgs: List[str] = []
+        c_tax, c_excl = 0, 0
         if data.tax_breakdown:
             for item in data.tax_breakdown:
-                tax_amt = item.tax_amount or 0
-                excl_amt = item.amount_excl_tax or 0
+                t_amt, e_amt = item.tax_amount or 0, item.amount_excl_tax or 0
+                c_tax += t_amt
+                c_excl += e_amt
+                rate_str = "0.10" if "10" in item.tax_rate else "0.08" if "8" in item.tax_rate else "0.00"
+                if rate_str != "0.00" and e_amt > 0:
+                    exp_tax = int((Decimal(str(e_amt)) * Decimal(rate_str)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                    if abs(exp_tax - t_amt) > 1:
+                        msgs.append(f"消費税計算不整合 ({item.tax_rate}: 対象{e_amt}, 税額{t_amt})")
 
-                calc_total_tax += tax_amt
-                calc_total_excl += excl_amt
-
-                # Check rate consistency per item
-                rate_str = (
-                    "0.10"
-                    if "10" in item.tax_rate
-                    else "0.08"
-                    if "8" in item.tax_rate
-                    else "0.00"
-                )
-                if rate_str != "0.00" and excl_amt > 0:
-                    excl_dec = Decimal(str(excl_amt))
-                    rate_dec = Decimal(rate_str)
-                    expected_tax = int(
-                        (excl_dec * rate_dec).quantize(
-                            Decimal("1"), rounding=ROUND_HALF_UP
-                        )
-                    )
-                    # Allow +/- 1 mismatch
-                    if abs(expected_tax - tax_amt) > 1:
-                        messages.append(
-                            f"消費税計算不整合 ({item.tax_rate}: 対象{excl_amt}, 税額{tax_amt})"
-                        )
-
-        # Check Aggregated Totals
-        if (
-            data.total_tax_amount is not None
-            and abs(calc_total_tax - data.total_tax_amount) > 1
-        ):
-            messages.append(
-                f"消費税合計不整合 (計算値:{calc_total_tax}, OCR値:{data.total_tax_amount})"
-            )
-
-        if (
-            data.total_amount_excl_tax is not None
-            and abs(calc_total_excl - data.total_amount_excl_tax) > 1
-        ):
-            messages.append(
-                f"税抜合計不整合 (計算値:{calc_total_excl}, OCR値:{data.total_amount_excl_tax})"
-            )
-
-        # Check Grand Total
+        if data.total_tax_amount is not None and abs(c_tax - data.total_tax_amount) > 1:
+            msgs.append(f"消費税合計不整合 (計算値:{c_tax}, OCR値:{data.total_tax_amount})")
+        if data.total_amount_excl_tax is not None and abs(c_excl - data.total_amount_excl_tax) > 1:
+            msgs.append(f"税抜合計不整合 (計算値:{c_excl}, OCR値:{data.total_amount_excl_tax})")
         if data.total_amount_incl_tax:
-            calc_grand_total = (data.total_amount_excl_tax or 0) + (
-                data.total_tax_amount or 0
-            )
-            if abs(calc_grand_total - data.total_amount_incl_tax) > 1:
-                # Only flag if components are present
-                if (data.total_amount_excl_tax or 0) > 0:
-                    messages.append(
-                        f"支払合計不整合 (計算値:{calc_grand_total}, OCR値:{data.total_amount_incl_tax})"
-                    )
+            c_grand = (data.total_amount_excl_tax or 0) + (data.total_tax_amount or 0)
+            if abs(c_grand - data.total_amount_incl_tax) > 1 and (data.total_amount_excl_tax or 0) > 0:
+                msgs.append(f"支払合計不整合 (計算値:{c_grand}, OCR値:{data.total_amount_incl_tax})")
 
-        # 2. Date Validation
         if data.transaction_date:
             try:
-                from datetime import date
-
                 date.fromisoformat(data.transaction_date)
             except ValueError:
-                messages.append(f"日付フォーマット不正: {data.transaction_date}")
+                msgs.append(f"日付フォーマット不正: {data.transaction_date}")
                 data.transaction_date = None
 
-        # 3. Invoice Number Validation
         if data.invoice_registration_number:
-            # Extract pattern T + 13 digits from the string
             match = re.search(r"(T\d{13})", data.invoice_registration_number)
             if match:
                 data.invoice_registration_number = match.group(1)
             else:
-                messages.append(
-                    f"インボイス番号の形式が不正です: {data.invoice_registration_number}"
-                )
+                msgs.append(f"インボイス番号の形式が不正です: {data.invoice_registration_number}")
 
-        # 4. Aggregation works
-        if messages:
+        if msgs:
             data.needs_manual_review = True
-            existing_err = data.error_message or ""
-            data.error_message = f"{existing_err} | ".strip(" | ") + "; ".join(messages)
-
+            existing = data.error_message or ""
+            data.error_message = f"{existing} | ".strip(" | ") + "; ".join(msgs)
         return data
 
-    def _optimize_image(self, file_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
-        """
-        画像の長辺が大きすぎる場合やPNGを高効率なJPEGに圧縮して軽量化する。
-        """
+    def _optimize_image(self, file_bytes: bytes, mime_type: str) -> Tuple[bytes, str]:
         try:
             with Image.open(io.BytesIO(file_bytes)) as img:
-                current_dpi = img.info.get("dpi")
-                max_pixels = 2000
-
-                needs_compression = False
-                if current_dpi and current_dpi[0] > 200:
-                    needs_compression = True
-                elif max(img.size) > max_pixels:
-                    needs_compression = True
-                elif mime_type == "image/png":
-                    # PNGはバイト数が膨らみやすいためJPEG変換で軽量化
-                    needs_compression = True
-
-                if needs_compression:
-                    img.thumbnail((max_pixels, max_pixels), Image.Resampling.LANCZOS)
-                    processed_img: Any = (
-                        img.convert("RGB") if img.mode != "RGB" else img
-                    )
-                    output = io.BytesIO()
-                    processed_img.save(
-                        output, format="JPEG", dpi=(200, 200), quality=85
-                    )
-                    return output.getvalue(), "image/jpeg"
-
+                dpi = img.info.get("dpi")
+                max_px = 2000
+                if (dpi and dpi[0] > 200) or max(img.size) > max_px or mime_type == "image/png":
+                    img.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
+                    proc: Any = img.convert("RGB") if img.mode != "RGB" else img
+                    out = io.BytesIO()
+                    proc.save(out, format="JPEG", dpi=(200, 200), quality=85)
+                    return out.getvalue(), "image/jpeg"
                 return file_bytes, mime_type
-
-        except Exception as e:
-            self.log.warning(
-                "Image optimization failed, sending raw bytes", error=str(e)
-            )
+        except Exception:
             return file_bytes, mime_type
 
 

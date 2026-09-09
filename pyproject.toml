@@ -49,6 +49,11 @@ testpaths = [
 python_files = ["test_*.py", "*_test.py"]
 pythonpath = [".", "app"]
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning:google.genai.*",
+    "ignore::DeprecationWarning:nest_asyncio.*",
+    "ignore::RuntimeWarning:pytest_asyncio.*",
+]
 markers = [
     "fuzz: custom mark for hypothesis fuzz tests",
 ]

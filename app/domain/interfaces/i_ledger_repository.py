@@ -13,19 +13,16 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 from datetime import date
-from app.domain.models.transaction import Transaction
+from typing import Any, Dict, List, Optional
 from app.domain.models.account import Account
 from app.domain.models.fiscal_year import FiscalYear
+from app.domain.models.transaction import Transaction
 
 
 class ILedgerRepository(ABC):
     @abstractmethod
-    async def get_accounts(self) -> List[Account]:
-        """Fetch all accounts."""
-        pass
-
+    async def get_accounts(self) -> List[Account]: ...
     @abstractmethod
     async def get_transactions(
         self,
@@ -33,10 +30,7 @@ class ILedgerRepository(ABC):
         end_date: Optional[date] = None,
         include_deleted: bool = False,
         include_relationships: bool = False,
-    ) -> List[Transaction]:
-        """Fetch transactions within a date range."""
-        pass
-
+    ) -> List[Transaction]: ...
     @abstractmethod
     async def get_transactions_by_account(
         self,
@@ -44,54 +38,22 @@ class ILedgerRepository(ABC):
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         include_deleted: bool = False,
-    ) -> List[Transaction]:
-        """Fetch transactions for a specific account within a date range."""
-        pass
-
+    ) -> List[Transaction]: ...
     @abstractmethod
-    async def add_transaction(self, transaction: Transaction) -> int:
-        """Add a new transaction and return its ID."""
-        pass
-
+    async def add_transaction(self, transaction: Transaction) -> int: ...
     @abstractmethod
-    async def has_transactions_for_account(self, account_id: int) -> bool:
-        """Check if any transactions exist for the given account ID."""
-        pass
-
+    async def has_transactions_for_account(self, account_id: int) -> bool: ...
     @abstractmethod
-    async def delete_transaction(self, transaction_id: int) -> bool:
-        """Delete a transaction by ID."""
-        pass
-
+    async def delete_transaction(self, transaction_id: int) -> bool: ...
     @abstractmethod
-    async def get_trial_balance_data(self, fiscal_year_id: int) -> List[dict]:
-        """
-        Fetch aggregated data for Trial Balance.
-        Returns list of dicts with account_id, debit_total, credit_total.
-        """
-        pass
-
+    async def get_trial_balance_data(self, fiscal_year_id: int) -> List[Dict[str, Any]]: ...
     @abstractmethod
-    async def commit(self):
-        """Commit the current transaction."""
-        pass
-
+    async def commit(self) -> None: ...
     @abstractmethod
-    async def update_transaction(self, transaction: Transaction) -> bool:
-        """Update an existing transaction."""
-        pass
-
+    async def update_transaction(self, transaction: Transaction) -> bool: ...
     @abstractmethod
-    async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
-        """Update the evidence path for a transaction."""
-        pass
-
+    async def update_evidence_path(self, transaction_id: int, path: str) -> bool: ...
     @abstractmethod
-    async def get_frequent_account_ids(self, limit: int = 5) -> List[int]:
-        """Get IDs of frequently used accounts."""
-        pass
-
+    async def get_frequent_account_ids(self, limit: int = 5) -> List[int]: ...
     @abstractmethod
-    async def get_fiscal_year(self, fiscal_year_id: int) -> Optional[FiscalYear]:
-        """Fetch a fiscal year by ID."""
-        pass
+    async def get_fiscal_year(self, fiscal_year_id: int) -> Optional[FiscalYear]: ...
