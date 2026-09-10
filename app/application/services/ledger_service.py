@@ -45,34 +45,27 @@ class LedgerService:
 
     async def get_trial_balance(self, fiscal_year_id: int) -> List[TrialBalanceRow]:
         accounts = await self.repository.get_accounts()
-        tb_data = await self.repository.get_trial_balance_data(fiscal_year_id)
-        tb_map = {row["account_id"]: row for row in tb_data}
+        tb_map = {row["account_id"]: row for row in await self.repository.get_trial_balance_data(fiscal_year_id)}
 
-        rows: List[TrialBalanceRow] = []
-        for acc in accounts:
+        def make_row(acc) -> TrialBalanceRow:
             data = tb_map.get(acc.id, {"total_debit": 0, "total_credit": 0})
             debit, credit = data["total_debit"], data["total_credit"]
-            balance = (
-                (debit - credit)
-                if acc.type in _DEBIT_POSITIVE_TYPES
-                else (credit - debit)
+            net = debit - credit
+            balance = net if acc.type in _DEBIT_POSITIVE_TYPES else -net
+            return TrialBalanceRow(
+                account_id=acc.id,
+                account_code=acc.code,
+                account_name=acc.name,
+                account_type=acc.type,
+                debit_total=debit,
+                credit_total=credit,
+                balance=balance,
+                debit_balance=max(net, 0),
+                credit_balance=abs(net) if net < 0 else 0,
             )
-            net_raw = debit - credit
-            rows.append(
-                TrialBalanceRow(
-                    account_id=acc.id,
-                    account_code=acc.code,
-                    account_name=acc.name,
-                    account_type=acc.type,
-                    debit_total=debit,
-                    credit_total=credit,
-                    balance=balance,
-                    debit_balance=net_raw if net_raw > 0 else 0,
-                    credit_balance=abs(net_raw) if net_raw < 0 else 0,
-                )
-            )
-        rows.sort(key=lambda x: x.account_code)
-        return rows
+
+        return sorted([make_row(acc) for acc in accounts], key=lambda x: x.account_code)
+
 
     async def get_general_ledger(
         self, fiscal_year_id: int, account_id: int

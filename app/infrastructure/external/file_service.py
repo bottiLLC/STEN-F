@@ -13,10 +13,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from datetime import date
-import os
 from pathlib import Path
 import aiofiles
 from app.config import settings
+
+
+def _sanitize_name(text: str) -> str:
+    return "".join(c for c in text if c.isalnum() or c in " _-").strip()
 
 
 class LocalFileService:
@@ -32,11 +35,8 @@ class LocalFileService:
         description: str,
         amount: int,
     ) -> str:
-        safe_desc = "".join(
-            c for c in description if c.isalnum() or c in (" ", "_", "-")
-        ).strip()
-        ext = os.path.splitext(original_filename)[1] or ".pdf"
-        save_path = self.storage_dir / f"{date_obj}_{safe_desc}_{amount}{ext}"
+        ext = Path(original_filename).suffix or ".pdf"
+        save_path = self.storage_dir / f"{date_obj}_{_sanitize_name(description)}_{amount}{ext}"
         async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)
         return str(save_path)
@@ -49,19 +49,10 @@ class LocalFileService:
         amount: int,
         corp_name: str,
     ) -> str:
-        norm_corp = (
-            corp_name.replace("株式会社", "")
-            .replace("合同会社", "")
-            .replace("有限会社", "")
-            .strip()
-        )
-        safe_corp = "".join(
-            c for c in norm_corp if c.isalnum() or c in (" ", "_", "-")
-        ).strip()
-        save_path = (
-            self.storage_dir
-            / f"{date_obj.strftime('%Y%m%d')}_{amount}_{safe_corp}_{transaction_id}.pdf"
-        )
+        for prefix in ("株式会社", "合同会社", "有限会社"):
+            corp_name = corp_name.replace(prefix, "")
+        save_path = self.storage_dir / f"{date_obj.strftime('%Y%m%d')}_{amount}_{_sanitize_name(corp_name)}_{transaction_id}.pdf"
         async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)
         return str(save_path)
+

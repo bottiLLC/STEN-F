@@ -16,6 +16,9 @@ from typing import Any
 from decimal import Decimal, ROUND_HALF_UP
 
 
+_TRANS_MAP = str.maketrans({"０": "0", "１": "1", "２": "2", "３": "3", "４": "4", "５": "5", "６": "6", "７": "7", "８": "8", "９": "9", "，": "", ",": "", "　": "", " ": ""})
+
+
 def normalize_amount(value: Any) -> int:
     """
     金額値をクレンジングして安全に十進数（Decimal）に変換し、四捨五入して整数（int）を返します。
@@ -29,17 +32,7 @@ def normalize_amount(value: Any) -> int:
     if isinstance(value, (int, float)):
         return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    val_str = (
-        str(value)
-        .strip()
-        .replace(",", "")
-        .replace("，", "")
-        .replace(" ", "")
-        .replace("　", "")
-    )
-    # 全角数字を半角数字に置換
-    val_str = val_str.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
-
+    val_str = str(value).strip().translate(_TRANS_MAP)
     if not val_str:
         return 0
 
@@ -47,3 +40,4 @@ def normalize_amount(value: Any) -> int:
         return int(Decimal(val_str).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except Exception:
         return 0
+

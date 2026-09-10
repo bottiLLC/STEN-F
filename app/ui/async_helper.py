@@ -12,9 +12,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, TypeVar
 import asyncio
-from typing import TypeVar, Coroutine, Any
 import sniffio
+from app.ui.di import DI
 
 T = TypeVar("T")
 
@@ -31,3 +33,35 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
         pass
 
     return asyncio.run(coro)
+
+
+def run_scoped(scope_ctx: Any, coro_fn: Callable[[Any], Awaitable[T]]) -> T:
+    """Executes a coroutine cleanly inside an async context manager."""
+    async def _runner() -> T:
+        async with scope_ctx as s:
+            return await coro_fn(s)
+
+    return run_async(_runner())
+
+
+def call_master(fn: Callable[[Any], Awaitable[T]]) -> T:
+    return run_scoped(DI.get_master_service(), fn)
+
+
+def call_journal(fn: Callable[[Any], Awaitable[T]]) -> T:
+    return run_scoped(DI.get_journal_service(), fn)
+
+
+def call_ledger(fn: Callable[[Any], Awaitable[T]]) -> T:
+    return run_scoped(DI.get_ledger_service(), fn)
+
+
+def call_fiscal_year(fn: Callable[[Any], Awaitable[T]]) -> T:
+    return run_scoped(DI.get_fiscal_year_service(), fn)
+
+
+def call_backup(fn: Callable[[Any], Awaitable[T]]) -> T:
+    return run_scoped(DI.get_backup_service(), fn)
+
+
+

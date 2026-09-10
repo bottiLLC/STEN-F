@@ -81,25 +81,8 @@ class FiscalYearService:
             )
 
         lines: List[TransactionLine] = []
-        asset_types = {
-            AccountType.CURRENT_ASSET,
-            AccountType.FIXED_ASSET,
-            AccountType.DEFERRED_ASSET,
-        }
-        for r in tb_rows:
-            if r.account_type in asset_types:
-                if r.balance > 0:
-                    lines.append(
-                        TransactionLine(
-                            account_id=r.account_id, debit=r.balance, credit=0
-                        )
-                    )
-                elif r.balance < 0:
-                    lines.append(
-                        TransactionLine(
-                            account_id=r.account_id, debit=0, credit=abs(r.balance)
-                        )
-                    )
+        asset_types = {AccountType.CURRENT_ASSET, AccountType.FIXED_ASSET, AccountType.DEFERRED_ASSET}
+        liab_eq_types = {AccountType.CURRENT_LIABILITY, AccountType.FIXED_LIABILITY, AccountType.EQUITY}
 
         re_row = next(
             (r for r in tb_rows if r.account_name == "繰越利益剰余金"), None
@@ -108,35 +91,32 @@ class FiscalYearService:
             raise ValueError(
                 "期末処理に必要な必須勘定科目「繰越利益剰余金」が見つかりませんでした。マスタの科目名をご確認ください。"
             )
+        re_id = re_row.account_id
 
-        re_id, re_sum = re_row.account_id, 0
-        liab_eq_types = {
-            AccountType.CURRENT_LIABILITY,
-            AccountType.FIXED_LIABILITY,
-            AccountType.EQUITY,
-        }
         for r in tb_rows:
-            if r.account_type in liab_eq_types:
-                if r.account_id == re_id:
-                    re_sum += r.balance
-                elif r.balance > 0:
-                    lines.append(
-                        TransactionLine(
-                            account_id=r.account_id, debit=0, credit=r.balance
-                        )
+            if r.account_type in asset_types and r.balance != 0:
+                lines.append(
+                    TransactionLine(
+                        account_id=r.account_id,
+                        debit=r.balance if r.balance > 0 else 0,
+                        credit=abs(r.balance) if r.balance < 0 else 0,
                     )
-                elif r.balance < 0:
-                    lines.append(
-                        TransactionLine(
-                            account_id=r.account_id, debit=abs(r.balance), credit=0
-                        )
+                )
+            elif r.account_type in liab_eq_types and r.account_id != re_id and r.balance != 0:
+                lines.append(
+                    TransactionLine(
+                        account_id=r.account_id,
+                        debit=abs(r.balance) if r.balance < 0 else 0,
+                        credit=r.balance if r.balance > 0 else 0,
                     )
+                )
 
-        tot_re = re_sum + net_income
+        tot_re = sum(r.balance for r in tb_rows if r.account_id == re_id) + net_income
         if tot_re > 0:
             lines.append(TransactionLine(account_id=re_id, debit=0, credit=tot_re))
         elif tot_re < 0:
             lines.append(TransactionLine(account_id=re_id, debit=abs(tot_re), credit=0))
+
 
         total_d, total_c = (
             sum(line.debit for line in lines),

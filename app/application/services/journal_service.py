@@ -12,10 +12,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from contextlib import asynccontextmanager
 import csv
 from datetime import date
 import io
 from typing import Dict, List, Optional
+
 import structlog
 from app.core.utils import normalize_amount
 from app.domain.interfaces.i_ledger_repository import ILedgerRepository
@@ -36,13 +38,19 @@ class JournalService:
         self.master_repository = master_repository
         self.log = log.bind(service="JournalService")
 
-    async def _get_fiscal_years(self):
+    @asynccontextmanager
+    async def _master_scope(self):
         if self.master_repository:
-            return await self.master_repository.get_fiscal_years()
-        from app.container import container
+            yield self.master_repository
+        else:
+            from app.container import container
 
-        async with container.master_service_scope() as ms:
-            return await ms.get_fiscal_years()
+            async with container.master_service_scope() as ms:
+                yield ms
+
+    async def _get_fiscal_years(self):
+        async with self._master_scope() as m:
+            return await m.get_fiscal_years()
 
     async def _validate_transaction_date(self, transaction_date: date):
         fys = await self._get_fiscal_years()
@@ -52,10 +60,8 @@ class JournalService:
 
         if not any(fy.start_date <= transaction_date <= fy.end_date for fy in open_fys):
             periods = ", ".join(
-                [
-                    f"{fy.start_date.strftime('%Y/%m/%d')}〜{fy.end_date.strftime('%Y/%m/%d')}"
-                    for fy in open_fys
-                ]
+                f"{fy.start_date.strftime('%Y/%m/%d')}〜{fy.end_date.strftime('%Y/%m/%d')}"
+                for fy in open_fys
             )
             raise ValueError(
                 f"指定された日付は、現在「OPEN」な会計年度の範囲外です。\n(入力可能範囲: {periods})"
@@ -68,43 +74,20 @@ class JournalService:
 
         if transaction.counterparty:
             try:
-                if self.master_repository:
-                    existing = await self.master_repository.get_counterparty_by_keyword(
-                        transaction.counterparty
-                    )
-                else:
-                    from app.container import container
-
-                    async with container.master_service_scope() as ms:
-                        existing = await ms.get_counterparty_by_keyword(
-                            transaction.counterparty
+                async with self._master_scope() as m:
+                    if not await m.get_counterparty_by_keyword(transaction.counterparty):
+                        d_line = max(transaction.lines, key=lambda ln: ln.debit, default=None)
+                        c_line = max(transaction.lines, key=lambda ln: ln.credit, default=None)
+                        await m.save_counterparty(
+                            Counterparty(
+                                name=transaction.counterparty,
+                                debit_account_id=d_line.account_id if d_line and d_line.debit > 0 else None,
+                                credit_account_id=c_line.account_id if c_line and c_line.credit > 0 else None,
+                                description_template=transaction.description,
+                            )
                         )
-
-                if not existing:
-                    d_acc, c_acc, max_d, max_c = None, None, -1, -1
-                    for line in transaction.lines:
-                        if line.debit > max_d:
-                            max_d, d_acc = line.debit, line.account_id
-                        if line.credit > max_c:
-                            max_c, c_acc = line.credit, line.account_id
-
-                    new_tmpl = Counterparty(
-                        name=transaction.counterparty,
-                        debit_account_id=d_acc,
-                        credit_account_id=c_acc,
-                        description_template=transaction.description,
-                    )
-                    if self.master_repository:
-                        await self.master_repository.save_counterparty(new_tmpl)
-                    else:
-                        from app.container import container
-
-                        async with container.master_service_scope() as ms:
-                            await ms.save_counterparty(new_tmpl)
             except Exception as e:
-                self.log.warning(
-                    "Failed to auto-learn counterparty rules", error=str(e)
-                )
+                self.log.warning("Failed to auto-learn counterparty rules", error=str(e))
 
         return tx_id
 
@@ -114,19 +97,15 @@ class JournalService:
         debit_balances: Dict[str, str],
         credit_balances: Dict[str, str],
     ) -> int:
-        lines: List[TransactionLine] = []
-        for acc_id_str, val_str in debit_balances.items():
-            val = normalize_amount(val_str)
-            if val > 0:
-                lines.append(
-                    TransactionLine(account_id=int(acc_id_str), debit=val, credit=0)
-                )
-        for acc_id_str, val_str in credit_balances.items():
-            val = normalize_amount(val_str)
-            if val > 0:
-                lines.append(
-                    TransactionLine(account_id=int(acc_id_str), debit=0, credit=val)
-                )
+        lines = [
+            TransactionLine(account_id=int(acc_id), debit=normalize_amount(val), credit=0)
+            for acc_id, val in debit_balances.items()
+            if normalize_amount(val) > 0
+        ] + [
+            TransactionLine(account_id=int(acc_id), debit=0, credit=normalize_amount(val))
+            for acc_id, val in credit_balances.items()
+            if normalize_amount(val) > 0
+        ]
 
         if not lines:
             raise ValueError("入力された金額がありません。")
@@ -134,6 +113,7 @@ class JournalService:
         return await self.add_journal_entry(
             Transaction(date=opening_date, description="期首残高", lines=lines)
         )
+
 
     async def update_journal_entry(self, transaction: Transaction) -> bool:
         await self._validate_transaction_date(transaction.date)

@@ -20,7 +20,7 @@ import streamlit as st
 import structlog
 
 from app.domain.models.transaction import Transaction, TransactionLine
-from app.ui.async_helper import run_async
+from app.ui.async_helper import call_journal, call_master, run_async
 from app.ui.di import DI
 
 log = structlog.get_logger()
@@ -30,18 +30,10 @@ st.caption(
     "AI OCR（領収書・請求書自動読取）起点での振替伝票作成、および仕訳帳の一覧・検索・CSV出力を一元的に行います。"
 )
 
-
-async def load_masters():
-    async with DI.get_master_service() as s:
-        return (
-            await s.get_accounts(),
-            await s.get_abstracts(),
-            await s.get_counterparties(),
-            await s.get_fiscal_years(),
-        )
-
-
-accounts, abstracts, counterparties, all_fys = run_async(load_masters())
+accounts = call_master(lambda s: s.get_accounts())
+abstracts = call_master(lambda s: s.get_abstracts())
+counterparties = call_master(lambda s: s.get_counterparties())
+all_fys = call_master(lambda s: s.get_fiscal_years())
 open_fy = next((f for f in all_fys if f.status == "OPEN"), None)
 account_labels = [""] + [
     f"{a.code}: {a.name}" for a in sorted(accounts, key=lambda x: int(x.code))
@@ -67,14 +59,11 @@ with tab_entry:
         "🤖 AIで自動読み取りを実行", type="primary", key="btn_run_ocr"
     ):
         fb, mime = uploaded_file.getvalue(), uploaded_file.type or "image/png"
-
-        async def run_ai(b, m):
-            async with DI.get_ocr_service() as s:
-                return await s.analyze_receipt(b, m)
-
         with st.spinner("Gemini AI が証憑を解析中..."):
             try:
-                ocr_res = run_async(run_ai(fb, mime))
+                ocr_res = run_async(
+                    DI.get_ocr_service().extract_receipt_data(fb, mime)
+                )
                 st.session_state["ocr_result"] = ocr_res
                 st.session_state["ocr_bytes"] = fb
                 st.session_state["ocr_filename"] = uploaded_file.name
@@ -83,6 +72,7 @@ with tab_entry:
                 st.error(f"AI解析エラー: {e}")
 
     ocr = st.session_state.get("ocr_result")
+
     st.markdown("---")
     st.subheader("Step 2: 振替伝票入力")
 
@@ -167,21 +157,17 @@ with tab_entry:
         key="journal_voucher_lines_editor",
     )
 
-    total_debit, total_credit = 0, 0
     tx_lines: List[TransactionLine] = []
     for _, r in edited_lines_df.iterrows():
-        d_acc, d_amt = r.get("debit_account"), int(r.get("debit_amount") or 0)
-        c_acc, c_amt = r.get("credit_account"), int(r.get("credit_amount") or 0)
-        if d_acc and d_amt > 0:
-            aid = account_code_to_id.get(str(d_acc))
-            if aid:
+        if (d_acc := r.get("debit_account")) and (d_amt := int(r.get("debit_amount") or 0)) > 0:
+            if aid := account_code_to_id.get(str(d_acc)):
                 tx_lines.append(TransactionLine(account_id=aid, debit=d_amt, credit=0))
-                total_debit += d_amt
-        if c_acc and c_amt > 0:
-            aid = account_code_to_id.get(str(c_acc))
-            if aid:
+        if (c_acc := r.get("credit_account")) and (c_amt := int(r.get("credit_amount") or 0)) > 0:
+            if aid := account_code_to_id.get(str(c_acc)):
                 tx_lines.append(TransactionLine(account_id=aid, debit=0, credit=c_amt))
-                total_credit += c_amt
+
+    total_debit = sum(line.debit for line in tx_lines)
+    total_credit = sum(line.credit for line in tx_lines)
 
     col_m1, col_m2, col_m3 = st.columns(3)
     col_m1.metric("借方合計", f"¥{total_debit:,}")
@@ -206,17 +192,13 @@ with tab_entry:
             lines=tx_lines,
         )
 
-        async def commit_tx(tx_obj: Transaction, fb: Optional[bytes] = None):
-            async with DI.get_journal_service() as s:
-                if fb:
-                    return await s.add_journal_entry_with_evidence(
-                        tx_obj, fb, DI.get_file_service()
-                    )
-                return await s.add_journal_entry(tx_obj)
-
         try:
             ocr_raw_bytes: Optional[bytes] = st.session_state.get("ocr_bytes")
-            run_async(commit_tx(new_tx, ocr_raw_bytes))
+            call_journal(
+                lambda s: s.add_journal_entry_with_evidence(new_tx, ocr_raw_bytes, DI.get_file_service())
+                if ocr_raw_bytes
+                else s.add_journal_entry(new_tx),
+            )
             st.session_state["ocr_result"] = None
             st.session_state["ocr_bytes"] = None
             st.success("仕訳が正常に登録されました！")
@@ -239,11 +221,9 @@ with tab_history:
         key="hist_e_date",
     )
 
-    async def fetch_entries(sd, ed):
-        async with DI.get_journal_service() as s:
-            return await s.get_entries(start_date=sd, end_date=ed)
-
-    entries = run_async(fetch_entries(s_date, e_date))
+    entries = call_journal(
+        lambda s: s.get_entries(start_date=s_date, end_date=e_date),
+    )
     if not entries:
         st.info("該当する仕訳データはありません。")
     else:

@@ -81,19 +81,13 @@ class MasterService:
         from app.domain.constants.default_accounts import DEFAULT_ACCOUNTS
 
         existing = {a.code for a in await self.get_accounts()}
-        count = 0
-        for data in DEFAULT_ACCOUNTS:
-            if data["code"] not in existing:
-                await self.save_account(
-                    Account(
-                        code=data["code"],
-                        name=data["name"],
-                        type=data["type"],
-                        description=data.get("description"),
-                    )
-                )
-                count += 1
-        return count
+        to_add = [d for d in DEFAULT_ACCOUNTS if d["code"] not in existing]
+        for data in to_add:
+            await self.save_account(
+                Account(code=data["code"], name=data["name"], type=data["type"], description=data.get("description"))
+            )
+        return len(to_add)
+
 
     async def get_abstracts(self) -> List[Abstract]:
         return await self.repository.get_abstracts()

@@ -64,43 +64,39 @@ def render_accounting_editor(
     raw_edited: Dict[str, Dict[str, Any]] = state.get("edited_rows", {})
     raw_deleted: List[int] = state.get("deleted_rows", [])
 
-    has_changes = bool(raw_added or raw_edited or raw_deleted)
+    if not (on_commit and (raw_added or raw_edited or raw_deleted)):
+        return edited_df
 
-    if on_commit and has_changes:
-        # 1. 編集対象行の PK マッピング（ソート・フィルタ耐性）
-        pk_edited_map: Dict[Any, Dict[str, Any]] = {}
-        for row_idx_str, changes in raw_edited.items():
-            row_idx = int(row_idx_str)
-            if row_idx < len(df) and pk_column in df.columns:
-                target_pk = df.iloc[row_idx][pk_column]
-                pk_edited_map[target_pk] = changes
+    # 1. 編集対象・削除対象行の PK マッピング（ソート・フィルタ耐性）
+    has_pk = pk_column in df.columns
+    pk_edited_map: Dict[Any, Dict[str, Any]] = (
+        {df.iloc[int(i)][pk_column]: c for i, c in raw_edited.items() if int(i) < len(df)}
+        if has_pk else {}
+    )
+    pk_deleted_list: List[Any] = (
+        [df.iloc[i][pk_column] for i in raw_deleted if i < len(df)]
+        if has_pk else []
+    )
+    added_list = list(raw_added)
 
-        # 2. 削除対象行の PK リスト（ソート・フィルタ耐性）
-        pk_deleted_list: List[Any] = []
-        for row_idx in raw_deleted:
-            if row_idx < len(df) and pk_column in df.columns:
-                target_pk = df.iloc[row_idx][pk_column]
-                pk_deleted_list.append(target_pk)
-
-        added_list = list(raw_added)
-
-        col_info, col_save = st.columns([4, 2])
-        with col_info:
-            st.info(
-                f"📝 変更が検出されました（追加: {len(added_list)}件, "
-                f"更新: {len(pk_edited_map)}件, 削除: {len(pk_deleted_list)}件）"
-            )
-        with col_save:
-            if st.button(
-                "💾 変更をデータベースに保存する",
-                type="primary",
-                key=f"btn_commit_{current_key}",
-                use_container_width=True,
-            ):
-                on_commit(added_list, pk_edited_map, pk_deleted_list)
-                # Key Rotation で古いウィジェットステートを物理破棄
-                st.session_state[version_key] += 1
-                st.toast("変更が正常に保存されました！", icon="✅")
-                st.rerun()
+    col_info, col_save = st.columns([4, 2])
+    with col_info:
+        st.info(
+            f"📝 変更が検出されました（追加: {len(added_list)}件, "
+            f"更新: {len(pk_edited_map)}件, 削除: {len(pk_deleted_list)}件）"
+        )
+    with col_save:
+        if st.button(
+            "💾 変更をデータベースに保存する",
+            type="primary",
+            key=f"btn_commit_{current_key}",
+            use_container_width=True,
+        ):
+            on_commit(added_list, pk_edited_map, pk_deleted_list)
+            # Key Rotation で古いウィジェットステートを物理破棄
+            st.session_state[version_key] += 1
+            st.toast("変更が正常に保存されました！", icon="✅")
+            st.rerun()
 
     return edited_df
+

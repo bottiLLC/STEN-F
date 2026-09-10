@@ -72,7 +72,27 @@ class AccountInferenceSchema(BaseModel):
     )
 
 
+_API_ERROR_RULES = [
+    (
+        lambda c, m: any(k in m for k in ("API_KEY_INVALID", "API KEY NOT VALID", "AUTHENTICATION", "UNAUTHENTICATED")) or c == 401 or (c == 400 and "API KEY" in m),
+        lambda msg: f"⚠️ **Gemini API キーが無効または未設定です**\n\nGoogle AI Studio で取得した有効な API キーが登録されているかご確認ください。\n「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n(詳細エラー: `{msg}`)",
+    ),
+    (lambda c, m: "PERMISSION_DENIED" in m or c == 403, lambda msg: f"⚠️ **Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: any(k in m for k in ("NOT_FOUND", "MODEL_NOT_FOUND")) or c == 404, lambda msg: f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: any(k in m for k in ("RESOURCE_EXHAUSTED", "RATE_LIMIT", "QUOTA_EXCEEDED", "TOO_MANY_REQUESTS")) or c == 429, lambda msg: f"⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: "FAILED_PRECONDITION" in m, lambda msg: f"⚠️ **API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: "OUT_OF_RANGE" in m or c == 416, lambda msg: f"⚠️ **リクエストパラメータが許容範囲外です (416 Out of Range)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: "SAFETY" in m or "IMAGE_SAFETY" in m, lambda msg: f"⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: "RECITATION" in m or "IMAGE_RECITATION" in m, lambda msg: f"⚠️ **著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: any(k in m for k in ("INVALID_REQUEST", "PARAMETER_UNKNOWN")) or (c == 400 and "INVALID_ARGUMENT" in m), lambda msg: f"⚠️ **API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: "DEADLINE_EXCEEDED" in m or c == 504, lambda msg: f"⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: c in (500, 502, 503) or any(k in m for k in ("INTERNAL", "SERVICE_UNAVAILABLE", "UNAVAILABLE")), lambda msg: f"⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n(詳細エラー: `{msg}`)"),
+    (lambda c, m: "CANCELLED" in m or c == 499, lambda msg: f"⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n(詳細エラー: `{msg}`)"),
+]
+
+
 class GeminiOCRService:
+
     def __init__(self):
         self.log = log.bind(service="GeminiOCRService")
 
@@ -324,59 +344,12 @@ Extract the following fields into a valid JSON object matching the requested sch
         return response.text or ""
 
     def _format_api_error_message(self, e: APIError) -> str:
+
         code, raw_msg = getattr(e, "code", None), getattr(e, "message", None) or str(e)
         msg_u = raw_msg.upper()
-        if (
-            any(
-                k in msg_u
-                for k in (
-                    "API_KEY_INVALID",
-                    "API KEY NOT VALID",
-                    "AUTHENTICATION",
-                    "UNAUTHENTICATED",
-                )
-            )
-            or code == 401
-            or (code == 400 and "API KEY" in msg_u)
-        ):
-            return f"⚠️ **Gemini API キーが無効または未設定です**\n\nGoogle AI Studio で取得した有効な API キーが登録されているかご確認ください。\n「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n(詳細エラー: `{raw_msg}`)"
-        if "PERMISSION_DENIED" in msg_u or code == 403:
-            return f"⚠️ **Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n(詳細エラー: `{raw_msg}`)"
-        if any(k in msg_u for k in ("NOT_FOUND", "MODEL_NOT_FOUND")) or code == 404:
-            return f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n(詳細エラー: `{raw_msg}`)"
-        if (
-            any(
-                k in msg_u
-                for k in (
-                    "RESOURCE_EXHAUSTED",
-                    "RATE_LIMIT",
-                    "QUOTA_EXCEEDED",
-                    "TOO_MANY_REQUESTS",
-                )
-            )
-            or code == 429
-        ):
-            return f"⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\n(詳細エラー: `{raw_msg}`)"
-        if "FAILED_PRECONDITION" in msg_u:
-            return f"⚠️ **API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n(詳細エラー: `{raw_msg}`)"
-        if "OUT_OF_RANGE" in msg_u or code == 416:
-            return f"⚠️ **リクエストパラメータが許容範囲外です (416 Out of Range)**\n\n(詳細エラー: `{raw_msg}`)"
-        if "SAFETY" in msg_u or "IMAGE_SAFETY" in msg_u:
-            return f"⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n(詳細エラー: `{raw_msg}`)"
-        if "RECITATION" in msg_u or "IMAGE_RECITATION" in msg_u:
-            return f"⚠️ **著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n(詳細エラー: `{raw_msg}`)"
-        if any(k in msg_u for k in ("INVALID_REQUEST", "PARAMETER_UNKNOWN")) or (
-            code == 400 and "INVALID_ARGUMENT" in msg_u
-        ):
-            return f"⚠️ **API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n(詳細エラー: `{raw_msg}`)"
-        if "DEADLINE_EXCEEDED" in msg_u or code == 504:
-            return f"⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\n(詳細エラー: `{raw_msg}`)"
-        if code in (500, 502, 503) or any(
-            k in msg_u for k in ("INTERNAL", "SERVICE_UNAVAILABLE", "UNAVAILABLE")
-        ):
-            return f"⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n(詳細エラー: `{raw_msg}`)"
-        if "CANCELLED" in msg_u or code == 499:
-            return f"⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n(詳細エラー: `{raw_msg}`)"
+        for matcher, formatter in _API_ERROR_RULES:
+            if matcher(code, msg_u):
+                return formatter(raw_msg)
         return f"⚠️ **Gemini API エラー (Code: {code or '不明'})**\n\n{raw_msg}"
 
     def _clean_json_text(self, text: str) -> str:
@@ -385,15 +358,14 @@ Extract the following fields into a valid JSON object matching the requested sch
             c = c[7:]
         elif c.startswith("```"):
             c = c[3:]
-        if c.endswith("```"):
-            c = c[:-3]
-        return c.strip()
+        return c[:-3].strip() if c.endswith("```") else c.strip()
 
     def _normalize_name(self, name: str) -> str:
         if not name:
             return ""
         norm = unicodedata.normalize("NFKC", name).replace(" ", "").replace("　", "")
         return _CORP_STATUS_PATTERN.sub("", norm)
+
 
     def _validate_receipt(self, data: ReceiptData) -> ReceiptData:
         msgs: List[str] = []
@@ -484,5 +456,10 @@ Extract the following fields into a valid JSON object matching the requested sch
             return file_bytes, mime_type
 
 
+    # Compatibility alias for UI
+    analyze_receipt = extract_receipt_data
+
+
 # Backward compatibility alias
 OpenAIOCRService = GeminiOCRService
+

@@ -12,12 +12,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import asyncio
 import nest_asyncio
 import streamlit as st
 import structlog
 
 from app.infrastructure.db.seed_data import seed_accounts
-from app.ui.async_helper import run_async
+from app.ui.async_helper import run_async, run_scoped
 from app.ui.di import DI
 
 nest_asyncio.apply()
@@ -50,13 +51,11 @@ with st.sidebar:
     st.caption("Simple Tough Effective Next-generation Finance")
     st.divider()
     try:
-        async def fetch_info():
-            async with DI.get_master_service() as s:
-                c = await s.get_corporation()
-                f = await s.get_fiscal_years()
-                return c, next((x for x in f if x.status == "OPEN"), None)
-
-        corp_info, open_fy = run_async(fetch_info())
+        corp_info, fys = run_scoped(
+            DI.get_master_service(),
+            lambda s: asyncio.gather(s.get_corporation(), s.get_fiscal_years()),
+        )
+        open_fy = next((x for x in fys if x.status == "OPEN"), None)
         if corp_info and corp_info.name:
             st.markdown(f"🏢 **{corp_info.name}**")
             if corp_info.representative_name:
