@@ -184,12 +184,24 @@ with tab_op:
         st.warning("進行中 (OPEN) の会計年度がありません。")
     else:
         debit_accs = [
-            a for a in all_accounts
-            if a.type in (AccountType.CURRENT_ASSET, AccountType.FIXED_ASSET, AccountType.DEFERRED_ASSET)
+            a
+            for a in all_accounts
+            if a.type
+            in (
+                AccountType.CURRENT_ASSET,
+                AccountType.FIXED_ASSET,
+                AccountType.DEFERRED_ASSET,
+            )
         ]
         credit_accs = [
-            a for a in all_accounts
-            if a.type in (AccountType.CURRENT_LIABILITY, AccountType.FIXED_LIABILITY, AccountType.EQUITY)
+            a
+            for a in all_accounts
+            if a.type
+            in (
+                AccountType.CURRENT_LIABILITY,
+                AccountType.FIXED_LIABILITY,
+                AccountType.EQUITY,
+            )
         ]
 
         with st.form("opening_balance_form"):
@@ -198,13 +210,25 @@ with tab_op:
             with c_l:
                 st.markdown("### 【 借方 : 資産の部 】")
                 for a in debit_accs:
-                    v = st.number_input(f"{a.code}: {a.name}", min_value=0, value=0, step=10000, key=f"op_acc_{a.id}")
+                    v = st.number_input(
+                        f"{a.code}: {a.name}",
+                        min_value=0,
+                        value=0,
+                        step=10000,
+                        key=f"op_acc_{a.id}",
+                    )
                     if a.id:
                         op_d[str(a.id)] = str(v)
             with c_r:
                 st.markdown("### 【 貸方 : 負債・純資産の部 】")
                 for a in credit_accs:
-                    v = st.number_input(f"{a.code}: {a.name}", min_value=0, value=0, step=10000, key=f"op_acc_{a.id}")
+                    v = st.number_input(
+                        f"{a.code}: {a.name}",
+                        min_value=0,
+                        value=0,
+                        step=10000,
+                        key=f"op_acc_{a.id}",
+                    )
                     if a.id:
                         op_c[str(a.id)] = str(v)
 
@@ -215,15 +239,22 @@ with tab_op:
             m1.metric("資産合計 (借方)", f"¥{total_d:,}")
             m2.metric("負債・純資産合計 (貸方)", f"¥{total_c:,}")
             diff = total_d - total_c
-            m3.metric("貸借バランス", "✅ 一致" if diff == 0 and total_d > 0 else f"差額: ¥{diff:,}")
+            m3.metric(
+                "貸借バランス",
+                "✅ 一致" if diff == 0 and total_d > 0 else f"差額: ¥{diff:,}",
+            )
 
-            if st.form_submit_button("💾 期首残高を登録・更新する", type="primary", use_container_width=True):
+            if st.form_submit_button(
+                "💾 期首残高を登録・更新する", type="primary", use_container_width=True
+            ):
                 if diff != 0 or total_d == 0:
                     st.error("貸借合計を一致させ、0より大きい金額を入力してください。")
                 else:
                     assert open_fy is not None
                     s_date = open_fy.start_date
-                    call_journal(lambda s: s.register_opening_balance(s_date, op_d, op_c))
+                    call_journal(
+                        lambda s: s.register_opening_balance(s_date, op_d, op_c)
+                    )
                     st.success("期首残高を登録しました！")
                     st.rerun()
 
@@ -237,7 +268,9 @@ with tab_acc:
                 "id": a.id,
                 "code": a.code,
                 "name": a.name,
-                "type": a.type.label if hasattr(a.type, "label") else (a.type.value if hasattr(a.type, "value") else str(a.type)),
+                "type": a.type.label
+                if hasattr(a.type, "label")
+                else (a.type.value if hasattr(a.type, "value") else str(a.type)),
                 "description": a.description or "",
             }
             for a in sorted(acc_list, key=lambda x: int(x.code))
@@ -254,7 +287,14 @@ with tab_acc:
                             acc_type = AccountType.from_label(t_val)
                         except ValueError:
                             acc_type = AccountType(t_val)
-                        await s.save_account(Account(code=str(r["code"]), name=str(r["name"]), type=acc_type, description=r.get("description")))
+                        await s.save_account(
+                            Account(
+                                code=str(r["code"]),
+                                name=str(r["name"]),
+                                type=acc_type,
+                                description=r.get("description"),
+                            )
+                        )
                 for pk, chg in edited.items():
                     cur = next((a for a in acc_list if a.id == pk), None)
                     if cur:
@@ -262,7 +302,11 @@ with tab_acc:
                         try:
                             acc_type = AccountType.from_label(t_val)
                         except ValueError:
-                            acc_type = AccountType(t_val) if isinstance(t_val, str) else cur.type
+                            acc_type = (
+                                AccountType(t_val)
+                                if isinstance(t_val, str)
+                                else cur.type
+                            )
                         await s.save_account(
                             Account(
                                 id=pk,
@@ -281,11 +325,17 @@ with tab_acc:
         "id": st.column_config.NumberColumn("ID", disabled=True),
         "code": st.column_config.TextColumn("科目コード", required=True),
         "name": st.column_config.TextColumn("科目名", required=True),
-        "type": st.column_config.SelectboxColumn("勘定区分", options=[t.label for t in AccountType], required=True),
+        "type": st.column_config.SelectboxColumn(
+            "勘定区分", options=[t.label for t in AccountType], required=True
+        ),
         "description": st.column_config.TextColumn("説明・用途"),
     }
     render_accounting_editor(
-        acc_df, pk_column="id", base_key="editor_accounts", on_commit=on_commit_accounts, column_config=col_cfg_acc
+        acc_df,
+        pk_column="id",
+        base_key="editor_accounts",
+        on_commit=on_commit_accounts,
+        column_config=col_cfg_acc,
     )
 
 # 5. 取引先マスタ
@@ -314,8 +364,12 @@ with tab_cp:
                             Counterparty(
                                 name=str(r["name"]),
                                 invoice_number=r.get("invoice_number") or None,
-                                debit_account_id=int(r["debit_account_id"]) if r.get("debit_account_id") else None,
-                                credit_account_id=int(r["credit_account_id"]) if r.get("credit_account_id") else None,
+                                debit_account_id=int(r["debit_account_id"])
+                                if r.get("debit_account_id")
+                                else None,
+                                credit_account_id=int(r["credit_account_id"])
+                                if r.get("credit_account_id")
+                                else None,
                             )
                         )
                 for pk, chg in edited.items():
@@ -325,9 +379,15 @@ with tab_cp:
                             Counterparty(
                                 id=pk,
                                 name=str(chg.get("name", cur.name)),
-                                invoice_number=chg.get("invoice_number", cur.invoice_number),
-                                debit_account_id=int(chg["debit_account_id"]) if chg.get("debit_account_id") else cur.debit_account_id,
-                                credit_account_id=int(chg["credit_account_id"]) if chg.get("credit_account_id") else cur.credit_account_id,
+                                invoice_number=chg.get(
+                                    "invoice_number", cur.invoice_number
+                                ),
+                                debit_account_id=int(chg["debit_account_id"])
+                                if chg.get("debit_account_id")
+                                else cur.debit_account_id,
+                                credit_account_id=int(chg["credit_account_id"])
+                                if chg.get("credit_account_id")
+                                else cur.credit_account_id,
                             )
                         )
                 for pk in deleted:
@@ -335,20 +395,28 @@ with tab_cp:
 
         run_async(do_commit())
 
-    render_accounting_editor(cp_df, pk_column="id", base_key="editor_counterparties", on_commit=on_commit_cps)
+    render_accounting_editor(
+        cp_df, pk_column="id", base_key="editor_counterparties", on_commit=on_commit_cps
+    )
 
 # 6. よく使う摘要マスタ
 with tab_abs:
     st.subheader("よく使う摘要マスタ一括管理")
     abs_list = call_master(lambda s: s.get_abstracts())
-    abs_df = pd.DataFrame([{"id": a.id, "text": a.text, "account_id": a.account_id} for a in abs_list])
+    abs_df = pd.DataFrame(
+        [{"id": a.id, "text": a.text, "account_id": a.account_id} for a in abs_list]
+    )
 
     def on_commit_abs(added, edited, deleted):
         async def do_commit():
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("text") and r.get("account_id"):
-                        await s.save_abstract(Abstract(text=str(r["text"]), account_id=int(r["account_id"])))
+                        await s.save_abstract(
+                            Abstract(
+                                text=str(r["text"]), account_id=int(r["account_id"])
+                            )
+                        )
                 for pk, chg in edited.items():
                     cur = next((a for a in abs_list if a.id == pk), None)
                     if cur:
@@ -364,14 +432,18 @@ with tab_abs:
 
         run_async(do_commit())
 
-    render_accounting_editor(abs_df, pk_column="id", base_key="editor_abstracts", on_commit=on_commit_abs)
+    render_accounting_editor(
+        abs_df, pk_column="id", base_key="editor_abstracts", on_commit=on_commit_abs
+    )
 
 # 7. バックアップ
 with tab_backup:
     st.subheader("データベース・設定バックアップ")
     st.caption("SQLite データベースと環境設定ファイルを安全に退避します。")
     backup_dir = st.text_input("バックアップ保存先フォルダ", value="./backups")
-    if st.button("💾 ワンクリック・バックアップを実行", type="primary", use_container_width=True):
+    if st.button(
+        "💾 ワンクリック・バックアップを実行", type="primary", use_container_width=True
+    ):
         try:
             bk_path = call_backup(lambda s: s.create_backup(backup_dir))
             st.success(f"バックアップが正常に完了しました！\n保存先: `{bk_path}`")
@@ -389,8 +461,13 @@ with tab_sys:
             type="password",
             help="Google AI Studio で発行された API キー",
         )
-        if st.form_submit_button("設定を保存する", type="primary", use_container_width=True):
-            call_master(lambda s: s.save_system_settings(SystemSettings(ai_api_key=api_key_input.strip() or None)))
+        if st.form_submit_button(
+            "設定を保存する", type="primary", use_container_width=True
+        ):
+            call_master(
+                lambda s: s.save_system_settings(
+                    SystemSettings(ai_api_key=api_key_input.strip() or None)
+                )
+            )
             st.success("システム設定を保存しました！")
             st.rerun()
-

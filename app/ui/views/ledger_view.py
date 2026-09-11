@@ -66,15 +66,23 @@ with tab_tb:
                     "借方合計 (¥)": f"{r.debit_total:,}" if r.debit_total else "-",
                     "貸方合計 (¥)": f"{r.credit_total:,}" if r.credit_total else "-",
                     "借方残高 (¥)": f"{r.debit_balance:,}" if r.debit_balance else "-",
-                    "貸方残高 (¥)": f"{r.credit_balance:,}" if r.credit_balance else "-",
+                    "貸方残高 (¥)": f"{r.credit_balance:,}"
+                    if r.credit_balance
+                    else "-",
                 }
                 for r in tb_rows
             ]
         )
         st.dataframe(df_tb, hide_index=True, use_container_width=True)
 
-        td_sum, tc_sum = sum(r.debit_total for r in tb_rows), sum(r.credit_total for r in tb_rows)
-        td_bal, tc_bal = sum(r.debit_balance for r in tb_rows), sum(r.credit_balance for r in tb_rows)
+        td_sum, tc_sum = (
+            sum(r.debit_total for r in tb_rows),
+            sum(r.credit_total for r in tb_rows),
+        )
+        td_bal, tc_bal = (
+            sum(r.debit_balance for r in tb_rows),
+            sum(r.credit_balance for r in tb_rows),
+        )
 
         st.markdown("---")
         c1, c2, c3, c4 = st.columns(4)
@@ -94,8 +102,12 @@ with tab_tb:
 with tab_gl:
     st.subheader("総勘定元帳 (General Ledger)")
     acc_list = call_master(lambda s: s.get_accounts())
-    acc_map = {f"{a.code}: {a.name}": a for a in sorted(acc_list, key=lambda x: int(x.code))}
-    selected_acc = acc_map[st.selectbox("勘定科目を指定", list(acc_map.keys()), key="gl_acc_select")]
+    acc_map = {
+        f"{a.code}: {a.name}": a for a in sorted(acc_list, key=lambda x: int(x.code))
+    }
+    selected_acc = acc_map[
+        st.selectbox("勘定科目を指定", list(acc_map.keys()), key="gl_acc_select")
+    ]
 
     gl_df = call_ledger(lambda s: s.get_general_ledger(selected_fy.id, selected_acc.id))
     if gl_df is None or gl_df.empty:
@@ -111,13 +123,21 @@ with tab_fs:
         hide_zero = st.checkbox("残高が 0 円の科目を非表示にする", value=True)
 
     with col_btn:
-        if st.button("📑 決算書 PDF を生成・ダウンロード", type="primary", use_container_width=True):
+        if st.button(
+            "📑 決算書 PDF を生成・ダウンロード",
+            type="primary",
+            use_container_width=True,
+        ):
+
             async def generate_pdf(fy):
                 async with DI.get_master_service() as ms, DI.get_ledger_service() as ls:
                     c = await ms.get_corporation()
                     r = await ls.generate_financial_report(fy.id)
                     from app.infrastructure.external.pdf_service import PDFService
-                    return PDFService.generate_annual_report(c, r, fy, date.today(), date.today())
+
+                    return PDFService.generate_annual_report(
+                        c, r, fy, date.today(), date.today()
+                    )
 
             try:
                 pdf_bytes = run_async(generate_pdf(selected_fy))

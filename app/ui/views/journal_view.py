@@ -61,9 +61,7 @@ with tab_entry:
         fb, mime = uploaded_file.getvalue(), uploaded_file.type or "image/png"
         with st.spinner("Gemini AI が証憑を解析中..."):
             try:
-                ocr_res = run_async(
-                    DI.get_ocr_service().extract_receipt_data(fb, mime)
-                )
+                ocr_res = run_async(DI.get_ocr_service().extract_receipt_data(fb, mime))
                 st.session_state["ocr_result"] = ocr_res
                 st.session_state["ocr_bytes"] = fb
                 st.session_state["ocr_filename"] = uploaded_file.name
@@ -159,10 +157,14 @@ with tab_entry:
 
     tx_lines: List[TransactionLine] = []
     for _, r in edited_lines_df.iterrows():
-        if (d_acc := r.get("debit_account")) and (d_amt := int(r.get("debit_amount") or 0)) > 0:
+        if (d_acc := r.get("debit_account")) and (
+            d_amt := int(r.get("debit_amount") or 0)
+        ) > 0:
             if aid := account_code_to_id.get(str(d_acc)):
                 tx_lines.append(TransactionLine(account_id=aid, debit=d_amt, credit=0))
-        if (c_acc := r.get("credit_account")) and (c_amt := int(r.get("credit_amount") or 0)) > 0:
+        if (c_acc := r.get("credit_account")) and (
+            c_amt := int(r.get("credit_amount") or 0)
+        ) > 0:
             if aid := account_code_to_id.get(str(c_acc)):
                 tx_lines.append(TransactionLine(account_id=aid, debit=0, credit=c_amt))
 
@@ -195,9 +197,13 @@ with tab_entry:
         try:
             ocr_raw_bytes: Optional[bytes] = st.session_state.get("ocr_bytes")
             call_journal(
-                lambda s: s.add_journal_entry_with_evidence(new_tx, ocr_raw_bytes, DI.get_file_service())
-                if ocr_raw_bytes
-                else s.add_journal_entry(new_tx),
+                lambda s: (
+                    s.add_journal_entry_with_evidence(
+                        new_tx, ocr_raw_bytes, DI.get_file_service()
+                    )
+                    if ocr_raw_bytes
+                    else s.add_journal_entry(new_tx)
+                ),
             )
             st.session_state["ocr_result"] = None
             st.session_state["ocr_bytes"] = None

@@ -70,12 +70,16 @@ def render_accounting_editor(
     # 1. 編集対象・削除対象行の PK マッピング（ソート・フィルタ耐性）
     has_pk = pk_column in df.columns
     pk_edited_map: Dict[Any, Dict[str, Any]] = (
-        {df.iloc[int(i)][pk_column]: c for i, c in raw_edited.items() if int(i) < len(df)}
-        if has_pk else {}
+        {
+            df.iloc[int(i)][pk_column]: c
+            for i, c in raw_edited.items()
+            if int(i) < len(df)
+        }
+        if has_pk
+        else {}
     )
     pk_deleted_list: List[Any] = (
-        [df.iloc[i][pk_column] for i in raw_deleted if i < len(df)]
-        if has_pk else []
+        [df.iloc[i][pk_column] for i in raw_deleted if i < len(df)] if has_pk else []
     )
     added_list = list(raw_added)
 
@@ -99,4 +103,3 @@ def render_accounting_editor(
             st.rerun()
 
     return edited_df
-
