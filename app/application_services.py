@@ -83,11 +83,7 @@ _LEGAL_ENTITY_KANA = [
 # --- 2. Internal Pure Transformations ---
 def _clean_counterparty_sort_key(cp: Counterparty) -> str:
     """Normalize corporate legal suffix kana to derive alphabetical sorting key."""
-    key = (
-        cp.reading
-        if getattr(cp, "reading", None)
-        else getattr(cp, "name_kana", None) or cp.name
-    )
+    key = str(cp.reading or cp.name_kana or cp.name or "")
     for token in _LEGAL_ENTITY_KANA:
         key = key.replace(token, "")
     return key

@@ -162,8 +162,8 @@ async def init_db(target_engine: Optional[Any] = None) -> None:
     from app.infrastructure.db import session as session_mod
 
     eng = target_engine or getattr(session_mod, "engine", None) or engine
-    db_url = str(eng.url) if hasattr(eng, "url") else settings.DATABASE_URL
-    if "sqlite" in db_url:
+    db_url = str(eng.url) if hasattr(eng, "url") else (settings.DATABASE_URL or "")
+    if db_url and "sqlite" in db_url:
         db_path = db_url.split("///")[-1]
         if db_path and db_path != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
