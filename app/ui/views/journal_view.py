@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from datetime import date
 import io
-from typing import Any
 import pandas as pd
 import streamlit as st
 
@@ -231,7 +230,7 @@ with tab_history:
     if not entries:
         st.info("該当する仕訳データはありません。")
     else:
-        rows: list[dict[str, Any]] = []
+        rows: list[dict[str, object]] = []
         for tx in entries:
             d_lines = [line for line in tx.lines if line.debit > 0]
             c_lines = [line for line in tx.lines if line.credit > 0]

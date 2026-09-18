@@ -10,7 +10,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.application_services import Container
-from app.core_foundation import normalize_amount, settings
+from app.core_foundation import (
+    call_backup,
+    call_fiscal_year,
+    normalize_amount,
+    settings,
+)
 from app.domain_contracts import (
     Abstract,
     Account,
@@ -214,7 +219,7 @@ async def test_master_repository_corporation_crud_lifecycle(
 
         # Assert
         assert saved_c.name == "合同会社ゴールデン"
-        assert refetched is not None
+        assert isinstance(refetched, Corporation)
         assert refetched.name == "合同会社ゴールデン"
 
 
@@ -243,9 +248,13 @@ async def test_master_repository_fiscal_year_crud_and_nonexistent_lookups(
         delete_non_existent = await repo.delete_fiscal_year(999999)
 
         # Assert
-        assert fetched_fy is not None
+        assert isinstance(fetched_fy, FiscalYear)
+        assert fetched_fy.id == saved_fy.id
         assert fetched_fy.name == "リポジトリテスト期"
         assert fetched_fy.period_number == 10
+        assert fetched_fy.status == "OPEN"
+        assert fetched_fy.start_date == date(2025, 1, 1)
+        assert fetched_fy.end_date == date(2025, 12, 31)
         assert non_existent_fy is None
         assert delete_success is True
         assert delete_non_existent is False
@@ -303,7 +312,8 @@ async def test_master_repository_counterparty_and_abstract_crud(
         delete_ab_nonexistent = await repo.delete_abstract(999999)
 
         # Assert
-        assert matched_cp is not None
+        assert isinstance(matched_cp, Counterparty)
+        assert matched_cp.id == cp.id
         assert matched_cp.name == "リポジトリ専用取引先"
         assert unmatched_cp is None
         assert any(a.id == ab.id and a.text == "テスト摘要" for a in all_abs)
@@ -359,8 +369,11 @@ async def test_ledger_repository_operations(container: Container) -> None:
 
         # Assert
         assert tx_id > 0
-        assert saved is not None
+        assert isinstance(saved, Transaction)
+        assert saved.id == tx_id
         assert saved.description == "Golden Transaction"
+        assert saved.counterparty == "ゴールデン顧客"
+        assert len(saved.lines) == 2
         assert has_tx is True
         assert update_ev_success is True
         assert update_ev_fail is False
@@ -454,7 +467,7 @@ async def test_database_auto_migration_backup_path_injects_missing_column(
             )
             row = result.fetchone()
             assert row is not None
-            assert row[0] is None
+            assert tuple(row) == (None,)
     finally:
         await temp_engine.dispose()
 
@@ -481,3 +494,67 @@ async def test_seed_accounts_with_service_populates_defaults_idempotently(
 
         # Assert 2: No duplicate accounts inserted
         assert len(second_run_accounts) == len(first_run_accounts)
+
+
+@pytest.mark.asyncio
+async def test_call_fiscal_year_and_call_backup_helper_functions(
+    container: Container, tmp_path: Path
+) -> None:
+    """Verify call_fiscal_year and call_backup helper functions execute under active scopes."""
+    # Arrange & Act: call_fiscal_year
+    fys = call_fiscal_year(lambda s: s.master_service.get_fiscal_years())
+
+    # Assert
+    assert isinstance(fys, list)
+    assert len(fys) > 0
+
+    # Arrange & Act: call_backup
+    backup_target = tmp_path / "backups_test"
+    backup_dir = call_backup(lambda b: b.create_backup(str(backup_target)))
+
+    # Assert
+    assert isinstance(backup_dir, str)
+    assert Path(backup_dir).exists()
+
+
+@pytest.mark.asyncio
+async def test_master_repository_save_counterparty_merges_on_matching_invoice_or_name(
+    container: Container,
+) -> None:
+    """Verify save_counterparty updates existing record when ID is None but invoice_number or name matches."""
+    # Arrange
+    async with container.session_scope() as session:
+        repo = SQLAlchemyMasterRepository(session)
+        cp_initial = await repo.save_counterparty(
+            Counterparty(
+                name="インボイス名寄せテスト商事",
+                invoice_number="T1111111111111",
+            )
+        )
+        assert cp_initial.id is not None
+
+        # Act 1: Same invoice_number, ID=None, updated name
+        cp_updated_by_inv = await repo.save_counterparty(
+            Counterparty(
+                id=None,
+                name="インボイス名寄せテスト商事（改名）",
+                invoice_number="T1111111111111",
+            )
+        )
+
+        # Assert 1: Same ID retained, name updated
+        assert cp_updated_by_inv.id == cp_initial.id
+        assert cp_updated_by_inv.name == "インボイス名寄せテスト商事（改名）"
+
+        # Act 2: Same name, ID=None, new invoice_number
+        cp_updated_by_name = await repo.save_counterparty(
+            Counterparty(
+                id=None,
+                name="インボイス名寄せテスト商事（改名）",
+                invoice_number="T2222222222222",
+            )
+        )
+
+        # Assert 2: Same ID retained, invoice_number updated
+        assert cp_updated_by_name.id == cp_initial.id
+        assert cp_updated_by_name.invoice_number == "T2222222222222"

@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 import sys
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, TypeVar
+from typing import TYPE_CHECKING, Any, Final, ParamSpec, TypeVar
 
 import nest_asyncio
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,7 +31,9 @@ if TYPE_CHECKING:
     )
     from app.external_services import BackupService, LocalFileService, PDFService
 
+P = ParamSpec("P")
 T = TypeVar("T")
+S = TypeVar("S")
 nest_asyncio.apply()
 
 # --- 1. Datum Plane (Configuration & Constants) ---
@@ -82,7 +84,7 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="forbid", case_sensitive=True
     )
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, __context: object) -> None:
         """Resolve dynamic database URLs and system fonts upon initialization.
 
         Args:
@@ -155,7 +157,7 @@ def resilient_api_call(
     max_retries: int = 3,
     base_delay: float = 1.0,
     exceptions: tuple[type[BaseException], ...] = (Exception,),
-) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """Decorate async callable with exponential backoff retry clamping.
 
     Args:
@@ -167,9 +169,9 @@ def resilient_api_call(
         Decorated async function wrapper.
     """
 
-    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> T:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             def before_sleep(retry_state: tenacity.RetryCallState) -> None:
                 log.warning(
                     "api_call_retry",
@@ -219,8 +221,8 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
 
 
 def run_scoped(
-    scope_ctx: AbstractAsyncContextManager[Any],
-    coro_fn: Callable[[Any], Awaitable[T]],
+    scope_ctx: AbstractAsyncContextManager[S],
+    coro_fn: Callable[[S], Awaitable[T]],
 ) -> T:
     """Execute coroutine safely bounded by async context manager.
 

@@ -10,7 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import io
 import json
 import re
-from typing import Any, Final
+from typing import Final
 import unicodedata
 import fitz
 from google import genai
@@ -293,7 +293,7 @@ def optimize_receipt_image(file_bytes: bytes, mime_type: str) -> tuple[bytes, st
                 or mime_type == "image/png"
             ):
                 img.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
-                proc: Any = img.convert("RGB") if img.mode != "RGB" else img
+                proc: Image.Image = img.convert("RGB") if img.mode != "RGB" else img
                 out = io.BytesIO()
                 proc.save(out, format="JPEG", dpi=(200, 200), quality=85)
                 return out.getvalue(), "image/jpeg"
@@ -529,7 +529,7 @@ Extract the following fields into a valid JSON object matching the requested sch
         Raises:
             ValueError: If response is empty or blocked by safety filters.
         """
-        contents: list[Any] = [
+        contents: list[types.ContentUnionDict] = [
             types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
             types.Part.from_text(text=sys_instruct),
         ]
@@ -540,7 +540,9 @@ Extract the following fields into a valid JSON object matching the requested sch
         )
         response = await asyncio.to_thread(
             lambda: client.models.generate_content(
-                model=settings.GEMINI_DEFAULT_MODEL, contents=contents, config=config
+                model=settings.GEMINI_DEFAULT_MODEL,
+                contents=contents,
+                config=config,
             )
         )
         result = response.text or ""

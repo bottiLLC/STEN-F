@@ -4,16 +4,21 @@
 from __future__ import annotations
 
 from datetime import date
+import importlib.util
+from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from app.ai_ocr_service import GeminiOCRService
 from app.application_services import Container
 from app.core_foundation import DI, call_journal, call_master
 from app.domain_contracts import (
     Corporation,
+    FiscalYear,
     Transaction,
     TransactionLine,
 )
+from app.external_services import BackupService, LocalFileService, PDFService
 
 
 # --- 1. Streamlit App Navigation & Pages Interaction Tests ---
@@ -88,8 +93,11 @@ async def test_full_system_accounting_cycle(container: Container) -> None:
             )
         )
         corp = await ms.get_corporation()
-        assert corp is not None
+        assert isinstance(corp, Corporation)
         assert corp.name == "合同会社E2E統合"
+        assert corp.address == "東京都千代田区1-1-1"
+        assert corp.representative_title == "代表社員"
+        assert corp.representative_name == "山田 花子"
 
         accounts = await ms.get_accounts()
         cash = next(a for a in accounts if a.code == "1110")
@@ -155,22 +163,23 @@ async def test_full_system_accounting_cycle(container: Container) -> None:
 
     async with container.master_service_scope() as ms:
         old_fy = await ms.get_fiscal_year_by_id(fy.id)
-        assert old_fy is not None
+        assert isinstance(old_fy, FiscalYear)
+        assert old_fy.id == fy.id
         assert old_fy.status == "CLOSED"
 
 
 # --- 3. Dependency Injection & Helper Utilities Tests ---
 def test_di_container_resolution_returns_active_service_instances() -> None:
-    """Verify DI static resolver methods return active non-None service scope contexts."""
+    """Verify DI static resolver methods return active instances with expected contracts."""
     # Assert
-    assert DI.get_master_service() is not None
-    assert DI.get_journal_service() is not None
-    assert DI.get_ledger_service() is not None
-    assert DI.get_fiscal_year_service() is not None
-    assert DI.get_ocr_service() is not None
-    assert DI.get_file_service() is not None
-    assert DI.get_backup_service() is not None
-    assert DI.get_pdf_service() is not None
+    assert hasattr(DI.get_master_service(), "__aenter__")
+    assert hasattr(DI.get_journal_service(), "__aenter__")
+    assert hasattr(DI.get_ledger_service(), "__aenter__")
+    assert hasattr(DI.get_fiscal_year_service(), "__aenter__")
+    assert isinstance(DI.get_ocr_service(), GeminiOCRService)
+    assert isinstance(DI.get_file_service(), LocalFileService)
+    assert isinstance(DI.get_backup_service(), BackupService)
+    assert isinstance(DI.get_pdf_service(), PDFService)
 
 
 @pytest.mark.asyncio
@@ -187,6 +196,60 @@ async def test_scoped_helper_functions_execute_under_isolated_di_scope(
     res_entries = call_journal(lambda s: s.get_entries())
 
     # Assert
-    assert res_corp is not None
+    assert isinstance(res_corp, Corporation)
     assert res_corp.name == "スコープヘルパー検証法人"
     assert isinstance(res_entries, list)
+    assert len(res_entries) == 0
+
+
+_app_spec = importlib.util.spec_from_file_location(
+    "sten_root_app", Path(__file__).resolve().parent.parent / "app.py"
+)
+if _app_spec is None or _app_spec.loader is None:
+    raise ImportError("Failed to load app.py specification")
+_app_mod = importlib.util.module_from_spec(_app_spec)
+_app_spec.loader.exec_module(_app_mod)
+resolve_active_fiscal_year = _app_mod.resolve_active_fiscal_year
+load_sidebar_metadata = _app_mod.load_sidebar_metadata
+
+
+def test_resolve_active_fiscal_year_with_mixed_statuses_returns_open_instance() -> None:
+    """Verify resolve_active_fiscal_year returns the open fiscal year or None."""
+    # Arrange
+    fy_closed = FiscalYear(
+        name="過去期",
+        start_date=date(2023, 1, 1),
+        end_date=date(2023, 12, 31),
+        status="CLOSED",
+        period_number=1,
+    )
+    fy_open = FiscalYear(
+        name="現在期",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 12, 31),
+        status="OPEN",
+        period_number=2,
+    )
+
+    # Act & Assert
+    assert resolve_active_fiscal_year([fy_closed, fy_open]) == fy_open
+    assert resolve_active_fiscal_year([fy_closed]) is None
+    assert resolve_active_fiscal_year([]) is None
+
+
+@pytest.mark.asyncio
+async def test_load_sidebar_metadata_with_structured_concurrency_returns_corp_and_fys(
+    container: Container,
+) -> None:
+    """Verify load_sidebar_metadata retrieves corporation and fiscal years via TaskGroup."""
+    # Arrange
+    async with container.master_service_scope() as ms:
+        await ms.save_corporation(Corporation(name="サイドバー検証会社"))
+        corp, fys = await load_sidebar_metadata(ms.repository)
+
+    # Assert
+    assert isinstance(corp, Corporation)
+    assert corp.name == "サイドバー検証会社"
+    assert isinstance(fys, list)
+    assert len(fys) > 0
+

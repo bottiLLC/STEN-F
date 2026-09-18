@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 import datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import Final, TypeVar
 from sqlalchemy import ForeignKey, func, select, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -35,6 +35,7 @@ from app.domain_contracts import (
     SystemSettings,
     Transaction,
     TransactionLine,
+    TrialBalanceRawRow,
 )
 
 
@@ -53,6 +54,9 @@ class Base(DeclarativeBase):
     """Declarative base class for SQLAlchemy entity models."""
 
     pass
+
+
+ModelT = TypeVar("ModelT", bound=Base)
 
 
 class AccountTable(Base):
@@ -191,7 +195,7 @@ def _to_domain_transaction(row: TransactionTable) -> Transaction:
 
 
 # --- 3. Public Orchestration Layer ---
-async def init_db(target_engine: AsyncEngine | Any | None = None) -> None:
+async def init_db(target_engine: AsyncEngine | None = None) -> None:
     """Initialize SQLite schema and execute auto-migration for missing columns.
 
     Args:
@@ -238,7 +242,9 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         """
         self.session = session
 
-    async def _get_by_id(self, model_cls: type[Any], entity_id: int | None) -> Any:
+    async def _get_by_id(
+        self, model_cls: type[ModelT], entity_id: int | None
+    ) -> ModelT | None:
         """Fetch single entity by primary key.
 
         Args:
@@ -251,11 +257,11 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         if not entity_id:
             return None
         res = await self.session.execute(
-            select(model_cls).where(model_cls.id == entity_id)
+            select(model_cls).where(getattr(model_cls, "id") == entity_id)
         )
         return res.scalar_one_or_none()
 
-    async def _delete_by_id(self, model_cls: type[Any], entity_id: int) -> bool:
+    async def _delete_by_id(self, model_cls: type[Base], entity_id: int) -> bool:
         """Delete single entity by primary key.
 
         Args:
@@ -272,7 +278,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             return True
         return False
 
-    async def _save_and_refresh(self, entity: Any) -> Any:
+    async def _save_and_refresh(self, entity: ModelT) -> ModelT:
         """Persist, commit, and refresh entity state.
 
         Args:
@@ -746,7 +752,9 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             return True
         return False
 
-    async def get_trial_balance_data(self, fiscal_year_id: int) -> list[dict[str, Any]]:
+    async def get_trial_balance_data(
+        self, fiscal_year_id: int
+    ) -> list[TrialBalanceRawRow]:
         """Aggregate total debit and credit amounts per account within fiscal period.
 
         Args:

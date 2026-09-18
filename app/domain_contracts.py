@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime
 from enum import Enum
 import re
-from typing import Any, Final
+from typing import Final, TypedDict
 
 from pydantic import (
     BaseModel,
@@ -134,7 +134,20 @@ _RAW_ACCOUNTS: Final[tuple[tuple[str, str, AccountType, str], ...]] = (
     ("9110", "法人税、住民税及び事業税", AccountType.TAXES, "法人税、住民税及び事業税"),
 )
 
-DEFAULT_ACCOUNTS: Final[tuple[dict[str, Any], ...]] = tuple(
+class DefaultAccountDict(TypedDict):
+    code: str
+    name: str
+    type: AccountType
+    description: str
+
+
+class TrialBalanceRawRow(TypedDict):
+    account_id: int
+    total_debit: int
+    total_credit: int
+
+
+DEFAULT_ACCOUNTS: Final[tuple[DefaultAccountDict, ...]] = tuple(
     {"code": c, "name": n, "type": t, "description": d} for c, n, t, d in _RAW_ACCOUNTS
 )
 
@@ -547,7 +560,9 @@ class ILedgerRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_trial_balance_data(self, fiscal_year_id: int) -> list[dict[str, Any]]:
+    async def get_trial_balance_data(
+        self, fiscal_year_id: int
+    ) -> list[TrialBalanceRawRow]:
         """Compute aggregated trial balance rows for fiscal period."""
         ...
 

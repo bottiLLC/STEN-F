@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import csv
 from datetime import date, timedelta
 import io
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final, TypedDict
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,8 +50,19 @@ _DEBIT_POSITIVE_TYPES: Final[frozenset[AccountType]] = frozenset(
         AccountType.SGA,
         AccountType.NON_OPERATING_EXPENSE,
         AccountType.EXTRAORDINARY_LOSS,
+        AccountType.TAXES,
     }
 )
+
+
+class GeneralLedgerLine(TypedDict):
+    日付: date
+    摘要: str
+    借方: int
+    貸方: int
+    残高: int
+    TransactionID: int | None
+
 
 _EXPENSE_TYPES: Final[frozenset[AccountType]] = frozenset(
     {
@@ -424,7 +435,7 @@ class LedgerService:
             return pd.DataFrame()
 
         is_debit_positive = target_acc.type in _DEBIT_POSITIVE_TYPES
-        gl_lines: list[dict[str, Any]] = []
+        gl_lines: list[GeneralLedgerLine] = []
         running_balance = 0
         transactions.sort(key=lambda x: x.date)
 
@@ -539,7 +550,9 @@ class JournalService:
         self.master_repository = master_repository
 
     @asynccontextmanager
-    async def _master_scope(self) -> AsyncGenerator[Any, None]:
+    async def _master_scope(
+        self,
+    ) -> AsyncGenerator[IMasterRepository | MasterService, None]:
         """Resolve master repository boundary.
 
         Yields:

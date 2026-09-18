@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import date
 import io
+from pathlib import Path
 from PIL import Image
 import pytest
 from pytest_mock import MockerFixture
@@ -532,3 +533,132 @@ async def test_ocr_service_extraction_with_registered_counterparty_sets_dictiona
     assert receipt.merchant_name == "登録済み珈琲店"
     assert receipt.is_registered_merchant is True
     assert receipt.is_dictionary_matched is True
+
+
+@pytest.mark.asyncio
+async def test_ocr_service_extraction_with_recitation_blocked_raises_value_error(
+    container: Container, mocker: MockerFixture
+) -> None:
+    """Verify GeminiOCRService raises ValueError when finish_reason indicates RECITATION."""
+    # Arrange
+    service = GeminiOCRService()
+    dummy_img = _create_dummy_image()
+
+    mock_candidate = mocker.MagicMock()
+    mock_candidate.finish_reason = "RECITATION"
+    mock_resp = mocker.MagicMock()
+    mock_resp.text = ""
+    mock_resp.candidates = [mock_candidate]
+    mocker.patch("google.genai.models.Models.generate_content", return_value=mock_resp)
+
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-key"
+        await ms.save_system_settings(settings_obj)
+
+    # Act & Assert
+    with pytest.raises(
+        ValueError, match="著作権・引用制限（Recitation）により生成がブロックされました"
+    ):
+        await service.extract_receipt_data(dummy_img, "png")
+
+
+@pytest.mark.asyncio
+async def test_ocr_service_extraction_with_other_finish_reason_raises_value_error(
+    container: Container, mocker: MockerFixture
+) -> None:
+    """Verify GeminiOCRService raises ValueError when finish_reason indicates interruption."""
+    # Arrange
+    service = GeminiOCRService()
+    dummy_img = _create_dummy_image()
+
+    mock_candidate = mocker.MagicMock()
+    mock_candidate.finish_reason = "MAX_TOKENS"
+    mock_resp = mocker.MagicMock()
+    mock_resp.text = ""
+    mock_resp.candidates = [mock_candidate]
+    mocker.patch("google.genai.models.Models.generate_content", return_value=mock_resp)
+
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-key"
+        await ms.save_system_settings(settings_obj)
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="AIモデルの出力が中断されました"):
+        await service.extract_receipt_data(dummy_img, "png")
+
+
+@pytest.mark.asyncio
+async def test_ocr_service_extraction_with_empty_response_text_raises_value_error(
+    container: Container, mocker: MockerFixture
+) -> None:
+    """Verify GeminiOCRService raises ValueError when response has no text and no candidate finish reasons."""
+    # Arrange
+    service = GeminiOCRService()
+    dummy_img = _create_dummy_image()
+
+    mock_resp = mocker.MagicMock()
+    mock_resp.text = ""
+    mock_resp.candidates = []
+    mocker.patch("google.genai.models.Models.generate_content", return_value=mock_resp)
+
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-key"
+        await ms.save_system_settings(settings_obj)
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="Gemini APIから空の応答が返されました。"):
+        await service.extract_receipt_data(dummy_img, "png")
+
+
+@pytest.mark.asyncio
+async def test_ocr_service_extraction_with_corrupted_pdf_raises_value_error(
+    container: Container,
+) -> None:
+    """Verify extract_receipt_data raises ValueError when provided invalid/corrupted PDF bytes."""
+    # Arrange
+    service = GeminiOCRService()
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-key"
+        await ms.save_system_settings(settings_obj)
+
+    corrupted_pdf = b"%PDF-corrupted invalid byte sequence"
+
+    # Act & Assert
+    with pytest.raises(
+        ValueError, match="PDFファイルの読み込み・レンダリングに失敗しました"
+    ):
+        await service.extract_receipt_data(corrupted_pdf, "pdf")
+
+
+@pytest.mark.asyncio
+async def test_local_file_service_save_evidence_for_transaction_sanitizes_legal_prefixes(
+    tmp_path: Path,
+) -> None:
+    """Verify save_evidence_for_transaction cleans Japanese corporate entity prefixes from filename."""
+    # Arrange
+    from pathlib import Path
+    from app.external_services import LocalFileService
+
+    file_service = LocalFileService(base_dir=tmp_path)
+    file_payload = b"dummy electronic receipt payload"
+    tx_date = date(2026, 4, 15)
+
+    # Act
+    saved_path_str = await file_service.save_evidence_for_transaction(
+        file_bytes=file_payload,
+        transaction_id=101,
+        date_obj=tx_date,
+        amount=12000,
+        corp_name="株式会社サンプル合同会社パートナーズ",
+    )
+
+    # Assert
+    saved_path = Path(saved_path_str)
+    assert saved_path.exists()
+    assert saved_path.name == "20260415_12000_サンプルパートナーズ_101.pdf"
+    assert saved_path.read_bytes() == file_payload
+

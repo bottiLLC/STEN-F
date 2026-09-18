@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
+from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
@@ -19,6 +21,7 @@ from app.domain_contracts import (
     TransactionLine,
     validate_invoice_number_format,
 )
+from app.external_services import LocalFileService
 
 
 # --- 1. Master Logic & Account Constraints ---
@@ -61,7 +64,8 @@ async def test_master_service_account_and_counterparty_lifecycle(
 
         # Act & Assert: Fuzzy search
         matched = await ms.get_counterparty_by_keyword("アルファ")
-        assert matched is not None
+        assert isinstance(matched, Counterparty)
+        assert matched.id == cp2.id
         assert matched.name == "合同会社アルファ"
         assert await ms.get_counterparty_by_keyword("") is None
         assert await ms.get_counterparty_by_keyword("存在しない取引先") is None
@@ -142,7 +146,7 @@ async def test_journal_entry_lifecycle_and_updates(container: Container) -> None
         assert tx_id > 0
         async with container.master_service_scope() as ms:
             learned_cp = await ms.get_counterparty_by_keyword("新規自動学習取引先")
-            assert learned_cp is not None
+            assert isinstance(learned_cp, Counterparty)
             assert learned_cp.name == "新規自動学習取引先"
 
         # Act 2: Update journal entry
@@ -264,7 +268,8 @@ async def test_ledger_trial_balance_and_statements(container: Container) -> None
         assert fy.id is not None
         accounts = await ms.get_accounts()
         first_acc_id = accounts[0].id
-        assert first_acc_id is not None
+        assert isinstance(first_acc_id, int)
+        assert first_acc_id > 0
 
     async with container.ledger_service_scope() as ls:
         # Act
@@ -313,13 +318,16 @@ async def test_fiscal_year_closing_workflow_and_boundary_checks(
         next_fy = await fys.close_fiscal_year(test_fy.id)
 
         # Assert 1: New fiscal year opened and old closed
-        assert next_fy is not None
+        assert isinstance(next_fy, FiscalYear)
         assert next_fy.period_number == 100
         assert next_fy.status == "OPEN"
+        assert next_fy.start_date == date(today.year - 2, 1, 1)
+        assert next_fy.end_date == date(today.year - 2, 12, 31)
 
         async with container.master_service_scope() as ms:
             closed_fy = await ms.get_fiscal_year_by_id(test_fy.id)
-            assert closed_fy is not None
+            assert isinstance(closed_fy, FiscalYear)
+            assert closed_fy.id == test_fy.id
             assert closed_fy.status == "CLOSED"
 
         # Act & Assert 2: Attempting to close already closed fiscal year raises ValueError
@@ -539,3 +547,342 @@ async def test_fiscal_year_closing_when_succeeding_fiscal_year_already_exists(
         assert next_fy.id == fy_preexisting_next.id
         assert next_fy.period_number == 81
         assert next_fy.status == "OPEN"
+
+
+# --- 6. Exhaustive Boundary and Edge Case Tests ---
+@pytest.mark.parametrize(
+    ("label", "expected_type"),
+    [
+        ("流動資産", AccountType.CURRENT_ASSET),
+        ("固定資産", AccountType.FIXED_ASSET),
+        ("繰延資産", AccountType.DEFERRED_ASSET),
+        ("流動負債", AccountType.CURRENT_LIABILITY),
+        ("固定負債", AccountType.FIXED_LIABILITY),
+        ("純資産", AccountType.EQUITY),
+        ("売上高", AccountType.REVENUE),
+        ("売上原価", AccountType.COST_OF_SALES),
+        ("販管費", AccountType.SGA),
+        ("営業外収益", AccountType.NON_OPERATING_INCOME),
+        ("営業外費用", AccountType.NON_OPERATING_EXPENSE),
+        ("特別利益", AccountType.EXTRAORDINARY_INCOME),
+        ("特別損失", AccountType.EXTRAORDINARY_LOSS),
+        ("法人税等", AccountType.TAXES),
+    ],
+)
+def test_account_type_from_label_with_valid_label_returns_correct_enum(
+    label: str, expected_type: AccountType
+) -> None:
+    """Verify AccountType.from_label correctly resolves all Japanese category labels."""
+    # Arrange & Act
+    result = AccountType.from_label(label)
+
+    # Assert
+    assert result == expected_type
+    assert isinstance(result, AccountType)
+
+
+@pytest.mark.parametrize(
+    "invalid_label",
+    ["", "無効な勘定区分", "流動資産 ", "Unknown", "123"],
+)
+def test_account_type_from_label_with_invalid_label_raises_value_error(
+    invalid_label: str,
+) -> None:
+    """Verify AccountType.from_label raises ValueError with descriptive message on unknown labels."""
+    # Arrange & Act & Assert
+    with pytest.raises(ValueError, match=f"Unknown label: {invalid_label}"):
+        AccountType.from_label(invalid_label)
+
+
+@pytest.mark.parametrize(
+    ("debit", "credit", "expected_amount"),
+    [
+        (5000, 0, 5000),
+        (0, 8000, 8000),
+        (0, 0, 0),
+        (1000000, 0, 1000000),
+    ],
+)
+def test_transaction_line_amount_property_returns_debit_or_credit(
+    debit: int, credit: int, expected_amount: int
+) -> None:
+    """Verify TransactionLine.amount property returns effective debit or credit."""
+    # Arrange
+    line = TransactionLine(account_id=1, debit=debit, credit=credit)
+
+    # Act
+    amount = line.amount
+
+    # Assert
+    assert amount == expected_amount
+    assert isinstance(amount, int)
+
+
+@pytest.mark.asyncio
+async def test_journal_service_validation_raises_when_no_open_fiscal_year_exists(
+    container: Container,
+) -> None:
+    """Verify JournalService raises ValueError when attempting to record transaction without open fiscal year."""
+    # Arrange: close all fiscal years
+    async with container.master_service_scope() as ms:
+        fys = await ms.get_fiscal_years()
+        for fy in fys:
+            fy.status = "CLOSED"
+            await ms.save_fiscal_year(fy)
+        accounts = await ms.get_accounts()
+        acc1, acc2 = accounts[0], accounts[1]
+        assert acc1.id is not None and acc2.id is not None
+
+    async with container.journal_service_scope() as js:
+        tx = Transaction(
+            date=date.today(),
+            description="No open fiscal year test",
+            lines=[
+                TransactionLine(account_id=acc1.id, debit=1000, credit=0),
+                TransactionLine(account_id=acc2.id, debit=0, credit=1000),
+            ],
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            ValueError, match="現在「OPEN」ステータスの会計年度が存在しません。"
+        ):
+            await js.add_journal_entry(tx)
+
+
+@pytest.mark.asyncio
+async def test_journal_service_validation_raises_when_date_outside_open_fiscal_years(
+    container: Container,
+) -> None:
+    """Verify JournalService raises ValueError when transaction date falls outside open fiscal year range."""
+    # Arrange
+    async with container.master_service_scope() as ms:
+        # Re-open or create an open fiscal year
+        fy = await ms.save_fiscal_year(
+            FiscalYear(
+                name="期間外検証テスト期",
+                start_date=date(2025, 4, 1),
+                end_date=date(2026, 3, 31),
+                status="OPEN",
+                period_number=99,
+            )
+        )
+        assert isinstance(fy, FiscalYear)
+        accounts = await ms.get_accounts()
+        acc1, acc2 = accounts[0], accounts[1]
+        assert acc1.id is not None and acc2.id is not None
+
+    outside_date = date(2024, 1, 1)
+    async with container.journal_service_scope() as js:
+        tx = Transaction(
+            date=outside_date,
+            description="Outside range test",
+            lines=[
+                TransactionLine(account_id=acc1.id, debit=2000, credit=0),
+                TransactionLine(account_id=acc2.id, debit=0, credit=2000),
+            ],
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="現在「OPEN」な会計年度の範囲外です"):
+            await js.add_journal_entry(tx)
+
+
+@pytest.mark.asyncio
+async def test_journal_service_add_journal_entry_with_evidence_persists_path(
+    container: Container, tmp_path: Path
+) -> None:
+    """Verify add_journal_entry_with_evidence persists physical evidence and associates path with transaction."""
+    # Arrange
+    file_service = LocalFileService(base_dir=tmp_path)
+    async with container.master_service_scope() as ms:
+        fys = await ms.get_fiscal_years()
+        open_fy = next(f for f in fys if f.status == "OPEN")
+        accounts = await ms.get_accounts()
+        acc1, acc2 = accounts[0], accounts[1]
+        assert acc1.id is not None and acc2.id is not None
+
+    evidence_payload = b"%PDF-1.4 dummy evidence binary payload"
+    tx = Transaction(
+        date=open_fy.start_date,
+        description="証憑添付付き仕訳テスト",
+        counterparty="株式会社テスト仕入先",
+        lines=[
+            TransactionLine(account_id=acc1.id, debit=3500, credit=0),
+            TransactionLine(account_id=acc2.id, debit=0, credit=3500),
+        ],
+    )
+
+    # Act
+    async with container.journal_service_scope() as js:
+        tx_id = await js.add_journal_entry_with_evidence(
+            tx, evidence_payload, file_service
+        )
+        entries = await js.get_entries()
+        created_tx = next(t for t in entries if t.id == tx_id)
+
+    # Assert
+    assert tx_id > 0
+    assert isinstance(created_tx, Transaction)
+    assert created_tx.evidence_path is not None
+    assert Path(created_tx.evidence_path).exists()
+    assert Path(created_tx.evidence_path).read_bytes() == evidence_payload
+
+
+@pytest.mark.asyncio
+async def test_journal_service_delete_entry_soft_deletes_transaction(
+    container: Container,
+) -> None:
+    """Verify delete_entry removes transaction from active entries while retaining in soft-deleted query."""
+    # Arrange
+    async with container.master_service_scope() as ms:
+        fys = await ms.get_fiscal_years()
+        open_fy = next(f for f in fys if f.status == "OPEN")
+        accounts = await ms.get_accounts()
+        acc1, acc2 = accounts[0], accounts[1]
+        assert acc1.id is not None and acc2.id is not None
+
+    async with container.journal_service_scope() as js:
+        tx_id = await js.add_journal_entry(
+            Transaction(
+                date=open_fy.start_date,
+                description="削除テスト仕訳",
+                lines=[
+                    TransactionLine(account_id=acc1.id, debit=4000, credit=0),
+                    TransactionLine(account_id=acc2.id, debit=0, credit=4000),
+                ],
+            )
+        )
+
+        # Act
+        await js.delete_entry(tx_id)
+        active_entries = await js.get_entries(include_deleted=False)
+        all_entries = await js.get_entries(include_deleted=True)
+
+        # Assert
+        assert not any(t.id == tx_id for t in active_entries)
+        deleted_tx = next((t for t in all_entries if t.id == tx_id), None)
+        assert isinstance(deleted_tx, Transaction)
+        assert deleted_tx.is_deleted is True
+
+
+@pytest.mark.asyncio
+async def test_fiscal_year_closing_raises_error_when_retained_earnings_account_missing(
+    container: Container,
+) -> None:
+    """Verify close_fiscal_year raises ValueError if required account 繰越利益剰余金 does not exist."""
+    # Arrange
+    async with container.master_service_scope() as ms:
+        fy = await ms.save_fiscal_year(
+            FiscalYear(
+                name="利益剰余金欠落期",
+                start_date=date(2018, 1, 1),
+                end_date=date(2018, 12, 31),
+                status="OPEN",
+                period_number=18,
+            )
+        )
+        assert fy.id is not None
+
+    # Act & Assert
+    async with container.fiscal_year_service_scope() as fys:
+        fys.ledger_service.get_trial_balance = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        with pytest.raises(
+            ValueError,
+            match="期末処理に必要な必須勘定科目「繰越利益剰余金」が見つかりませんでした。",
+        ):
+            await fys.close_fiscal_year(fy.id)
+
+
+@pytest.mark.asyncio
+async def test_fiscal_year_closing_with_net_loss_records_debit_to_retained_earnings(
+    container: Container,
+) -> None:
+    """Verify close_fiscal_year records debit entry to 繰越利益剰余金 when fiscal year operates at net loss."""
+    # Arrange
+    async with container.master_service_scope() as ms:
+        await ms.initialize_default_accounts()
+        fy = await ms.save_fiscal_year(
+            FiscalYear(
+                name="赤字決算テスト期",
+                start_date=date(2015, 1, 1),
+                end_date=date(2015, 12, 31),
+                status="OPEN",
+                period_number=15,
+            )
+        )
+        assert fy.id is not None
+        accs = await ms.get_accounts()
+        cash = next(a for a in accs if a.code == "1110")
+        expense = next(a for a in accs if a.code == "6170")
+        capital = next(a for a in accs if a.code == "3110")
+        assert cash.id is not None and expense.id is not None and capital.id is not None
+
+    async with container.journal_service_scope() as js:
+        # Initial capital 100,000 yen: Dr Cash 100,000, Cr Capital 100,000
+        await js.add_journal_entry(
+            Transaction(
+                date=date(2015, 1, 1),
+                description="資本金拠出",
+                lines=[
+                    TransactionLine(account_id=cash.id, debit=100000, credit=0),
+                    TransactionLine(account_id=capital.id, debit=0, credit=100000),
+                ],
+            )
+        )
+        # Expense 30,000 yen: Dr Expense 30,000, Cr Cash 30,000 (Net Loss: 30,000 yen)
+        await js.add_journal_entry(
+            Transaction(
+                date=date(2015, 6, 1),
+                description="消耗品費支払（当期純損失発生）",
+                lines=[
+                    TransactionLine(account_id=expense.id, debit=30000, credit=0),
+                    TransactionLine(account_id=cash.id, debit=0, credit=30000),
+                ],
+            )
+        )
+
+    # Act
+    async with container.fiscal_year_service_scope() as fys:
+        next_fy = await fys.close_fiscal_year(fy.id)
+
+    # Assert
+    assert isinstance(next_fy, FiscalYear)
+    assert next_fy.status == "OPEN"
+    assert next_fy.period_number == 16
+
+    # Verify rollover entry
+    async with container.journal_service_scope() as js:
+        entries = await js.get_entries(
+            start_date=next_fy.start_date, end_date=next_fy.start_date
+        )
+        rollover_tx = next(e for e in entries if e.description == "前期繰越")
+        assert isinstance(rollover_tx, Transaction)
+        async with container.master_service_scope() as ms:
+            accs = await ms.get_accounts()
+            re_acc = next(a for a in accs if a.code == "3120")
+            assert re_acc.id is not None
+        re_line = next(
+            line for line in rollover_tx.lines if line.account_id == re_acc.id
+        )
+        assert re_line.debit == 30000
+        assert re_line.credit == 0
+
+
+@pytest.mark.asyncio
+async def test_journal_service_get_frequent_account_ids_handles_repository_error_gracefully(
+    container: Container,
+) -> None:
+    """Verify get_frequent_account_ids catches unexpected repository exceptions and returns empty list."""
+    # Arrange
+    async with container.journal_service_scope() as js:
+        js.repository.get_frequent_account_ids = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("Database failure")
+        )
+
+        # Act
+        result = await js.get_frequent_account_ids(limit=5)
+
+        # Assert
+        assert result == []
+        assert isinstance(result, list)
