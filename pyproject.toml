@@ -42,7 +42,7 @@ dev = [
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q --asyncio-mode=auto"
+addopts = "-ra -q --asyncio-mode=auto --cov=app --cov-branch --cov-report=term-missing"
 testpaths = [
     "tests",
 ]
@@ -58,6 +58,21 @@ markers = [
     "fuzz: custom mark for hypothesis fuzz tests",
 ]
 
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -67,8 +82,10 @@ packages = ["app"]
 
 [tool.mypy]
 python_version = "3.14"
+strict = true
 ignore_missing_imports = true
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
+files = ["app", "tests"]
 
 
 

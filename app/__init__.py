@@ -12,10 +12,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-import os
+"""STEN-F Accounting Application Package."""
 
-# Add the 'app' directory to sys.path so that legacy imports (e.g. 'import domain') work.
-sys.path.append(os.path.dirname(__file__))
-
-# from .ui.reflex_main import app
+from __future__ import annotations

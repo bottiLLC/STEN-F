@@ -12,7 +12,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Callable, Dict, List, Literal, Optional
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any, Literal
 import pandas as pd
 import streamlit as st
 
@@ -21,27 +24,29 @@ def render_accounting_editor(
     df: pd.DataFrame,
     pk_column: str = "id",
     base_key: str = "acct_editor",
-    on_commit: Optional[
-        Callable[[List[Dict[str, Any]], Dict[Any, Dict[str, Any]], List[Any]], Any]
-    ] = None,
-    column_config: Optional[Dict[str, Any]] = None,
+    on_commit: (
+        Callable[[list[dict[str, Any]], dict[Any, dict[str, Any]], list[Any]], Any]
+        | None
+    ) = None,
+    column_config: dict[str, Any] | None = None,
     disabled: bool = False,
     num_rows: Literal["fixed", "dynamic"] = "dynamic",
     hide_index: bool = True,
 ) -> pd.DataFrame:
-    """
-    Key Rotation（二重コミット物理遮断）および PK 追跡（ソート・フィルタ耐性）を備えた
-    自律型・高信頼会計データエディタコンポーネント。
+    """Render autonomous accounting data editor with Key Rotation and PK tracking.
 
-    :param df: 表示・編集対象の pandas DataFrame
-    :param pk_column: 主キー（PK）となる列名（デフォルト: 'id'）
-    :param base_key: Streamlit ウィジェットのベースキー名
-    :param on_commit: 変更確定時に呼び出すコールバック関数 (added_rows, pk_edited_map, pk_deleted_list)
-    :param column_config: 列の表示・編集設定（st.column_config）
-    :param disabled: 編集不可（閲覧専用）モードにするか
-    :param num_rows: 行の動的追加/削除設定 ('dynamic' または 'fixed')
-    :param hide_index: インデックス列を非表示にするか
-    :return: 編集後の DataFrame
+    Args:
+        df: Target pandas DataFrame to display and edit.
+        pk_column: Primary key column name.
+        base_key: Streamlit widget unique state base identifier.
+        on_commit: Callback invoked upon commit (added_list, pk_edited_map, pk_deleted_list).
+        column_config: Column presentation and validation configurations.
+        disabled: Whether the table is in read-only mode.
+        num_rows: Dynamic or fixed row count mode.
+        hide_index: Whether index column is hidden.
+
+    Returns:
+        Edited pandas DataFrame.
     """
     version_key = f"{base_key}_version"
     if version_key not in st.session_state:
@@ -60,16 +65,15 @@ def render_accounting_editor(
     )
 
     state = st.session_state.get(current_key, {})
-    raw_added: List[Dict[str, Any]] = state.get("added_rows", [])
-    raw_edited: Dict[str, Dict[str, Any]] = state.get("edited_rows", {})
-    raw_deleted: List[int] = state.get("deleted_rows", [])
+    raw_added: list[dict[str, Any]] = state.get("added_rows", [])
+    raw_edited: dict[str, dict[str, Any]] = state.get("edited_rows", {})
+    raw_deleted: list[int] = state.get("deleted_rows", [])
 
     if not (on_commit and (raw_added or raw_edited or raw_deleted)):
         return edited_df
 
-    # 1. 編集対象・削除対象行の PK マッピング（ソート・フィルタ耐性）
     has_pk = pk_column in df.columns
-    pk_edited_map: Dict[Any, Dict[str, Any]] = (
+    pk_edited_map: dict[Any, dict[str, Any]] = (
         {
             df.iloc[int(i)][pk_column]: c
             for i, c in raw_edited.items()
@@ -78,7 +82,7 @@ def render_accounting_editor(
         if has_pk
         else {}
     )
-    pk_deleted_list: List[Any] = (
+    pk_deleted_list: list[Any] = (
         [df.iloc[i][pk_column] for i in raw_deleted if i < len(df)] if has_pk else []
     )
     added_list = list(raw_added)
@@ -97,7 +101,6 @@ def render_accounting_editor(
             use_container_width=True,
         ):
             on_commit(added_list, pk_edited_map, pk_deleted_list)
-            # Key Rotation で古いウィジェットステートを物理破棄
             st.session_state[version_key] += 1
             st.toast("変更が正常に保存されました！", icon="✅")
             st.rerun()

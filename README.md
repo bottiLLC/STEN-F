@@ -239,34 +239,37 @@ STEN-F/
 
 ## 🧪 開発・テスト手順 (Testing)
 
-STEN-F は CI/CD パイプライン（GitHub Actions）と連携した厳格な品質管理を行っています。
+STEN-F は CI/CD パイプライン（GitHub Actions）と連携した厳格な品質管理を行っています。全100テストが AAA パターン（Arrange-Act-Assert）に基づいて構成されており、ブランチカバレッジ測定および静的型チェック（mypy --strict）をパスしています。
 
 ```bash
-# 全テストの実行（ユニットテスト・結合テスト・E2Eテスト）
+# 全テストの実行（ユニットテスト・結合テスト・ファジング・ブランチカバレッジ自動測定）
 uv run pytest
 
-# CI環境と同等のテスト・カバレッジ測定
-uv run pytest -v -m "not fuzz" --cov=app
+# 特定のテストモジュールを指定して実行
+uv run pytest tests/test_core_and_storage.py
+uv run pytest tests/test_domain_and_services.py
+uv run pytest tests/test_ocr_and_external.py
+uv run pytest tests/test_ui_and_system.py
 
-# ファズテスト（Hypothesis によるプロパティテスト）の実行
-uv run pytest -m "fuzz"
+# ファズテスト（Hypothesis によるプロパティベーステスト）の実行
+uv run pytest tests/test_fuzz.py -m "fuzz"
 
-# 静的型チェック（mypy）
-uv run mypy app
+# 静的型チェック（mypy --strict モード）
+uv run mypy
 
 # コードフォーマット・静的解析（ruff）
-uv run ruff check app tests
-uv run ruff format --check app tests
+uv run ruff check .
+uv run ruff format --check .
 
 # コードフォーマットの自動適用
-uv run ruff format app tests
+uv run ruff format .
 ```
 
 ---
 
-## 🏗 アーキテクチャ構成 (Clean Architecture)
+## 🏗 アーキテクチャ構成 (Monocoque Clean Architecture)
 
-STEN-F は、責務の分離とテスタビリティを担保するため **クリーンアーキテクチャ** に準拠して設計されています。
+STEN-F は、高凝集・単一責任原則（SRP）とテスタビリティを担保するため、レイヤー間の境界を明確に分離したモノコック構造を採用しています。
 
 ```text
 STEN-F/
@@ -274,28 +277,27 @@ STEN-F/
 ├── run.bat                     # Windows 自動起動・環境構築ランチャー
 ├── start.command               # macOS / Linux 起動スクリプト
 ├── app/
-│   ├── config.py               # Pydantic Settings 設定管理 (.env)
-│   ├── container.py            # 依存関係注入 (Dependency Injection Container)
-│   ├── core/                   # 共通ユーティリティ (Resilience, Logging)
-│   │   ├── resilience.py       # Tenacity による指数バックオフ・リトライ制御
-│   │   └── utils.py            # 日付・文字列・通貨フォーマット等
-│   ├── domain/                 # ドメイン層 (Pydantic V2 モデル、インターフェース)
-│   │   ├── constants/          # 会計定数・デフォルト勘定科目定義
-│   │   ├── interfaces/         # リポジトリ抽象インターフェース (IJournalRepository, etc.)
-│   │   └── models/             # 仕訳・勘定科目・年度・領収書・決算書ドメインモデル
-│   ├── infrastructure/         # インフラ層 (外部サービス、DB、リポジトリ具象実装)
-│   │   ├── db/                 # SQLAlchemy 2.0 ORM モデル、セッション管理、初期シード
-│   │   ├── external/           # Gemini OCR 連携, ReportLab PDF 生成, バックアップ, ファイル保存
-│   │   └── repositories/       # データアクセス具象実装 (SQLAlchemy Repository)
-│   ├── application/            # アプリケーションサービス層 (ユースケース)
-│   │   └── services/           # 仕訳・元帳・マスタ・決算・年度締めサービス
-│   └── ui/                     # プレゼンテーション層 (Streamlit UI)
-│       ├── views/              # 3 主要統合ワークスペース (journal_view, ledger_view, master_view)
-│       ├── editor.py           # 振替伝票・グリッド形式 会計データエディタコンポーネント
-│       ├── async_helper.py     # Streamlit 非同期実行ヘルパー (nest_asyncio)
-│       └── di.py               # UI からのサービス・コンテナ解決ヘルパー
-├── tests/                      # テストスイート (単体・結合・E2E・AppTest)
-└── pyproject.toml              # プロジェクトメタデータ・依存関係定義
+│   ├── __init__.py             # アプリケーションパッケージルート
+│   ├── core_foundation.py      # 基盤層 (Settings, Logging, Resilience, 非同期ランナー, DIファサード)
+│   ├── domain_contracts.py     # ドメイン契約層 (Pydantic V2 モデル, 勘定科目定数, リポジトリ抽象契約)
+│   ├── storage_repository.py   # データ永続化層 (SQLAlchemy 2.0 Async ORM, 自動マイグレーション, リポジトリ実装)
+│   ├── application_services.py # アプリケーションサービス層 (仕訳・元帳・決算・マスタ統括, DIコンテナ)
+│   ├── external_services.py    # 外部連携サービス (ローカル証憑安全保存, SHA-256検証付きZIP退避, 決算書PDF生成)
+│   ├── ai_ocr_service.py       # AI OCR推論サービス (Gemini 1.5/2.0 API, 画像最適化・構造化仕訳抽出)
+│   └── ui/                     # プレゼンテーション層 (Streamlit ワークスペースUI)
+│       ├── editor.py           # 会計データグリッドエディタ (Key Rotation / PK追跡)
+│       └── views/              # 3大統合画面
+│           ├── journal_view.py # 仕訳・記帳 (AI証憑読取, 振替伝票入力, 仕訳帳・論理削除)
+│           ├── ledger_view.py  # 元帳・決算 (総勘定元帳, 試算表, B/S, P/L, PDF出力)
+│           └── master_view.py  # マスタ・設定 (自社情報, 会計年度・締め, 勘定科目・取引先, バックアップ)
+├── tests/                      # AAAパターン準拠・100%パス テストスイート (全100テスト)
+│   ├── conftest.py             # 共有テストフィクスチャ (インメモリDB, 非同期DIコンテナ)
+│   ├── test_core_and_storage.py# 基盤・ストレージ・リポジトリ・自動マイグレーション・シード検証
+│   ├── test_domain_and_services.py # ドメインモデル・会計計算・ユースケースサービステスト
+│   ├── test_ocr_and_external.py    # AI OCR・PDF生成・バックアップ・証憑ファイル保存テスト
+│   ├── test_ui_and_system.py   # UIコンポーネント・Streamlit結合・システム統合テスト
+│   └── test_fuzz.py            # Hypothesis によるプロパティベース・ファズテスト
+└── pyproject.toml              # プロジェクト構成・依存関係・mypy/ruff/pytest設定
 ```
 
 ---

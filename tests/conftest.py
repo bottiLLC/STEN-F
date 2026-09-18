@@ -12,17 +12,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
 from datetime import date
 import pytest
 
-from app.container import Container
+from app.application_services import Container
 from app.domain_contracts import Account, AccountType, Corporation, FiscalYear
 from app.storage_repository import Base, engine, init_db
 
 
 @pytest.fixture(scope="function")
-async def container():
-    """Provides an isolated Container instance with clean schema and seed data for each test."""
+async def container() -> AsyncIterator[Container]:
+    """Provide an isolated Container instance with clean schema and seed data for each test.
+
+    Yields:
+        Initialized and seeded Container instance.
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)

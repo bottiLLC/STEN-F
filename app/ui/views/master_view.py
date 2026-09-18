@@ -12,28 +12,31 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 from datetime import date
+from typing import Any
 import pandas as pd
 import streamlit as st
-import structlog
 
-from app.domain.models.abstract import Abstract
-from app.domain.models.account import Account, AccountType
-from app.domain.models.corporation import Corporation
-from app.domain.models.counterparty import Counterparty
-from app.domain.models.fiscal_year import FiscalYear
-from app.domain.models.system import SystemSettings
-from app.ui.async_helper import (
+from app.core_foundation import (
+    DI,
     call_backup,
     call_fiscal_year,
     call_journal,
     call_master,
     run_async,
 )
-from app.ui.di import DI
+from app.domain_contracts import (
+    Abstract,
+    Account,
+    AccountType,
+    Corporation,
+    Counterparty,
+    FiscalYear,
+    SystemSettings,
+)
 from app.ui.editor import render_accounting_editor
-
-log = structlog.get_logger()
 
 st.header("マスタ・システム設定", divider="blue")
 st.caption(
@@ -133,7 +136,7 @@ with tab_fy:
                     use_container_width=True,
                 ):
                     try:
-                        curr_fy_id = open_fy.id
+                        curr_fy_id = open_fy.id or 0
                         call_fiscal_year(
                             lambda s: s.close_fiscal_year(
                                 curr_fy_id, next_fy_name.strip() or None
@@ -206,7 +209,8 @@ with tab_op:
 
         with st.form("opening_balance_form"):
             c_l, c_r = st.columns(2)
-            op_d, op_c = {}, {}
+            op_d: dict[str, str] = {}
+            op_c: dict[str, str] = {}
             with c_l:
                 st.markdown("### 【 借方 : 資産の部 】")
                 for a in debit_accs:
@@ -268,17 +272,19 @@ with tab_acc:
                 "id": a.id,
                 "code": a.code,
                 "name": a.name,
-                "type": a.type.label
-                if hasattr(a.type, "label")
-                else (a.type.value if hasattr(a.type, "value") else str(a.type)),
+                "type": a.type.label,
                 "description": a.description or "",
             }
             for a in sorted(acc_list, key=lambda x: int(x.code))
         ]
     )
 
-    def on_commit_accounts(added, edited, deleted):
-        async def do_commit():
+    def on_commit_accounts(
+        added: list[dict[str, Any]],
+        edited: dict[Any, dict[str, Any]],
+        deleted: list[Any],
+    ) -> None:
+        async def do_commit() -> None:
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("code") and r.get("name") and r.get("type"):
@@ -355,8 +361,12 @@ with tab_cp:
         ]
     )
 
-    def on_commit_cps(added, edited, deleted):
-        async def do_commit():
+    def on_commit_cps(
+        added: list[dict[str, Any]],
+        edited: dict[Any, dict[str, Any]],
+        deleted: list[Any],
+    ) -> None:
+        async def do_commit() -> None:
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("name"):
@@ -407,8 +417,12 @@ with tab_abs:
         [{"id": a.id, "text": a.text, "account_id": a.account_id} for a in abs_list]
     )
 
-    def on_commit_abs(added, edited, deleted):
-        async def do_commit():
+    def on_commit_abs(
+        added: list[dict[str, Any]],
+        edited: dict[Any, dict[str, Any]],
+        deleted: list[Any],
+    ) -> None:
+        async def do_commit() -> None:
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("text") and r.get("account_id"):

@@ -12,13 +12,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pytest
-import re
-from datetime import date
-from pydantic import ValidationError
-from hypothesis import given, strategies as st
+from __future__ import annotations
 
-from app.domain.models.transaction import Transaction, TransactionLine
+from datetime import date
+import re
+from hypothesis import given, strategies as st
+from pydantic import ValidationError
+import pytest
+
+from app.domain_contracts import Transaction, TransactionLine
 
 
 @pytest.mark.fuzz
@@ -26,27 +28,33 @@ from app.domain.models.transaction import Transaction, TransactionLine
     debit_val=st.integers(min_value=0, max_value=100000000),
     credit_val=st.integers(min_value=0, max_value=100000000),
 )
-def test_fuzz_transaction_balance(debit_val: int, credit_val: int):
+def test_fuzz_transaction_balance_validates_debit_credit_equality(
+    debit_val: int, credit_val: int
+) -> None:
+    """Fuzz test for Transaction model balance validation using hypothesis.
+
+    Args:
+        debit_val: Fuzzed integer debit value.
+        credit_val: Fuzzed integer credit value.
     """
-    Fuzz test for Transaction model balance validation using hypothesis.
-    Ensures that ValidationError is raised if and only if debit != credit.
-    """
+    # Arrange
     lines = [
         TransactionLine(account_id=1, debit=debit_val, credit=0),
         TransactionLine(account_id=2, debit=0, credit=credit_val),
     ]
 
+    # Act & Assert
     if debit_val == credit_val:
-        # Balanced, should successfully instantiate
         tx = Transaction(
             date=date.today(),
             description="Fuzz test transaction",
             lines=lines,
         )
-        assert tx is not None
+        assert sum(line.debit for line in tx.lines) == debit_val
+        assert tx.lines[0].debit == debit_val
+        assert tx.lines[1].credit == credit_val
     else:
-        # Unbalanced, must raise ValidationError
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="Unbalanced Transaction"):
             Transaction(
                 date=date.today(),
                 description="Fuzz test transaction",
@@ -56,30 +64,30 @@ def test_fuzz_transaction_balance(debit_val: int, credit_val: int):
 
 @pytest.mark.fuzz
 @given(inv_num=st.text())
-def test_fuzz_invoice_format(inv_num: str):
+def test_fuzz_invoice_number_cleansing_and_validation(inv_num: str) -> None:
+    """Fuzz test for Transaction invoice_number field formatting and pattern verification.
+
+    Args:
+        inv_num: Fuzzed string input for invoice number.
     """
-    Fuzz test for Transaction invoice_number field formatting.
-    Ensures that validation enforces the correct format (^T[0-9]{13}$).
-    """
+    # Arrange
     lines = [
         TransactionLine(account_id=1, debit=1000, credit=0),
         TransactionLine(account_id=2, debit=0, credit=1000),
     ]
-
-    is_valid_format = re.match(r"^T[0-9]{13}$", inv_num) is not None
+    is_valid_format = re.match(r"^T[0-9]{13}$", inv_num.strip()) is not None
     is_empty_or_whitespace = inv_num.strip() == ""
 
+    # Act & Assert
     if is_valid_format:
-        # Valid format, should succeed
         tx = Transaction(
             date=date.today(),
             description="Invoice formatting fuzz",
             lines=lines,
             invoice_number=inv_num,
         )
-        assert tx.invoice_number == inv_num
+        assert tx.invoice_number == inv_num.strip()
     elif is_empty_or_whitespace:
-        # Empty or whitespace should be cleansed to None and succeed
         tx = Transaction(
             date=date.today(),
             description="Invoice formatting fuzz",
@@ -88,8 +96,7 @@ def test_fuzz_invoice_format(inv_num: str):
         )
         assert tx.invoice_number is None
     else:
-        # Invalid format, must raise ValidationError
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="String should match pattern"):
             Transaction(
                 date=date.today(),
                 description="Invoice formatting fuzz",

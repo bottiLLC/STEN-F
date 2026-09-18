@@ -12,15 +12,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 from datetime import date
 import pandas as pd
 import streamlit as st
-import structlog
 
-from app.ui.async_helper import call_ledger, call_master, run_async
-from app.ui.di import DI
-
-log = structlog.get_logger()
+from app.core_foundation import DI, call_ledger, call_master, run_async
+from app.domain_contracts import Corporation, FiscalYear
 
 st.header("帳簿・決算", divider="blue")
 st.caption(
@@ -51,71 +50,67 @@ tab_tb, tab_gl, tab_fs = st.tabs(
 # 1. 試算表 (T/B)
 with tab_tb:
     st.subheader(f"合計残高試算表 (対象: {selected_fy.name})")
-    tb_rows = call_ledger(lambda s: s.get_trial_balance(selected_fy.id))
+    tb_rows = call_ledger(lambda s: s.get_trial_balance(selected_fy.id or 0))
     if not tb_rows:
         st.info("集計対象の仕訳データがありません。")
     else:
         df_tb = pd.DataFrame(
             [
                 {
-                    "勘定科目コード": r.account_code,
+                    "コード": r.account_code,
                     "勘定科目名": r.account_name,
-                    "勘定区分": r.account_type.label
-                    if hasattr(r.account_type, "label")
-                    else str(r.account_type),
-                    "借方合計 (¥)": f"{r.debit_total:,}" if r.debit_total else "-",
-                    "貸方合計 (¥)": f"{r.credit_total:,}" if r.credit_total else "-",
-                    "借方残高 (¥)": f"{r.debit_balance:,}" if r.debit_balance else "-",
-                    "貸方残高 (¥)": f"{r.credit_balance:,}"
-                    if r.credit_balance
+                    "借方残高": f"¥{r.debit_balance:,}" if r.debit_balance > 0 else "-",
+                    "借方合計": f"¥{r.debit_total:,}" if r.debit_total > 0 else "-",
+                    "貸方合計": f"¥{r.credit_total:,}" if r.credit_total > 0 else "-",
+                    "貸方残高": f"¥{r.credit_balance:,}"
+                    if r.credit_balance > 0
                     else "-",
                 }
                 for r in tb_rows
             ]
         )
-        st.dataframe(df_tb, hide_index=True, use_container_width=True)
+        st.dataframe(df_tb, use_container_width=True, hide_index=True)
 
-        td_sum, tc_sum = (
-            sum(r.debit_total for r in tb_rows),
-            sum(r.credit_total for r in tb_rows),
-        )
-        td_bal, tc_bal = (
-            sum(r.debit_balance for r in tb_rows),
-            sum(r.credit_balance for r in tb_rows),
-        )
-
-        st.markdown("---")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("借方合計総額", f"¥{td_sum:,}")
-        c2.metric("貸方合計総額", f"¥{tc_sum:,}")
-        c3.metric("借方残高総額", f"¥{td_bal:,}")
-        c4.metric("貸方残高総額", f"¥{tc_bal:,}")
-
-        if td_sum == tc_sum and td_bal == tc_bal:
-            st.success("✅ 試算表の貸借バランスは完全に一致しています。")
+        tot_db = sum(r.debit_balance for r in tb_rows)
+        tot_cb = sum(r.credit_balance for r in tb_rows)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("借方残高合計", f"¥{tot_db:,}")
+        c2.metric("貸方残高合計", f"¥{tot_cb:,}")
+        if tot_db == tot_cb:
+            c3.success("✅ 貸借一致 (バランス検証 OK)")
         else:
-            st.error(
-                f"⚠️ 貸借不一致が検出されました (合計差額: ¥{td_sum - tc_sum:,}, 残高差額: ¥{td_bal - tc_bal:,})"
+            c3.error(f"❌ 貸借不一致 (差額: ¥{abs(tot_db - tot_cb):,})")
+
+# 2. 総勘定元帳 (General Ledger)
+with tab_gl:
+    st.subheader(f"総勘定元帳 (対象: {selected_fy.name})")
+    accounts = call_master(lambda s: s.get_accounts())
+    acc_map = {f"{a.code}: {a.name}": a for a in accounts}
+    selected_acc = acc_map.get(
+        st.selectbox("表示する勘定科目", list(acc_map.keys()), key="gl_acc_select")
+    )
+
+    if selected_acc is not None and selected_acc.id is not None:
+        target_acc_id = selected_acc.id
+        df_gl = call_ledger(
+            lambda s: s.get_general_ledger(selected_fy.id or 0, target_acc_id)
+        )
+        if df_gl.empty:
+            st.info(f"{selected_acc.name} の取引履歴はありません。")
+        else:
+            st.dataframe(
+                df_gl.style.format(
+                    {
+                        "借方": lambda x: f"¥{x:,}" if x > 0 else "-",
+                        "貸方": lambda x: f"¥{x:,}" if x > 0 else "-",
+                        "残高": lambda x: f"¥{x:,}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
             )
 
-# 2. 総勘定元帳 (GL)
-with tab_gl:
-    st.subheader("総勘定元帳 (General Ledger)")
-    acc_list = call_master(lambda s: s.get_accounts())
-    acc_map = {
-        f"{a.code}: {a.name}": a for a in sorted(acc_list, key=lambda x: int(x.code))
-    }
-    selected_acc = acc_map[
-        st.selectbox("勘定科目を指定", list(acc_map.keys()), key="gl_acc_select")
-    ]
-
-    gl_df = call_ledger(lambda s: s.get_general_ledger(selected_fy.id, selected_acc.id))
-    if gl_df is None or gl_df.empty:
-        st.info(f"「{selected_acc.name}」に関する取引データはありません。")
-    else:
-        st.dataframe(gl_df, hide_index=True, use_container_width=True)
-
-# 3. 決算書 (B/S・P/L・PDF)
+# 3. 決算書 (B/S・P/L)
 with tab_fs:
     st.subheader(f"決算書: 貸借対照表 (B/S) ＆ 損益計算書 (P/L) - {selected_fy.name}")
     col_btn, col_chk = st.columns([2, 3])
@@ -129,11 +124,11 @@ with tab_fs:
             use_container_width=True,
         ):
 
-            async def generate_pdf(fy):
+            async def generate_pdf(fy: FiscalYear) -> bytes:
                 async with DI.get_master_service() as ms, DI.get_ledger_service() as ls:
-                    c = await ms.get_corporation()
-                    r = await ls.generate_financial_report(fy.id)
-                    from app.infrastructure.external.pdf_service import PDFService
+                    c = await ms.get_corporation() or Corporation()
+                    r = await ls.generate_financial_report(fy.id or 0)
+                    from app.external_services import PDFService
 
                     return PDFService.generate_annual_report(
                         c, r, fy, date.today(), date.today()
@@ -151,7 +146,7 @@ with tab_fs:
             except Exception as e:
                 st.error(f"PDF 生成エラー: {e}")
 
-    report = call_ledger(lambda s: s.generate_financial_report(selected_fy.id))
+    report = call_ledger(lambda s: s.generate_financial_report(selected_fy.id or 0))
 
     st.markdown("---")
     st.markdown("### 🏛️ 貸借対照表 (Balance Sheet)")

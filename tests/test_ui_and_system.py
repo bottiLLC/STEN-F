@@ -1,9 +1,13 @@
 # Copyright (C) 2026 合同会社ぼっち (bottiLLC)
 # GNU General Public License v3.0
 
+from __future__ import annotations
+
 from datetime import date
 import pytest
 from streamlit.testing.v1 import AppTest
+
+from app.application_services import Container
 from app.core_foundation import DI, call_journal, call_master
 from app.domain_contracts import (
     Corporation,
@@ -13,36 +17,56 @@ from app.domain_contracts import (
 
 
 # --- 1. Streamlit App Navigation & Pages Interaction Tests ---
-def test_app_main_navigation():
+def test_app_main_navigation_executes_without_exception() -> None:
     """Verify that main app.py executes cleanly and configures sidebar layout."""
+    # Arrange
     at = AppTest.from_file("app.py", default_timeout=15)
+
+    # Act
     at.run()
+
+    # Assert
     assert not at.exception, f"app.py raised exception: {at.exception}"
     assert len(at.sidebar) >= 1
 
 
-def test_journal_view_interactions():
+def test_journal_view_interactions_renders_essential_widgets() -> None:
     """Verify journal workspace renders tabs, inputs, and form elements."""
+    # Arrange
     at = AppTest.from_file("app/ui/views/journal_view.py", default_timeout=15)
+
+    # Act
     at.run()
+
+    # Assert
     assert not at.exception, f"journal_view.py raised exception: {at.exception}"
     assert len(at.tabs) >= 1
     assert len(at.date_input) >= 1
 
 
-def test_ledger_view_interactions():
+def test_ledger_view_interactions_renders_essential_widgets() -> None:
     """Verify ledger workspace renders trial balance, general ledger, and reports."""
+    # Arrange
     at = AppTest.from_file("app/ui/views/ledger_view.py", default_timeout=15)
+
+    # Act
     at.run()
+
+    # Assert
     assert not at.exception, f"ledger_view.py raised exception: {at.exception}"
     assert len(at.tabs) >= 1
     assert len(at.selectbox) >= 1
 
 
-def test_master_view_interactions():
+def test_master_view_interactions_renders_essential_widgets() -> None:
     """Verify master workspace renders corporate profile, fiscal periods, and editors."""
+    # Arrange
     at = AppTest.from_file("app/ui/views/master_view.py", default_timeout=15)
+
+    # Act
     at.run()
+
+    # Assert
     assert not at.exception, f"master_view.py raised exception: {at.exception}"
     assert len(at.tabs) >= 1
     assert len(at.text_input) >= 1
@@ -50,9 +74,9 @@ def test_master_view_interactions():
 
 # --- 2. End-to-End System Integration Tests ---
 @pytest.mark.asyncio
-async def test_full_system_accounting_cycle(container):
+async def test_full_system_accounting_cycle(container: Container) -> None:
     """Execute end-to-end corporate financial cycle from master setup through year-end closing."""
-    # 1. Setup Corporation & Fiscal Year
+    # Arrange: 1. Setup Corporation & Fiscal Year
     async with container.master_service_scope() as ms:
         await ms.initialize_default_accounts()
         await ms.save_corporation(
@@ -64,16 +88,18 @@ async def test_full_system_accounting_cycle(container):
             )
         )
         corp = await ms.get_corporation()
+        assert corp is not None
         assert corp.name == "合同会社E2E統合"
 
         accounts = await ms.get_accounts()
         cash = next(a for a in accounts if a.code == "1110")
         sales = next(a for a in accounts if a.code == "4110")
         supplies = next(a for a in accounts if a.code == "6170")
+        assert cash.id is not None and sales.id is not None and supplies.id is not None
 
-    # 2. Record Journal Entries
+    # Act: 2. Record Journal Entries
     async with container.journal_service_scope() as js:
-        # Sales revenue
+        # Sales revenue: 100,000 yen
         tx1_id = await js.add_journal_entry(
             Transaction(
                 date=date.today(),
@@ -85,9 +111,7 @@ async def test_full_system_accounting_cycle(container):
                 counterparty="クライアントA",
             )
         )
-        assert tx1_id > 0
-
-        # Expense
+        # Expense: 20,000 yen
         tx2_id = await js.add_journal_entry(
             Transaction(
                 date=date.today(),
@@ -99,33 +123,46 @@ async def test_full_system_accounting_cycle(container):
                 counterparty="文具店B",
             )
         )
-        assert tx2_id > 0
 
-    # 3. Verify Financial Report
+    # Assert: 2. Journal Entry IDs
+    assert tx1_id > 0
+    assert tx2_id > 0
+
+    # Act & Assert: 3. Verify Financial Report Invariants
     async with container.master_service_scope() as ms:
         fys = await ms.get_fiscal_years()
         fy = next(f for f in fys if f.status == "OPEN")
+        assert fy.id is not None
 
     async with container.ledger_service_scope() as ls:
         rpt = await ls.generate_financial_report(fy.id)
-        assert rpt.revenue.total >= 100000
-        assert rpt.sga.total >= 20000
-        assert rpt.operating_income == rpt.gross_profit - rpt.sga.total
+        assert rpt.revenue.total == 100000
+        assert rpt.cost_of_sales.total == 0
+        assert rpt.gross_profit == 100000
+        assert rpt.sga.total == 20000
+        assert rpt.operating_income == 80000
+        assert rpt.ordinary_income == 80000
+        assert rpt.net_income == 80000
+        assert rpt.total_assets == 80000
+        assert rpt.total_liabilities == 0
+        assert rpt.total_equity == 80000
 
-    # 4. Year-End Closing & Retained Earnings Rollover
-    async with container.fiscal_year_service_scope() as fys:
-        next_fy = await fys.close_fiscal_year(fy.id)
+    # Act & Assert: 4. Year-End Closing & Retained Earnings Rollover
+    async with container.fiscal_year_service_scope() as fy_svc:
+        next_fy = await fy_svc.close_fiscal_year(fy.id)
         assert next_fy.status == "OPEN"
         assert next_fy.period_number == (fy.period_number or 0) + 1
 
     async with container.master_service_scope() as ms:
         old_fy = await ms.get_fiscal_year_by_id(fy.id)
+        assert old_fy is not None
         assert old_fy.status == "CLOSED"
 
 
 # --- 3. Dependency Injection & Helper Utilities Tests ---
-def test_di_container_resolution():
-    """Verify DI static resolver methods return active service scope contexts."""
+def test_di_container_resolution_returns_active_service_instances() -> None:
+    """Verify DI static resolver methods return active non-None service scope contexts."""
+    # Assert
     assert DI.get_master_service() is not None
     assert DI.get_journal_service() is not None
     assert DI.get_ledger_service() is not None
@@ -137,10 +174,19 @@ def test_di_container_resolution():
 
 
 @pytest.mark.asyncio
-async def test_scoped_helper_functions(container):
-    """Verify call_master and call_journal helper functions execute smoothly."""
-    res_corp = call_master(lambda s: s.get_corporation())
-    assert res_corp is not None or res_corp is None
+async def test_scoped_helper_functions_execute_under_isolated_di_scope(
+    container: Container,
+) -> None:
+    """Verify call_master and call_journal helper functions execute smoothly with strict assertions."""
+    # Arrange
+    async with container.master_service_scope() as ms:
+        await ms.save_corporation(Corporation(name="スコープヘルパー検証法人"))
 
+    # Act
+    res_corp = call_master(lambda s: s.get_corporation())
     res_entries = call_journal(lambda s: s.get_entries())
+
+    # Assert
+    assert res_corp is not None
+    assert res_corp.name == "スコープヘルパー検証法人"
     assert isinstance(res_entries, list)

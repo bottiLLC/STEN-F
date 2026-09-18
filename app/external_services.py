@@ -1,18 +1,20 @@
 # Copyright (C) 2026 合同会社ぼっち (bottiLLC)
 # GNU General Public License v3.0
 
+from __future__ import annotations
+
 import asyncio
 from datetime import date, datetime
 import io
 from pathlib import Path
 import shutil
-from typing import Optional
 import aiofiles
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+
 from app.core_foundation import log, settings
 from app.domain_contracts import (
     Corporation,
@@ -24,7 +26,14 @@ from app.domain_contracts import (
 
 # --- 1. Datum Plane & Pure Transformations ---
 def _sanitize_file_name(text: str) -> str:
-    """Sanitize filename to alphanumeric and safe delimiter characters."""
+    """Sanitize filename to alphanumeric and safe delimiter characters.
+
+    Args:
+        text: Raw filename or description string.
+
+    Returns:
+        Cleaned filename string.
+    """
     return "".join(c for c in text if c.isalnum() or c in " _-").strip()
 
 
@@ -49,7 +58,11 @@ class LocalFileService:
     """Service persisting local evidence documents with statutory naming standards."""
 
     def __init__(self, base_dir: Path = settings.PROJECT_ROOT) -> None:
-        """Initialize and verify local storage directory."""
+        """Initialize and verify local storage directory.
+
+        Args:
+            base_dir: Base directory path anchoring storage directory.
+        """
         self.storage_dir = base_dir / "storage"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -61,7 +74,18 @@ class LocalFileService:
         description: str,
         amount: int,
     ) -> str:
-        """Persist evidence file with date, description, and amount tags."""
+        """Persist evidence file with date, description, and amount tags.
+
+        Args:
+            file_bytes: Raw binary file payload.
+            original_filename: Name of source document uploaded.
+            date_obj: Transaction date.
+            description: Summary of transaction.
+            amount: Integer total amount.
+
+        Returns:
+            Saved absolute or anchored filesystem path string.
+        """
         ext = Path(original_filename).suffix or ".pdf"
         save_path = (
             self.storage_dir
@@ -79,7 +103,18 @@ class LocalFileService:
         amount: int,
         corp_name: str,
     ) -> str:
-        """Persist evidence file bound to transaction id under legal standard naming."""
+        """Persist evidence file bound to transaction id under legal standard naming.
+
+        Args:
+            file_bytes: Raw binary file payload.
+            transaction_id: Associated transaction ID.
+            date_obj: Transaction date.
+            amount: Transaction absolute amount.
+            corp_name: Vendor or counterparty name.
+
+        Returns:
+            Saved filesystem path string.
+        """
         clean_name = corp_name
         for prefix in ("株式会社", "合同会社", "有限会社"):
             clean_name = clean_name.replace(prefix, "")
@@ -96,110 +131,140 @@ class BackupService:
     """Service performing scheduled or on-demand SQLite and environment snapshots."""
 
     async def create_backup(self, target_dir_str: str) -> str:
-        """Execute filesystem snapshot of SQLite database and environment variables."""
+        """Execute filesystem snapshot of SQLite database and environment variables.
+
+        Args:
+            target_dir_str: Target root directory for backup repository.
+
+        Returns:
+            Created backup directory path string.
+
+        Raises:
+            ValueError: If target_dir_str is empty.
+        """
         if not target_dir_str:
             raise ValueError("バックアップ先ディレクトリが指定されていません。")
 
-        def _sync_worker() -> str:
-            target_dir = Path(target_dir_str)
-            try:
-                target_dir.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                raise ValueError(
-                    f"指定されたディレクトリを作成できませんでした: {e}"
-                ) from e
+        target_base = Path(target_dir_str)
+        target_base.mkdir(parents=True, exist_ok=True)
 
-            backup_subdir = target_dir / datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_subdir.mkdir(exist_ok=True)
+        backup_sub = target_base / datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_sub.mkdir(parents=True, exist_ok=True)
 
-            db_str = settings.DATABASE_URL
-            db_path = (
-                Path(db_str.split("///")[-1])
-                if db_str and "sqlite" in db_str
-                else settings.PROJECT_ROOT / "data" / settings.DB_NAME
-            )
-            if not db_path.exists() or str(db_path) == ":memory:":
-                raise RuntimeError("データベースのバックアップに失敗しました。")
+        db_file: Path | None = None
+        db_url = settings.DATABASE_URL
+        if db_url is not None and ":///" in db_url:
+            candidate = Path(db_url.split(":///", 1)[-1])
+            if candidate.exists():
+                db_file = candidate
+        if db_file is None:
+            for cand in (
+                settings.PROJECT_ROOT / "data" / settings.DB_NAME,
+                settings.PROJECT_ROOT / settings.DB_NAME,
+            ):
+                if cand.exists():
+                    db_file = cand
+                    break
+        if db_file is None:
+            db_file = settings.PROJECT_ROOT / "data" / settings.DB_NAME
 
-            try:
-                shutil.copy2(db_path, backup_subdir / db_path.name)
+        copied_files: list[str] = []
+
+        def _copy_sync() -> list[str]:
+            results: list[str] = []
+            if db_file.exists():
+                shutil.copy2(db_file, backup_sub / db_file.name)
+                results.append(db_file.name)
                 for ext in ("-wal", "-shm"):
-                    aux = Path(f"{db_path}{ext}")
-                    if aux.exists():
-                        shutil.copy2(aux, backup_subdir / f"{db_path.name}{ext}")
-            except Exception as e:
-                raise RuntimeError(
-                    f"データベースのバックアップ作成に失敗しました: {e}"
-                ) from e
+                    extra = db_file.parent / f"{db_file.name}{ext}"
+                    if extra.exists():
+                        shutil.copy2(extra, backup_sub / extra.name)
+                        results.append(extra.name)
 
-            env_path = settings.PROJECT_ROOT / ".env"
-            if env_path.is_file():
-                try:
-                    shutil.copy2(env_path, backup_subdir / ".env")
-                except Exception:
-                    pass
+            env_file = settings.PROJECT_ROOT / ".env"
+            if env_file.exists():
+                shutil.copy2(env_file, backup_sub / ".env")
+                results.append(".env")
+            return results
 
-            return str(backup_subdir)
-
-        return await asyncio.to_thread(_sync_worker)
+        copied_files = await asyncio.to_thread(_copy_sync)
+        log.info(
+            "backup_created", directory=str(backup_sub), file_count=len(copied_files)
+        )
+        return str(backup_sub)
 
 
 class PDFService:
-    """Service generating formal corporate annual financial report PDFs."""
+    """Service rendering statutory Japanese financial statements using ReportLab."""
 
     @staticmethod
     def generate_annual_report(
         corp: Corporation,
         rpt: FinancialReport,
-        fiscal_year: FiscalYear,
-        report_date: date,
-        audit_date: date,
+        fy: FiscalYear | None = None,
+        report_date: date | None = None,
+        audit_date: date | None = None,
+        *,
+        fiscal_year: FiscalYear | None = None,
     ) -> bytes:
-        """Render multi-page corporate financial report to binary PDF stream."""
+        """Synthesize A4 PDF annual financial statements.
+
+        Args:
+            corp: Legal entity corporation metadata.
+            rpt: Computed financial statement totals and sections.
+            fy: Active fiscal period metadata.
+            report_date: Report issuance date.
+            audit_date: Statutory audit completion date.
+            fiscal_year: Keyword alias for active fiscal period metadata.
+
+        Returns:
+            Raw PDF bytes stream.
+        """
+        target_fy: FiscalYear = (
+            fy
+            if fy is not None
+            else (fiscal_year if fiscal_year is not None else rpt.fiscal_year)
+        )
+        rep_date: date = report_date if report_date is not None else date.today()
+        aud_date: date = audit_date if audit_date is not None else rep_date
+
         _register_reportlab_fonts()
         buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=A4, pdfVersion=(1, 4))
-        c.setTitle(f"Annual Report - {corp.name} - {fiscal_year.name}")
-        c.setAuthor(corp.name)
-        c.setCreator(settings.APP_TITLE)
-
+        c = canvas.Canvas(buffer, pagesize=A4)
         w, h = A4
         mx = 20 * mm
 
-        def draw_hdr(title: str, sub: Optional[str] = None) -> None:
-            c.setFont(settings.FONT_NAME, 14)
-            c.drawCentredString(w / 2, h - 20 * mm, title)
-            c.setFont(settings.FONT_NAME, 10)
-            if sub:
-                c.drawCentredString(w / 2, h - 26 * mm, sub)
-            c.line(mx, h - 30 * mm, w - mx, h - 30 * mm)
+        def draw_hdr(subtitle: str, drange: str = "") -> None:
+            c.setFont(settings.FONT_NAME, 16)
+            c.drawCentredString(
+                w / 2, h - 25 * mm, f"第{target_fy.period_number or 1}期 決算報告書"
+            )
+            c.setFont(settings.FONT_NAME, 12)
+            c.drawCentredString(w / 2, h - 32 * mm, subtitle)
+            if drange:
+                c.setFont(settings.FONT_NAME, 9)
+                c.drawRightString(w - mx, h - 33 * mm, drange)
+            c.setLineWidth(0.5)
+            c.line(mx, h - 35 * mm, w - mx, h - 35 * mm)
 
-        period = (
-            f"第 {fiscal_year.period_number} 期"
-            if fiscal_year.period_number
-            else fiscal_year.name
-        )
-        drange = f"自 {fiscal_year.start_date.strftime('%Y年%m月%d日')}　至 {fiscal_year.end_date.strftime('%Y年%m月%d日')}"
+        drange = f"自 {target_fy.start_date.strftime('%Y年%m月%d日')}  至 {target_fy.end_date.strftime('%Y年%m月%d日')}"
 
         # 1. 表紙
         c.setFont(settings.FONT_NAME, 24)
-        c.drawCentredString(w / 2, h / 2 + 40 * mm, "決算報告書")
-        c.setFont(settings.FONT_NAME, 16)
-        c.drawCentredString(w / 2, h / 2 + 20 * mm, period)
+        c.drawCentredString(
+            w / 2, h - 90 * mm, f"第{target_fy.period_number or 1}期 決算報告書"
+        )
         c.setFont(settings.FONT_NAME, 12)
-        c.drawCentredString(
-            w / 2,
-            h / 2 + 10 * mm,
-            f"自　{fiscal_year.start_date.strftime('%Y年%m月%d日')}",
-        )
-        c.drawCentredString(
-            w / 2, h / 2, f"至　{fiscal_year.end_date.strftime('%Y年%m月%d日')}"
-        )
-        c.setFont(settings.FONT_NAME, 18)
-        c.drawCentredString(w / 2, h / 2 - 60 * mm, corp.name)
-        if corp.address:
-            c.setFont(settings.FONT_NAME, 11)
-            c.drawCentredString(w / 2, h / 2 - 80 * mm, corp.address)
+        c.drawCentredString(w / 2, h - 105 * mm, drange)
+        c.setFont(settings.FONT_NAME, 16)
+        c.drawCentredString(w / 2, h - 150 * mm, corp.name)
+        if corp.representative_title and corp.representative_name:
+            c.setFont(settings.FONT_NAME, 12)
+            c.drawCentredString(
+                w / 2,
+                h - 160 * mm,
+                f"{corp.representative_title}  {corp.representative_name}",
+            )
         c.showPage()
 
         # 2. 貸借対照表
@@ -225,7 +290,7 @@ class PDFService:
             cy -= 8 * mm
             c.drawString(xl, cy, lbl)
             c.drawRightString(xv, cy, f"{val:,}")
-            return cy - 10 * mm
+            return float(cy - 10 * mm)
 
         yl = draw_bs_sec(
             rpt.current_assets, "流動資産合計", rpt.current_assets.total, y - 6 * mm
@@ -360,7 +425,7 @@ class PDFService:
         c.setFont(settings.FONT_NAME, 11)
         c.drawString(30 * mm, y - 10 * mm, "上記の通りご報告申し上げます。")
         c.drawString(
-            30 * mm, y - 20 * mm, f"報告日：{report_date.strftime('%Y年%m月%d日')}"
+            30 * mm, y - 20 * mm, f"報告日：{rep_date.strftime('%Y年%m月%d日')}"
         )
         c.setFont(settings.FONT_NAME, 12)
         c.drawString(30 * mm, y - 30 * mm, corp.name)
@@ -375,15 +440,9 @@ class PDFService:
             30 * mm, y - 63 * mm, "監査の結果、適法かつ正確なることを認めます。"
         )
         c.drawString(
-            30 * mm, y - 73 * mm, f"監査日：{audit_date.strftime('%Y年%m月%d日')}"
+            30 * mm, y - 73 * mm, f"監査日：{aud_date.strftime('%Y年%m月%d日')}"
         )
 
         c.save()
         buffer.seek(0)
         return buffer.getvalue()
-
-
-# --- 3. Self-Contained Smoke Harness ---
-if __name__ == "__main__":
-    assert _sanitize_file_name("株式会社テスト / ABC:123") == "株式会社テスト  ABC123"
-    log.info("smoke_harness_pass", module="external_services")

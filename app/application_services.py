@@ -1,12 +1,17 @@
 # Copyright (C) 2026 合同会社ぼっち (bottiLLC)
 # GNU General Public License v3.0
 
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 import csv
 from datetime import date, timedelta
 import io
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Final
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core_foundation import log, normalize_amount
 from app.domain_contracts import (
     DEFAULT_ACCOUNTS,
@@ -31,32 +36,42 @@ from app.storage_repository import (
     SQLAlchemyMasterRepository,
 )
 
+if TYPE_CHECKING:
+    from app.ai_ocr_service import GeminiOCRService
+    from app.external_services import BackupService, LocalFileService, PDFService
+
 # --- 1. Datum Plane (Constants & Types) ---
-_DEBIT_POSITIVE_TYPES = {
-    AccountType.CURRENT_ASSET,
-    AccountType.FIXED_ASSET,
-    AccountType.DEFERRED_ASSET,
-    AccountType.COST_OF_SALES,
-    AccountType.SGA,
-    AccountType.NON_OPERATING_EXPENSE,
-    AccountType.EXTRAORDINARY_LOSS,
-}
+_DEBIT_POSITIVE_TYPES: Final[frozenset[AccountType]] = frozenset(
+    {
+        AccountType.CURRENT_ASSET,
+        AccountType.FIXED_ASSET,
+        AccountType.DEFERRED_ASSET,
+        AccountType.COST_OF_SALES,
+        AccountType.SGA,
+        AccountType.NON_OPERATING_EXPENSE,
+        AccountType.EXTRAORDINARY_LOSS,
+    }
+)
 
-_EXPENSE_TYPES = {
-    AccountType.COST_OF_SALES,
-    AccountType.SGA,
-    AccountType.NON_OPERATING_EXPENSE,
-    AccountType.EXTRAORDINARY_LOSS,
-    AccountType.TAXES,
-}
+_EXPENSE_TYPES: Final[frozenset[AccountType]] = frozenset(
+    {
+        AccountType.COST_OF_SALES,
+        AccountType.SGA,
+        AccountType.NON_OPERATING_EXPENSE,
+        AccountType.EXTRAORDINARY_LOSS,
+        AccountType.TAXES,
+    }
+)
 
-_INCOME_TYPES = {
-    AccountType.REVENUE,
-    AccountType.NON_OPERATING_INCOME,
-    AccountType.EXTRAORDINARY_INCOME,
-}
+_INCOME_TYPES: Final[frozenset[AccountType]] = frozenset(
+    {
+        AccountType.REVENUE,
+        AccountType.NON_OPERATING_INCOME,
+        AccountType.EXTRAORDINARY_INCOME,
+    }
+)
 
-_LEGAL_ENTITY_KANA = [
+_LEGAL_ENTITY_KANA: Final[tuple[str, ...]] = (
     "カブシキガイシャ",
     "カブシキカイシャ",
     "カ）",
@@ -77,12 +92,19 @@ _LEGAL_ENTITY_KANA = [
     "トクテイヒエイリカツドウホウジン",
     "　",
     " ",
-]
+)
 
 
 # --- 2. Internal Pure Transformations ---
 def _clean_counterparty_sort_key(cp: Counterparty) -> str:
-    """Normalize corporate legal suffix kana to derive alphabetical sorting key."""
+    """Normalize corporate legal suffix kana to derive alphabetical sorting key.
+
+    Args:
+        cp: Counterparty domain model.
+
+    Returns:
+        Cleansed kana or name string suitable for sorting.
+    """
     key = str(cp.reading or cp.name_kana or cp.name or "")
     for token in _LEGAL_ENTITY_KANA:
         key = key.replace(token, "")
@@ -90,7 +112,14 @@ def _clean_counterparty_sort_key(cp: Counterparty) -> str:
 
 
 def _compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
-    """Calculate start and end boundary dates for succeeding fiscal period."""
+    """Calculate start and end boundary dates for succeeding fiscal period.
+
+    Args:
+        current_end: Ending date of closing fiscal period.
+
+    Returns:
+        Tuple containing next start date and next end date.
+    """
     next_start = current_end + timedelta(days=1)
     try:
         target = next_start.replace(year=next_start.year + 1)
@@ -106,58 +135,129 @@ class MasterService:
     def __init__(
         self,
         repository: IMasterRepository,
-        ledger_repository: Optional[ILedgerRepository] = None,
+        ledger_repository: ILedgerRepository | None = None,
     ) -> None:
-        """Initialize service dependencies."""
+        """Initialize service dependencies.
+
+        Args:
+            repository: Implementation of IMasterRepository.
+            ledger_repository: Optional implementation of ILedgerRepository.
+        """
         self.repository = repository
         self.ledger_repository = ledger_repository
 
     async def get_system_settings(self) -> SystemSettings:
-        """Fetch system-wide settings."""
+        """Fetch system-wide settings.
+
+        Returns:
+            SystemSettings domain model.
+        """
         return await self.repository.get_system_settings()
 
     async def save_system_settings(self, settings: SystemSettings) -> SystemSettings:
-        """Persist modified system settings."""
+        """Persist modified system settings.
+
+        Args:
+            settings: Updated SystemSettings domain model.
+
+        Returns:
+            Saved SystemSettings instance.
+        """
         return await self.repository.save_system_settings(settings)
 
-    async def get_corporation(self) -> Optional[Corporation]:
-        """Fetch corporate identification details."""
+    async def get_corporation(self) -> Corporation | None:
+        """Fetch corporate identification details.
+
+        Returns:
+            Corporation profile or None.
+        """
         return await self.repository.get_corporation()
 
     async def save_corporation(self, corp: Corporation) -> None:
-        """Persist corporate identification details."""
+        """Persist corporate identification details.
+
+        Args:
+            corp: Corporation domain model.
+        """
         await self.repository.save_corporation(corp)
 
-    async def get_fiscal_years(self) -> List[FiscalYear]:
-        """Fetch all fiscal year periods."""
+    async def get_fiscal_years(self) -> list[FiscalYear]:
+        """Fetch all fiscal year periods.
+
+        Returns:
+            List of FiscalYear domain models.
+        """
         return await self.repository.get_fiscal_years()
 
-    async def get_fiscal_year_by_id(self, fy_id: int) -> Optional[FiscalYear]:
-        """Fetch single fiscal year period by identifier."""
+    async def get_fiscal_year_by_id(self, fy_id: int) -> FiscalYear | None:
+        """Fetch single fiscal year period by identifier.
+
+        Args:
+            fy_id: Target fiscal year identifier.
+
+        Returns:
+            FiscalYear domain model or None.
+        """
         return await self.repository.get_fiscal_year(fy_id)
 
     async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
-        """Save fiscal year period boundary."""
+        """Save fiscal year period boundary.
+
+        Args:
+            fy: FiscalYear domain model.
+
+        Returns:
+            Persisted FiscalYear instance.
+        """
         return await self.repository.save_fiscal_year(fy)
 
     async def create_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
-        """Alias for creating fiscal year boundary."""
+        """Alias for creating fiscal year boundary.
+
+        Args:
+            fy: FiscalYear domain model.
+
+        Returns:
+            Persisted FiscalYear instance.
+        """
         return await self.save_fiscal_year(fy)
 
     async def delete_fiscal_year(self, fy_id: int) -> None:
-        """Remove fiscal year record."""
+        """Remove fiscal year record.
+
+        Args:
+            fy_id: Target fiscal year identifier.
+        """
         await self.repository.delete_fiscal_year(fy_id)
 
-    async def get_accounts(self) -> List[Account]:
-        """Retrieve full account catalog."""
+    async def get_accounts(self) -> list[Account]:
+        """Retrieve full account catalog.
+
+        Returns:
+            List of Account domain models.
+        """
         return await self.repository.get_accounts()
 
     async def save_account(self, account: Account) -> Account:
-        """Save account definition."""
+        """Save account definition.
+
+        Args:
+            account: Account domain model.
+
+        Returns:
+            Persisted Account instance.
+        """
         return await self.repository.save_account(account)
 
     async def delete_account(self, account_id: int) -> None:
-        """Delete unused account with transaction usage check."""
+        """Delete unused account with transaction usage check.
+
+        Args:
+            account_id: Target account identifier.
+
+        Raises:
+            ValueError: If account has associated transactions.
+        """
         if (
             self.ledger_repository
             and await self.ledger_repository.has_transactions_for_account(account_id)
@@ -166,7 +266,11 @@ class MasterService:
         await self.repository.delete_account(account_id)
 
     async def initialize_default_accounts(self) -> int:
-        """Seed missing standard default accounts into active ledger."""
+        """Seed missing standard default accounts into active ledger.
+
+        Returns:
+            Count of newly inserted default accounts.
+        """
         existing = {a.code for a in await self.get_accounts()}
         to_add = [d for d in DEFAULT_ACCOUNTS if d["code"] not in existing]
         for data in to_add:
@@ -180,34 +284,71 @@ class MasterService:
             )
         return len(to_add)
 
-    async def get_abstracts(self) -> List[Abstract]:
-        """Fetch all predefined transaction abstracts."""
+    async def get_abstracts(self) -> list[Abstract]:
+        """Fetch all predefined transaction abstracts.
+
+        Returns:
+            List of Abstract domain models.
+        """
         return await self.repository.get_abstracts()
 
     async def save_abstract(self, abstract: Abstract) -> Abstract:
-        """Persist transaction abstract template."""
+        """Persist transaction abstract template.
+
+        Args:
+            abstract: Abstract domain model.
+
+        Returns:
+            Persisted Abstract instance.
+        """
         return await self.repository.save_abstract(abstract)
 
     async def delete_abstract(self, abstract_id: int) -> None:
-        """Delete transaction abstract template."""
+        """Delete transaction abstract template.
+
+        Args:
+            abstract_id: Target abstract identifier.
+        """
         await self.repository.delete_abstract(abstract_id)
 
-    async def get_counterparties(self) -> List[Counterparty]:
-        """Retrieve sorted list of registered business counterparties."""
+    async def get_counterparties(self) -> list[Counterparty]:
+        """Retrieve sorted list of registered business counterparties.
+
+        Returns:
+            Sorted list of Counterparty domain models.
+        """
         cps = await self.repository.get_counterparties()
         cps.sort(key=_clean_counterparty_sort_key)
         return cps
 
     async def save_counterparty(self, counterparty: Counterparty) -> Counterparty:
-        """Save counterparty record."""
+        """Save counterparty record.
+
+        Args:
+            counterparty: Counterparty domain model.
+
+        Returns:
+            Persisted Counterparty instance.
+        """
         return await self.repository.save_counterparty(counterparty)
 
     async def delete_counterparty(self, counterparty_id: int) -> None:
-        """Delete counterparty record."""
+        """Delete counterparty record.
+
+        Args:
+            counterparty_id: Target counterparty identifier.
+        """
         await self.repository.delete_counterparty(counterparty_id)
 
-    async def get_counterparty_by_keyword(self, keyword: str) -> Optional[Counterparty]:
-        """Find counterparty matching substring."""
+    async def get_counterparty_by_keyword(self, keyword: str) -> Counterparty | None:
+        """Find counterparty matching substring.
+
+        Args:
+            keyword: Substring to search.
+
+        Returns:
+            Matched Counterparty model or None.
+        """
         if not keyword:
             return None
         return await self.repository.get_counterparty_by_keyword(keyword)
@@ -217,11 +358,22 @@ class LedgerService:
     """Service generating trial balance, general ledger, and financial statements."""
 
     def __init__(self, repository: ILedgerRepository) -> None:
-        """Bind repository dependency."""
+        """Bind repository dependency.
+
+        Args:
+            repository: Implementation of ILedgerRepository.
+        """
         self.repository = repository
 
-    async def get_trial_balance(self, fiscal_year_id: int) -> List[TrialBalanceRow]:
-        """Calculate trial balance summary for specified fiscal period."""
+    async def get_trial_balance(self, fiscal_year_id: int) -> list[TrialBalanceRow]:
+        """Calculate trial balance summary for specified fiscal period.
+
+        Args:
+            fiscal_year_id: Target fiscal year identifier.
+
+        Returns:
+            List of TrialBalanceRow models.
+        """
         accounts = await self.repository.get_accounts()
         tb_map = {
             row["account_id"]: row
@@ -250,7 +402,15 @@ class LedgerService:
     async def get_general_ledger(
         self, fiscal_year_id: int, account_id: int
     ) -> pd.DataFrame:
-        """Build running general ledger movements for specified account."""
+        """Build running general ledger movements for specified account.
+
+        Args:
+            fiscal_year_id: Fiscal period identifier.
+            account_id: Account identifier.
+
+        Returns:
+            Pandas DataFrame containing running movements and balance.
+        """
         target_fy = await self.repository.get_fiscal_year(fiscal_year_id)
         if not target_fy:
             return pd.DataFrame()
@@ -264,7 +424,7 @@ class LedgerService:
             return pd.DataFrame()
 
         is_debit_positive = target_acc.type in _DEBIT_POSITIVE_TYPES
-        gl_lines: List[Dict[str, Any]] = []
+        gl_lines: list[dict[str, Any]] = []
         running_balance = 0
         transactions.sort(key=lambda x: x.date)
 
@@ -289,7 +449,14 @@ class LedgerService:
         return pd.DataFrame(gl_lines)
 
     async def generate_financial_report(self, fiscal_year_id: int) -> FinancialReport:
-        """Compile complete corporate balance sheet and income statement."""
+        """Compile complete corporate balance sheet and income statement.
+
+        Args:
+            fiscal_year_id: Fiscal period identifier.
+
+        Returns:
+            FinancialReport containing B/S, P/L, and sectional totals.
+        """
         rows = await self.get_trial_balance(fiscal_year_id)
 
         def sec(title: str, t: AccountType) -> FinancialSection:
@@ -360,15 +527,24 @@ class JournalService:
     def __init__(
         self,
         repository: ILedgerRepository,
-        master_repository: Optional[IMasterRepository] = None,
+        master_repository: IMasterRepository | None = None,
     ) -> None:
-        """Bind repository dependencies."""
+        """Bind repository dependencies.
+
+        Args:
+            repository: Implementation of ILedgerRepository.
+            master_repository: Optional implementation of IMasterRepository.
+        """
         self.repository = repository
         self.master_repository = master_repository
 
     @asynccontextmanager
     async def _master_scope(self) -> AsyncGenerator[Any, None]:
-        """Resolve master repository boundary."""
+        """Resolve master repository boundary.
+
+        Yields:
+            IMasterRepository or MasterService instance.
+        """
         if self.master_repository:
             yield self.master_repository
         else:
@@ -376,7 +552,14 @@ class JournalService:
                 yield ms
 
     async def _validate_transaction_date(self, transaction_date: date) -> None:
-        """Validate transaction date falls within an open fiscal year."""
+        """Validate transaction date falls within an open fiscal year.
+
+        Args:
+            transaction_date: Transaction date to validate.
+
+        Raises:
+            ValueError: If no open fiscal period exists or date is out of range.
+        """
         async with self._master_scope() as m:
             fys = await m.get_fiscal_years()
         open_fys = [fy for fy in fys if fy.status == "OPEN"]
@@ -393,7 +576,14 @@ class JournalService:
             )
 
     async def add_journal_entry(self, transaction: Transaction) -> int:
-        """Validate and record double-entry journal transaction."""
+        """Validate and record double-entry journal transaction.
+
+        Args:
+            transaction: Balanced Transaction domain model.
+
+        Returns:
+            Database primary key ID of created transaction.
+        """
         await self._validate_transaction_date(transaction.date)
         tx_id = await self.repository.add_transaction(transaction)
         await self.repository.commit()
@@ -429,10 +619,22 @@ class JournalService:
     async def register_opening_balance(
         self,
         opening_date: date,
-        debit_balances: Dict[str, str],
-        credit_balances: Dict[str, str],
+        debit_balances: dict[str, str],
+        credit_balances: dict[str, str],
     ) -> int:
-        """Record opening balance journal entries from mapped inputs."""
+        """Record opening balance journal entries from mapped inputs.
+
+        Args:
+            opening_date: Transaction date for opening balance.
+            debit_balances: Map of account ID string to debit monetary string.
+            credit_balances: Map of account ID string to credit monetary string.
+
+        Returns:
+            Created Transaction ID.
+
+        Raises:
+            ValueError: If no non-zero amounts provided.
+        """
         lines = [
             TransactionLine(
                 account_id=int(acc_id), debit=normalize_amount(val), credit=0
@@ -453,7 +655,14 @@ class JournalService:
         )
 
     async def update_journal_entry(self, transaction: Transaction) -> bool:
-        """Update existing journal entry within open fiscal boundary."""
+        """Update existing journal entry within open fiscal boundary.
+
+        Args:
+            transaction: Transaction domain model with updated details.
+
+        Returns:
+            True if updated, False if transaction not found.
+        """
         await self._validate_transaction_date(transaction.date)
         success = await self.repository.update_transaction(transaction)
         if success:
@@ -463,19 +672,40 @@ class JournalService:
 
     async def get_entries(
         self,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
         include_deleted: bool = False,
-    ) -> List[Transaction]:
-        """Fetch transactions within optional date range."""
+    ) -> list[Transaction]:
+        """Fetch transactions within optional date range.
+
+        Args:
+            start_date: Optional inclusive start date.
+            end_date: Optional inclusive end date.
+            include_deleted: Whether to include logically deleted entries.
+
+        Returns:
+            List of Transaction domain models.
+        """
         return await self.repository.get_transactions(
             start_date, end_date, include_deleted=include_deleted
         )
 
     async def add_journal_entry_with_evidence(
-        self, transaction: Transaction, file_bytes: bytes, file_service: Any
+        self,
+        transaction: Transaction,
+        file_bytes: bytes,
+        file_service: LocalFileService,
     ) -> int:
-        """Persist journal entry and link stored electronic evidence file."""
+        """Persist journal entry and link stored electronic evidence file.
+
+        Args:
+            transaction: Balanced Transaction domain model.
+            file_bytes: Raw binary content of receipt/invoice file.
+            file_service: LocalFileService instance for file saving.
+
+        Returns:
+            Created Transaction ID.
+        """
         tx_id = await self.repository.add_transaction(transaction)
         total_amt = sum(line.debit for line in transaction.lines)
         corp = transaction.counterparty or "Unknown"
@@ -492,13 +722,25 @@ class JournalService:
         return tx_id
 
     async def delete_entry(self, transaction_id: int) -> None:
-        """Soft delete journal entry."""
+        """Soft delete journal entry.
+
+        Args:
+            transaction_id: Primary key of transaction to delete.
+        """
         await self.repository.delete_transaction(transaction_id)
 
     async def export_journal_entries_csv(
-        self, start_date: Optional[date] = None, end_date: Optional[date] = None
+        self, start_date: date | None = None, end_date: date | None = None
     ) -> str:
-        """Export filtered journal entries to RFC 4180 CSV string."""
+        """Export filtered journal entries to RFC 4180 CSV string.
+
+        Args:
+            start_date: Optional inclusive start date.
+            end_date: Optional inclusive end date.
+
+        Returns:
+            CSV encoded string of journal entries.
+        """
         txs = await self.repository.get_transactions(
             start_date=start_date,
             end_date=end_date,
@@ -543,8 +785,15 @@ class JournalService:
                 )
         return output.getvalue()
 
-    async def get_frequent_account_ids(self, limit: int = 5) -> List[int]:
-        """Fetch most frequently utilized account identifiers."""
+    async def get_frequent_account_ids(self, limit: int = 5) -> list[int]:
+        """Fetch most frequently utilized account identifiers.
+
+        Args:
+            limit: Maximum count of IDs to return.
+
+        Returns:
+            List of account IDs ordered by usage.
+        """
         try:
             return await self.repository.get_frequent_account_ids(limit)
         except Exception:
@@ -560,15 +809,32 @@ class FiscalYearService:
         ledger_service: LedgerService,
         journal_service: JournalService,
     ) -> None:
-        """Bind cooperating domain services."""
+        """Bind cooperating domain services.
+
+        Args:
+            master_service: MasterService instance.
+            ledger_service: LedgerService instance.
+            journal_service: JournalService instance.
+        """
         self.master_service = master_service
         self.ledger_service = ledger_service
         self.journal_service = journal_service
 
     async def close_fiscal_year(
-        self, fiscal_year_id: int, next_fy_name: Optional[str] = None
+        self, fiscal_year_id: int, next_fy_name: str | None = None
     ) -> FiscalYear:
-        """Execute period closing, transfer net income to retained earnings, and rollover."""
+        """Execute period closing, transfer net income to retained earnings, and rollover.
+
+        Args:
+            fiscal_year_id: Target fiscal year identifier to close.
+            next_fy_name: Optional custom label for succeeding fiscal year.
+
+        Returns:
+            Created or updated succeeding FiscalYear domain instance.
+
+        Raises:
+            ValueError: If fiscal year not found, already closed, or required account missing.
+        """
         current_fy = await self.master_service.get_fiscal_year_by_id(fiscal_year_id)
         if not current_fy:
             raise ValueError(f"Fiscal Year {fiscal_year_id} not found")
@@ -598,7 +864,7 @@ class FiscalYearService:
                 )
             )
 
-        lines: List[TransactionLine] = []
+        lines: list[TransactionLine] = []
         asset_types = {
             AccountType.CURRENT_ASSET,
             AccountType.FIXED_ASSET,
@@ -666,8 +932,12 @@ class Container:
     """Dependency injection container managing session-scoped service lifetimes."""
 
     @asynccontextmanager
-    async def session_scope(self) -> AsyncGenerator[Any, None]:
-        """Provide managed async session scope."""
+    async def session_scope(self) -> AsyncGenerator[AsyncSession, None]:
+        """Provide managed async session scope.
+
+        Yields:
+            Session bounded to unit-of-work lifecycle.
+        """
         session = AsyncSessionLocal()
         try:
             yield session
@@ -679,7 +949,11 @@ class Container:
 
     @asynccontextmanager
     async def journal_service_scope(self) -> AsyncGenerator[JournalService, None]:
-        """Yield JournalService bound to dedicated session scope."""
+        """Yield JournalService bound to dedicated session scope.
+
+        Yields:
+            Scoped JournalService instance.
+        """
         async with self.session_scope() as s:
             yield JournalService(
                 SQLAlchemyLedgerRepository(s),
@@ -688,7 +962,11 @@ class Container:
 
     @asynccontextmanager
     async def master_service_scope(self) -> AsyncGenerator[MasterService, None]:
-        """Yield MasterService bound to dedicated session scope."""
+        """Yield MasterService bound to dedicated session scope.
+
+        Yields:
+            Scoped MasterService instance.
+        """
         async with self.session_scope() as s:
             yield MasterService(
                 SQLAlchemyMasterRepository(s),
@@ -697,7 +975,11 @@ class Container:
 
     @asynccontextmanager
     async def ledger_service_scope(self) -> AsyncGenerator[LedgerService, None]:
-        """Yield LedgerService bound to dedicated session scope."""
+        """Yield LedgerService bound to dedicated session scope.
+
+        Yields:
+            Scoped LedgerService instance.
+        """
         async with self.session_scope() as s:
             yield LedgerService(SQLAlchemyLedgerRepository(s))
 
@@ -705,7 +987,11 @@ class Container:
     async def fiscal_year_service_scope(
         self,
     ) -> AsyncGenerator[FiscalYearService, None]:
-        """Yield FiscalYearService bound to dedicated session scope."""
+        """Yield FiscalYearService bound to dedicated session scope.
+
+        Yields:
+            Scoped FiscalYearService instance.
+        """
         async with self.session_scope() as s:
             master_repo = SQLAlchemyMasterRepository(s)
             ledger_repo = SQLAlchemyLedgerRepository(s)
@@ -714,41 +1000,45 @@ class Container:
             js = JournalService(ledger_repo, master_repository=master_repo)
             yield FiscalYearService(ms, ls, js)
 
-    def get_ocr_service(self) -> Any:
-        """Instantiate OCR external service."""
+    def get_ocr_service(self) -> GeminiOCRService:
+        """Instantiate OCR external service.
+
+        Returns:
+            GeminiOCRService instance.
+        """
         from app.ai_ocr_service import GeminiOCRService
 
         return GeminiOCRService()
 
-    def get_file_service(self) -> Any:
-        """Instantiate local file storage service."""
+    def get_file_service(self) -> LocalFileService:
+        """Instantiate local file storage service.
+
+        Returns:
+            LocalFileService instance.
+        """
         from app.external_services import LocalFileService
 
         return LocalFileService()
 
-    def get_pdf_service(self) -> Any:
-        """Instantiate PDF report generation service."""
+    def get_pdf_service(self) -> PDFService:
+        """Instantiate PDF report generation service.
+
+        Returns:
+            PDFService instance.
+        """
         from app.external_services import PDFService
 
         return PDFService()
 
-    def get_backup_service(self) -> Any:
-        """Instantiate backup service."""
+    def get_backup_service(self) -> BackupService:
+        """Instantiate backup service.
+
+        Returns:
+            BackupService instance.
+        """
         from app.external_services import BackupService
 
         return BackupService()
 
 
-container = Container()
-
-# --- 4. Self-Contained Smoke Harness ---
-if __name__ == "__main__":
-    import asyncio
-
-    async def _smoke_harness():
-        c = Container()
-        async with c.master_service_scope() as ms:
-            assert ms.repository is not None
-        log.info("smoke_harness_pass", module="application_services")
-
-    asyncio.run(_smoke_harness())
+container: Final[Container] = Container()

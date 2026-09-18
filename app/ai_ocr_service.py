@@ -1,13 +1,16 @@
 # Copyright (C) 2026 合同会社ぼっち (bottiLLC)
 # GNU General Public License v3.0
 
+from __future__ import annotations
+
 import asyncio
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 import io
 import json
 import re
-from typing import Any, List, Optional, Tuple
+from typing import Any, Final
 import unicodedata
 import fitz
 from google import genai
@@ -16,11 +19,13 @@ from google.genai.errors import APIError
 from PIL import Image
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_exponential
+
 from app.core_foundation import log, settings
 from app.domain_contracts import ReceiptData
 
+
 # --- 1. Datum Plane (Schemas & Patterns) ---
-_CORP_STATUS_PATTERN = re.compile(
+_CORP_STATUS_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"株式会社|有限会社|合同会社|合名会社|合資会社|一般社団法人|公益社団法人|"
     r"一般財団法人|公益財団法人|医療法人|学校法人|宗教法人|社会福祉法人|"
     r"特定非営利活動法人|NPO法人|\(株\)|\(有\)|\(同\)|\(名\)|\(資\)|\(財\)|\(社\)|"
@@ -29,31 +34,32 @@ _CORP_STATUS_PATTERN = re.compile(
 
 
 class ReceiptExtractionSchema(BaseModel):
-    merchant_name: Optional[str] = Field(
-        None, description="The name of store or vendor"
-    )
-    transaction_date: Optional[str] = Field(
+    """Structured extraction schema for Gemini function calling."""
+
+    merchant_name: str | None = Field(None, description="The name of store or vendor")
+    transaction_date: str | None = Field(
         None, description="Transaction date (YYYY-MM-DD)"
     )
-    total_amount_incl_tax: Optional[int] = Field(
+    total_amount_incl_tax: int | None = Field(
         None, description="Total amount paid including tax"
     )
-    invoice_registration_number: Optional[str] = Field(
+    invoice_registration_number: str | None = Field(
         None, description="Invoice registration number"
     )
 
 
 class AccountInferenceSchema(BaseModel):
-    debit_account: Optional[str] = Field(
-        None, description="Inferred debit account name"
-    )
-    credit_account: Optional[str] = Field(
-        None, description="Inferred credit account name"
-    )
-    description: Optional[str] = Field(None, description="Inferred transaction summary")
+    """Inference schema for accounting accounts."""
+
+    debit_account: str | None = Field(None, description="Inferred debit account name")
+    credit_account: str | None = Field(None, description="Inferred credit account name")
+    description: str | None = Field(None, description="Inferred transaction summary")
 
 
-_API_ERROR_RULES = [
+MatcherFunc = Callable[[int | None, str], bool]
+FormatterFunc = Callable[[str], str]
+
+_API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
     (
         lambda c, m: (
             any(
@@ -155,12 +161,19 @@ _API_ERROR_RULES = [
             f"⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
-]
+)
 
 
 # --- 2. Internal Pure Transformations ---
 def clean_json_codeblock(text: str) -> str:
-    """Strip markdown fencing and clean extracted JSON raw string."""
+    """Strip markdown fencing and clean extracted JSON raw string.
+
+    Args:
+        text: Raw response string potentially containing code blocks.
+
+    Returns:
+        Cleaned JSON string without markdown fences.
+    """
     c = text.strip()
     if c.startswith("```json"):
         c = c[7:]
@@ -170,7 +183,14 @@ def clean_json_codeblock(text: str) -> str:
 
 
 def normalize_merchant_name(name: str) -> str:
-    """Normalize legal entities and spacing in merchant title."""
+    """Normalize legal entities and spacing in merchant title.
+
+    Args:
+        name: Raw vendor name.
+
+    Returns:
+        Normalized name stripped of corporate prefixes/suffixes.
+    """
     if not name:
         return ""
     norm = unicodedata.normalize("NFKC", name).replace(" ", "").replace("　", "")
@@ -178,8 +198,15 @@ def normalize_merchant_name(name: str) -> str:
 
 
 def validate_receipt_structure(data: ReceiptData) -> ReceiptData:
-    """Perform edge consistency checks on receipt totals, dates, and invoice registration."""
-    msgs: List[str] = []
+    """Perform edge consistency checks on receipt totals, dates, and invoice registration.
+
+    Args:
+        data: Candidate ReceiptData model.
+
+    Returns:
+        Validated ReceiptData model with manual review flags set if inconsistent.
+    """
+    msgs: list[str] = []
     c_tax, c_excl = 0, 0
     if data.tax_breakdown:
         for item in data.tax_breakdown:
@@ -246,8 +273,16 @@ def validate_receipt_structure(data: ReceiptData) -> ReceiptData:
     return data
 
 
-def optimize_receipt_image(file_bytes: bytes, mime_type: str) -> Tuple[bytes, str]:
-    """Resize high-resolution images down to standard OCR processing boundaries."""
+def optimize_receipt_image(file_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
+    """Resize high-resolution images down to standard OCR processing boundaries.
+
+    Args:
+        file_bytes: Raw input binary image data.
+        mime_type: MIME content type identifier.
+
+    Returns:
+        Tuple of optimized bytes and effective MIME type string.
+    """
     try:
         with Image.open(io.BytesIO(file_bytes)) as img:
             dpi = img.info.get("dpi")
@@ -279,10 +314,23 @@ class GeminiOCRService:
         self,
         file_bytes: bytes,
         file_type: str,
-        account_list: Optional[List[str]] = None,
-        counterparty_list: Optional[List[str]] = None,
+        account_list: list[str] | None = None,
+        counterparty_list: list[str] | None = None,
     ) -> ReceiptData:
-        """Extract structured receipt metadata and perform hybrid matching."""
+        """Extract structured receipt metadata and perform hybrid matching.
+
+        Args:
+            file_bytes: Raw binary file payload.
+            file_type: File extension or format type.
+            account_list: Predefined chart of account names for inference.
+            counterparty_list: Predefined vendor names for candidate matching.
+
+        Returns:
+            Extracted and validated ReceiptData domain model.
+
+        Raises:
+            ValueError: If API key missing, file invalid, or parsing fails.
+        """
         from app.application_services import container
 
         async with container.master_service_scope() as ms:
@@ -419,7 +467,7 @@ Extract the following fields into a valid JSON object matching the requested sch
                         fb_data = json.loads(clean_json_codeblock(fb_text))
                         accounts_db = await master_service.get_accounts()
 
-                        def find_id(name: Optional[str]) -> Optional[str]:
+                        def find_id(name: str | None) -> str | None:
                             if not name:
                                 return None
                             for a in accounts_db:
@@ -467,7 +515,20 @@ Extract the following fields into a valid JSON object matching the requested sch
         image_bytes: bytes,
         mime_type: str,
     ) -> str:
-        """Call Gemini multimodal API under retry clamping."""
+        """Call Gemini multimodal API under retry clamping.
+
+        Args:
+            client: Authenticated genai.Client instance.
+            sys_instruct: System instructions prompt.
+            image_bytes: Optimized receipt image binary.
+            mime_type: Image MIME type.
+
+        Returns:
+            JSON text payload returned by Gemini.
+
+        Raises:
+            ValueError: If response is empty or blocked by safety filters.
+        """
         contents: list[Any] = [
             types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
             types.Part.from_text(text=sys_instruct),
@@ -510,7 +571,15 @@ Extract the following fields into a valid JSON object matching the requested sch
     async def _call_gemini_fallback(
         self, client: genai.Client, sys_instruct_fallback: str
     ) -> str:
-        """Execute accounting account inference fallback under retry clamping."""
+        """Execute accounting account inference fallback under retry clamping.
+
+        Args:
+            client: Authenticated genai.Client instance.
+            sys_instruct_fallback: Fallback accounting prompt.
+
+        Returns:
+            JSON text payload returned by Gemini.
+        """
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=AccountInferenceSchema,
@@ -526,8 +595,16 @@ Extract the following fields into a valid JSON object matching the requested sch
         return response.text or ""
 
     def _format_api_error_message(self, e: APIError) -> str:
-        """Transform low-level Gemini API exception into user-friendly error string."""
-        code, raw_msg = getattr(e, "code", None), getattr(e, "message", None) or str(e)
+        """Transform low-level Gemini API exception into user-friendly error string.
+
+        Args:
+            e: Captured APIError instance.
+
+        Returns:
+            Formatted Japanese error message string.
+        """
+        code = getattr(e, "code", None)
+        raw_msg = getattr(e, "message", None) or str(e)
         msg_u = raw_msg.upper()
         for matcher, formatter in _API_ERROR_RULES:
             if matcher(code, msg_u):
@@ -538,10 +615,4 @@ Extract the following fields into a valid JSON object matching the requested sch
     analyze_receipt = extract_receipt_data
 
 
-OpenAIOCRService = GeminiOCRService
-
-# --- 4. Self-Contained Smoke Harness ---
-if __name__ == "__main__":
-    assert normalize_merchant_name("株式会社テスト (株)") == "テスト"
-    assert clean_json_codeblock('```json\n{"test": 1}\n```') == '{"test": 1}'
-    log.info("smoke_harness_pass", module="ai_ocr_service")
+OpenAIOCRService: Final[type[GeminiOCRService]] = GeminiOCRService

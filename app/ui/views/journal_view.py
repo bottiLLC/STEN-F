@@ -12,18 +12,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import io
+from __future__ import annotations
+
 from datetime import date
-from typing import List, Optional
+import io
+from typing import Any
 import pandas as pd
 import streamlit as st
-import structlog
 
-from app.domain.models.transaction import Transaction, TransactionLine
-from app.ui.async_helper import call_journal, call_master, run_async
-from app.ui.di import DI
-
-log = structlog.get_logger()
+from app.core_foundation import DI, call_journal, call_master, run_async
+from app.domain_contracts import Transaction, TransactionLine
 
 st.header("仕訳・記帳", divider="blue")
 st.caption(
@@ -155,7 +153,7 @@ with tab_entry:
         key="journal_voucher_lines_editor",
     )
 
-    tx_lines: List[TransactionLine] = []
+    tx_lines: list[TransactionLine] = []
     for _, r in edited_lines_df.iterrows():
         if (d_acc := r.get("debit_account")) and (
             d_amt := int(r.get("debit_amount") or 0)
@@ -195,7 +193,7 @@ with tab_entry:
         )
 
         try:
-            ocr_raw_bytes: Optional[bytes] = st.session_state.get("ocr_bytes")
+            ocr_raw_bytes: bytes | None = st.session_state.get("ocr_bytes")
             call_journal(
                 lambda s: (
                     s.add_journal_entry_with_evidence(
@@ -233,7 +231,7 @@ with tab_history:
     if not entries:
         st.info("該当する仕訳データはありません。")
     else:
-        rows = []
+        rows: list[dict[str, Any]] = []
         for tx in entries:
             d_lines = [line for line in tx.lines if line.debit > 0]
             c_lines = [line for line in tx.lines if line.credit > 0]
