@@ -59,7 +59,7 @@ def render_accounting_editor(
         column_config=column_config,
         num_rows=num_rows if not disabled else "fixed",
         disabled=disabled,
-        use_container_width=True,
+        width="stretch",
         hide_index=hide_index,
         key=current_key,
     )
@@ -98,7 +98,7 @@ def render_accounting_editor(
             "💾 変更をデータベースに保存する",
             type="primary",
             key=f"btn_commit_{current_key}",
-            use_container_width=True,
+            width="stretch",
         ):
             on_commit(added_list, pk_edited_map, pk_deleted_list)
             st.session_state[version_key] += 1

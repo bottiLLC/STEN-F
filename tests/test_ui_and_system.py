@@ -21,11 +21,16 @@ from app.domain_contracts import (
 from app.external_services import BackupService, LocalFileService, PDFService
 
 
+from typing import Final
+
+_REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+
+
 # --- 1. Streamlit App Navigation & Pages Interaction Tests ---
 def test_app_main_navigation_executes_without_exception() -> None:
     """Verify that main app.py executes cleanly and configures sidebar layout."""
     # Arrange
-    at = AppTest.from_file("app.py", default_timeout=15)
+    at = AppTest.from_file(str(_REPO_ROOT / "app.py"), default_timeout=15)
 
     # Act
     at.run()
@@ -38,7 +43,10 @@ def test_app_main_navigation_executes_without_exception() -> None:
 def test_journal_view_interactions_renders_essential_widgets() -> None:
     """Verify journal workspace renders tabs, inputs, and form elements."""
     # Arrange
-    at = AppTest.from_file("app/ui/views/journal_view.py", default_timeout=15)
+    at = AppTest.from_file(
+        str(_REPO_ROOT / "app" / "ui" / "views" / "journal_view.py"),
+        default_timeout=15,
+    )
 
     # Act
     at.run()
@@ -52,7 +60,10 @@ def test_journal_view_interactions_renders_essential_widgets() -> None:
 def test_ledger_view_interactions_renders_essential_widgets() -> None:
     """Verify ledger workspace renders trial balance, general ledger, and reports."""
     # Arrange
-    at = AppTest.from_file("app/ui/views/ledger_view.py", default_timeout=15)
+    at = AppTest.from_file(
+        str(_REPO_ROOT / "app" / "ui" / "views" / "ledger_view.py"),
+        default_timeout=15,
+    )
 
     # Act
     at.run()
@@ -66,7 +77,10 @@ def test_ledger_view_interactions_renders_essential_widgets() -> None:
 def test_master_view_interactions_renders_essential_widgets() -> None:
     """Verify master workspace renders corporate profile, fiscal periods, and editors."""
     # Arrange
-    at = AppTest.from_file("app/ui/views/master_view.py", default_timeout=15)
+    at = AppTest.from_file(
+        str(_REPO_ROOT / "app" / "ui" / "views" / "master_view.py"),
+        default_timeout=15,
+    )
 
     # Act
     at.run()
@@ -252,4 +266,3 @@ async def test_load_sidebar_metadata_with_structured_concurrency_returns_corp_an
     assert corp.name == "サイドバー検証会社"
     assert isinstance(fys, list)
     assert len(fys) > 0
-

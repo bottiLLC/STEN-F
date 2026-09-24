@@ -4,14 +4,15 @@
 from __future__ import annotations
 
 import asyncio
-import nest_asyncio
+from pathlib import Path
+from typing import Final
 import streamlit as st
 
 from app.core_foundation import DI, log, run_async, run_scoped
 from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
 from app.storage_repository import seed_accounts
 
-nest_asyncio.apply()
+_APP_ROOT: Final[Path] = Path(__file__).resolve().parent
 
 
 # --- 1. Pure Transformation Helpers ---
@@ -65,7 +66,7 @@ def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) ->
         else:
             st.caption("🏢 ※ 自社情報未設定 (マスタ管理で登録)")
 
-        st.markdown("---")
+        st.divider()
         if open_fy:
             st.info(
                 f"📅 **進行中の会計年度**\n\n**{open_fy.name}**\n\n`{open_fy.start_date}` 〜 `{open_fy.end_date}`"
@@ -93,20 +94,21 @@ def main() -> None:
         except Exception as e:
             log.error("startup_seeding_error", error=str(e))
 
+    views_dir = _APP_ROOT / "app" / "ui" / "views"
     pages = [
         st.Page(
-            "app/ui/views/journal_view.py",
+            str(views_dir / "journal_view.py"),
             title="仕訳・記帳",
             icon=":material/edit_note:",
             default=True,
         ),
         st.Page(
-            "app/ui/views/ledger_view.py",
+            str(views_dir / "ledger_view.py"),
             title="元帳・決算",
             icon=":material/analytics:",
         ),
         st.Page(
-            "app/ui/views/master_view.py",
+            str(views_dir / "master_view.py"),
             title="マスタ・設定",
             icon=":material/settings:",
         ),

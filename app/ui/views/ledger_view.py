@@ -69,7 +69,7 @@ with tab_tb:
                 for r in tb_rows
             ]
         )
-        st.dataframe(df_tb, use_container_width=True, hide_index=True)
+        st.dataframe(df_tb, width="stretch", hide_index=True)
 
         tot_db = sum(r.debit_balance for r in tb_rows)
         tot_cb = sum(r.credit_balance for r in tb_rows)
@@ -106,7 +106,7 @@ with tab_gl:
                         "残高": lambda x: f"¥{x:,}",
                     }
                 ),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -121,7 +121,7 @@ with tab_fs:
         if st.button(
             "📑 決算書 PDF を生成・ダウンロード",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         ):
 
             async def generate_pdf(fy: FiscalYear) -> bytes:
@@ -141,14 +141,14 @@ with tab_fs:
                     data=pdf_bytes,
                     file_name=f"report_{selected_fy.name}.pdf",
                     mime="application/pdf",
-                    use_container_width=True,
+                    width="stretch",
                 )
             except Exception as e:
                 st.error(f"PDF 生成エラー: {e}")
 
     report = call_ledger(lambda s: s.generate_financial_report(selected_fy.id or 0))
 
-    st.markdown("---")
+    st.divider()
     st.markdown("### 🏛️ 貸借対照表 (Balance Sheet)")
     c_bs_l, c_bs_r = st.columns(2)
     with c_bs_l:
@@ -189,7 +189,7 @@ with tab_fs:
             f"### 負債・純資産の部 合計: ¥{report.total_liabilities + report.total_equity:,}"
         )
 
-    st.markdown("---")
+    st.divider()
     st.markdown("### 📈 損益計算書 (Profit & Loss Statement)")
     c_pl1, c_pl2 = st.columns(2)
     with c_pl1:

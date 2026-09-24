@@ -68,7 +68,7 @@ with tab_entry:
 
     ocr = st.session_state.get("ocr_result")
 
-    st.markdown("---")
+    st.divider()
     st.subheader("Step 2: 振替伝票入力")
 
     ocr_date = date.today()
@@ -147,7 +147,7 @@ with tab_entry:
         lines_df,
         column_config=col_cfg,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         key="journal_voucher_lines_editor",
     )
@@ -181,7 +181,7 @@ with tab_entry:
         "💾 この内容で仕訳帳に登録する",
         type="primary",
         disabled=not is_balanced,
-        use_container_width=True,
+        width="stretch",
     ):
         new_tx = Transaction(
             date=tx_date,
@@ -255,7 +255,7 @@ with tab_history:
                     }
                 )
 
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
         csv_buf = io.StringIO()
         pd.DataFrame(rows).to_csv(csv_buf, index=False)
         st.download_button(
@@ -263,4 +263,5 @@ with tab_history:
             data=csv_buf.getvalue().encode("utf_8_sig"),
             file_name=f"journal_{s_date}_{e_date}.csv",
             mime="text/csv",
+            width="stretch",
         )

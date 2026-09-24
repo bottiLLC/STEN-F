@@ -13,7 +13,6 @@ import sys
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, ParamSpec, TypeVar
 
-import nest_asyncio
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import sniffio
 import structlog
@@ -34,7 +33,6 @@ if TYPE_CHECKING:
 P = ParamSpec("P")
 T = TypeVar("T")
 S = TypeVar("S")
-nest_asyncio.apply()
 
 # --- 1. Datum Plane (Configuration & Constants) ---
 _TRANS_DICT: Final[dict[str, str | None]] = {
@@ -217,6 +215,25 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
         sniffio.current_async_library_cvar.set("asyncio")
     except Exception:
         pass
+
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+
+    if running_loop is not None and running_loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+
+    try:
+        loop = asyncio.get_event_loop()
+        if not loop.is_closed():
+            return loop.run_until_complete(coro)
+    except RuntimeError:
+        pass
+
     return asyncio.run(coro)
 
 

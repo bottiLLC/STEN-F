@@ -4,7 +4,7 @@
 ![Compliance](https://img.shields.io/badge/Compliance-Dencho_Act_%26_Invoice_System-blue)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/Python-3.14+-yellow.svg)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.56+-ff4b4b.svg)](https://streamlit.io/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.64.0-FF4B4B.svg)](https://streamlit.io/)
 
 **STEN-F** は、既存のクラウド会計ソフト（SaaS）によるデータの囲い込みや高額なサブスクリプションから開発者・中小企業・個人事業主を解放するために生まれた、**100% Pure Python 製のオープンソース経理・会計アプリケーション**です。
 
@@ -273,7 +273,7 @@ STEN-F は、高凝集・単一責任原則（SRP）とテスタビリティを�
 
 ```text
 STEN-F/
-├── app.py                      # Streamlit メインエントリポイント (st.navigation / nest_asyncio)
+├── app.py                      # Streamlit メインエントリポイント (st.navigation / ページ階層ルーティング)
 ├── run.bat                     # Windows 自動起動・環境構築ランチャー
 ├── start.command               # macOS / Linux 起動スクリプト
 ├── app/

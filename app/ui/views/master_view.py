@@ -79,7 +79,7 @@ with tab_corp:
         )
 
         if st.form_submit_button(
-            "💾 自社情報を保存する", type="primary", use_container_width=True
+            "💾 自社情報を保存する", type="primary", width="stretch"
         ):
             if not corp_name.strip():
                 st.error("法人名・屋号を入力してください。")
@@ -116,15 +116,13 @@ with tab_fy:
                 }
                 for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
             ]
-            st.dataframe(
-                pd.DataFrame(fy_rows), hide_index=True, use_container_width=True
-            )
+            st.dataframe(pd.DataFrame(fy_rows), hide_index=True, width="stretch")
         else:
             st.info("登録済みの会計年度がありません。")
 
         open_fy = next((f for f in fys if f.status == "OPEN"), None)
         if open_fy:
-            st.markdown("---")
+            st.divider()
             st.markdown(f"#### 🔒 会計年度の締め処理 (現在進行中: `{open_fy.name}`)")
             with st.form("fy_close_form"):
                 next_fy_name = st.text_input(
@@ -133,7 +131,7 @@ with tab_fy:
                 if st.form_submit_button(
                     "⚠️ この会計年度を締め切る (CLOSED)",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     try:
                         curr_fy_id = open_fy.id or 0
@@ -156,9 +154,7 @@ with tab_fy:
             new_start = c_d1.date_input("開始日", value=date(date.today().year, 1, 1))
             new_end = c_d2.date_input("終了日", value=date(date.today().year, 12, 31))
 
-            if st.form_submit_button(
-                "登録する", type="primary", use_container_width=True
-            ):
+            if st.form_submit_button("登録する", type="primary", width="stretch"):
                 if new_start >= new_end:
                     st.error("終了日は開始日より後の日付を指定してください。")
                 elif not new_name.strip():
@@ -238,7 +234,7 @@ with tab_op:
 
             total_d = sum(int(v) for v in op_d.values())
             total_c = sum(int(v) for v in op_c.values())
-            st.markdown("---")
+            st.divider()
             m1, m2, m3 = st.columns(3)
             m1.metric("資産合計 (借方)", f"¥{total_d:,}")
             m2.metric("負債・純資産合計 (貸方)", f"¥{total_c:,}")
@@ -249,7 +245,7 @@ with tab_op:
             )
 
             if st.form_submit_button(
-                "💾 期首残高を登録・更新する", type="primary", use_container_width=True
+                "💾 期首残高を登録・更新する", type="primary", width="stretch"
             ):
                 if diff != 0 or total_d == 0:
                     st.error("貸借合計を一致させ、0より大きい金額を入力してください。")
@@ -456,7 +452,7 @@ with tab_backup:
     st.caption("SQLite データベースと環境設定ファイルを安全に退避します。")
     backup_dir = st.text_input("バックアップ保存先フォルダ", value="./backups")
     if st.button(
-        "💾 ワンクリック・バックアップを実行", type="primary", use_container_width=True
+        "💾 ワンクリック・バックアップを実行", type="primary", width="stretch"
     ):
         try:
             bk_path = call_backup(lambda s: s.create_backup(backup_dir))
@@ -475,9 +471,7 @@ with tab_sys:
             type="password",
             help="Google AI Studio で発行された API キー",
         )
-        if st.form_submit_button(
-            "設定を保存する", type="primary", use_container_width=True
-        ):
+        if st.form_submit_button("設定を保存する", type="primary", width="stretch"):
             call_master(
                 lambda s: s.save_system_settings(
                     SystemSettings(ai_api_key=api_key_input.strip() or None)

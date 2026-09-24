@@ -134,6 +134,7 @@ _RAW_ACCOUNTS: Final[tuple[tuple[str, str, AccountType, str], ...]] = (
     ("9110", "法人税、住民税及び事業税", AccountType.TAXES, "法人税、住民税及び事業税"),
 )
 
+
 class DefaultAccountDict(TypedDict):
     code: str
     name: str

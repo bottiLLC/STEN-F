@@ -661,4 +661,3 @@ async def test_local_file_service_save_evidence_for_transaction_sanitizes_legal_
     assert saved_path.exists()
     assert saved_path.name == "20260415_12000_サンプルパートナーズ_101.pdf"
     assert saved_path.read_bytes() == file_payload
-
