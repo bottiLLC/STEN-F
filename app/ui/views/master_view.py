@@ -448,9 +448,13 @@ with tab_abs:
 
 # 7. バックアップ
 with tab_backup:
-    st.subheader("データベース・設定バックアップ")
-    st.caption("SQLite データベースと環境設定ファイルを安全に退避します。")
-    backup_dir = st.text_input("バックアップ保存先フォルダ", value="./backups")
+    st.subheader("ユーザーデータ（DB・証憑・設定）の一括バックアップ")
+    st.caption(
+        "本システムではすべてのデータ（SQLite DB・証憑ファイル・設定）が `data` フォルダに集約されています。\n"
+        "バージョンアップ時は新環境へ `data` フォルダを丸ごと移動するだけで全データが引き継がれます。\n"
+        "外部ドライブ等への退避が必要な場合は、下記の保存先を指定してバックアップを実行してください。"
+    )
+    backup_dir = st.text_input("バックアップ保存先フォルダ", value="./data/backups")
     if st.button(
         "💾 ワンクリック・バックアップを実行", type="primary", width="stretch"
     ):

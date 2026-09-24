@@ -57,14 +57,39 @@ def _register_reportlab_fonts() -> None:
 class LocalFileService:
     """Service persisting local evidence documents with statutory naming standards."""
 
-    def __init__(self, base_dir: Path = settings.PROJECT_ROOT) -> None:
+    def __init__(self, base_dir: Path | None = None) -> None:
         """Initialize and verify local storage directory.
 
         Args:
-            base_dir: Base directory path anchoring storage directory.
+            base_dir: Optional base directory path anchoring storage directory.
+                      Defaults to settings.STORAGE_DIR (data/storage).
         """
-        self.storage_dir = base_dir / "storage"
+        if base_dir is not None:
+            self.storage_dir = (
+                base_dir if base_dir.name == "storage" else base_dir / "storage"
+            )
+        else:
+            self.storage_dir = settings.STORAGE_DIR
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+
+    def resolve_evidence_path(self, path_str: str) -> Path | None:
+        """Resolve evidence file path safely handling environment migrations.
+
+        Args:
+            path_str: Stored filesystem path or filename.
+
+        Returns:
+            Existing Path object, or None if not found.
+        """
+        candidate = Path(path_str)
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+        fallback = self.storage_dir / candidate.name
+        if fallback.exists() and fallback.is_file():
+            return fallback
+
+        return None
 
     async def save_evidence(
         self,
@@ -128,24 +153,28 @@ class LocalFileService:
 
 
 class BackupService:
-    """Service performing scheduled or on-demand SQLite and environment snapshots."""
+    """Service performing scheduled or on-demand user data snapshots."""
 
-    async def create_backup(self, target_dir_str: str) -> str:
-        """Execute filesystem snapshot of SQLite database and environment variables.
+    async def create_backup(self, target_dir_str: str | None = None) -> str:
+        """Execute filesystem snapshot of SQLite database, environment, and evidence files.
 
         Args:
-            target_dir_str: Target root directory for backup repository.
+            target_dir_str: Optional target root directory for backup repository. Defaults to settings.BACKUP_DIR.
 
         Returns:
             Created backup directory path string.
 
         Raises:
-            ValueError: If target_dir_str is empty.
+            ValueError: If target_dir_str is empty string.
         """
-        if not target_dir_str:
-            raise ValueError("バックアップ先ディレクトリが指定されていません。")
+        if target_dir_str is not None:
+            if not target_dir_str.strip():
+                raise ValueError("バックアップ先ディレクトリが指定されていません。")
+            target_path_str = target_dir_str
+        else:
+            target_path_str = str(settings.BACKUP_DIR)
 
-        target_base = Path(target_dir_str)
+        target_base = Path(target_path_str)
         target_base.mkdir(parents=True, exist_ok=True)
 
         backup_sub = target_base / datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -159,6 +188,7 @@ class BackupService:
                 db_file = candidate
         if db_file is None:
             for cand in (
+                settings.DATA_DIR / settings.DB_NAME,
                 settings.PROJECT_ROOT / "data" / settings.DB_NAME,
                 settings.PROJECT_ROOT / settings.DB_NAME,
             ):
@@ -166,7 +196,7 @@ class BackupService:
                     db_file = cand
                     break
         if db_file is None:
-            db_file = settings.PROJECT_ROOT / "data" / settings.DB_NAME
+            db_file = settings.DATA_DIR / settings.DB_NAME
 
         copied_files: list[str] = []
 
@@ -181,10 +211,24 @@ class BackupService:
                         shutil.copy2(extra, backup_sub / extra.name)
                         results.append(extra.name)
 
-            env_file = settings.PROJECT_ROOT / ".env"
-            if env_file.exists():
-                shutil.copy2(env_file, backup_sub / ".env")
-                results.append(".env")
+            for env_candidate in (
+                settings.DATA_DIR / ".env",
+                settings.PROJECT_ROOT / ".env",
+            ):
+                if env_candidate.exists():
+                    shutil.copy2(env_candidate, backup_sub / ".env")
+                    results.append(".env")
+                    break
+
+            storage_source = settings.STORAGE_DIR
+            if storage_source.exists() and storage_source.is_dir():
+                backup_storage = backup_sub / "storage"
+                backup_storage.mkdir(parents=True, exist_ok=True)
+                for item in storage_source.iterdir():
+                    if item.is_file():
+                        shutil.copy2(item, backup_storage / item.name)
+                        results.append(f"storage/{item.name}")
+
             return results
 
         copied_files = await asyncio.to_thread(_copy_sync)

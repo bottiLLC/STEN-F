@@ -17,8 +17,10 @@ env/
 *.db-wal
 *.db-shm
 *.sqlite3
+data/
 storage/
 backups/
+uploaded_files/
 
 # Generated Files & Reports
 *.pdf

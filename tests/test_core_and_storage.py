@@ -31,6 +31,7 @@ from app.storage_repository import (
     SQLAlchemyLedgerRepository,
     SQLAlchemyMasterRepository,
     init_db,
+    migrate_legacy_data_to_data_dir,
 )
 
 
@@ -146,10 +147,10 @@ async def test_backup_service_create_backup_with_empty_target_dir_raises_value_e
 
 
 @pytest.mark.asyncio
-async def test_backup_service_create_backup_copies_db_wal_shm_and_env_files(
+async def test_backup_service_create_backup_copies_db_wal_shm_storage_and_env_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Verify SQLite database and environment backup snapshot generation including WAL and SHM."""
+    """Verify SQLite database, environment, and evidence storage backup snapshot generation."""
     # Arrange
     service = BackupService()
     db_file = tmp_path / "sten_f.db"
@@ -161,8 +162,15 @@ async def test_backup_service_create_backup_copies_db_wal_shm_and_env_files(
     env_file = tmp_path / ".env"
     env_file.write_text("DUMMY_KEY=12345", encoding="utf-8")
 
+    storage_dir = tmp_path / "storage"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    evidence_file = storage_dir / "sample_receipt.pdf"
+    evidence_file.write_bytes(b"%PDF-1.4 test evidence")
+
     monkeypatch.setattr(settings, "DATABASE_URL", f"sqlite+aiosqlite:///{db_file}")
     monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(settings, "STORAGE_DIR", storage_dir)
     target_backup_dir = tmp_path / "backups"
 
     # Act
@@ -177,6 +185,113 @@ async def test_backup_service_create_backup_copies_db_wal_shm_and_env_files(
     assert (backup_result_dir / "sten_f.db-wal").read_bytes() == b"wal-sample-content"
     assert (backup_result_dir / "sten_f.db-shm").read_bytes() == b"shm-sample-content"
     assert (backup_result_dir / ".env").read_text(encoding="utf-8") == "DUMMY_KEY=12345"
+    assert (
+        backup_result_dir / "storage" / "sample_receipt.pdf"
+    ).read_bytes() == b"%PDF-1.4 test evidence"
+
+
+@pytest.mark.asyncio
+async def test_backup_service_defaults_to_settings_backup_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify BackupService defaults to settings.BACKUP_DIR when target_dir_str is None."""
+    # Arrange
+    service = BackupService()
+    backup_target = tmp_path / "default_backups"
+    monkeypatch.setattr(settings, "BACKUP_DIR", backup_target)
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(settings, "STORAGE_DIR", tmp_path / "non_existing_storage")
+    monkeypatch.setattr(settings, "DATABASE_URL", None)
+
+    # Act
+    res_str = await service.create_backup()
+    res_path = Path(res_str)
+
+    # Assert
+    assert res_path.exists()
+    assert res_path.parent == backup_target
+
+
+def test_local_file_service_default_path_and_resolve_evidence_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify LocalFileService defaults to settings.STORAGE_DIR and resolves relative paths."""
+    # Arrange
+    storage_dir = tmp_path / "storage"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    sample_file = storage_dir / "2026_test.pdf"
+    sample_file.write_bytes(b"pdf-content")
+    monkeypatch.setattr(settings, "STORAGE_DIR", storage_dir)
+
+    # Act & Assert 1: Default initialization
+    svc = LocalFileService()
+    assert svc.storage_dir == storage_dir
+
+    # Act & Assert 2: Exact path resolution
+    resolved_exact = svc.resolve_evidence_path(str(sample_file))
+    assert resolved_exact == sample_file
+
+    # Act & Assert 3: Relocated / basename fallback resolution
+    relocated_path_str = f"/old/machine/path/to/{sample_file.name}"
+    resolved_fallback = svc.resolve_evidence_path(relocated_path_str)
+    assert resolved_fallback == sample_file
+
+    # Act & Assert 4: Non-existent file returns None
+    assert svc.resolve_evidence_path("non_existent_file.pdf") is None
+
+
+def test_migrate_legacy_data_to_data_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify legacy root assets (bookkeeping.db, storage/, backups/, .env) migrate into data/."""
+    # Arrange
+    proj_root = tmp_path / "project"
+    proj_root.mkdir()
+    data_dir = proj_root / "data"
+    storage_dir = data_dir / "storage"
+    backup_dir = data_dir / "backups"
+
+    legacy_db = proj_root / "bookkeeping.db"
+    legacy_db.write_bytes(b"legacy-sqlite")
+    legacy_wal = proj_root / "bookkeeping.db-wal"
+    legacy_wal.write_bytes(b"legacy-wal")
+
+    legacy_storage = proj_root / "storage"
+    legacy_storage.mkdir()
+    (legacy_storage / "old_receipt.pdf").write_bytes(b"pdf-data")
+
+    legacy_backups = proj_root / "backups"
+    legacy_backups.mkdir()
+    old_snap = legacy_backups / "20260101_120000"
+    old_snap.mkdir()
+    (old_snap / "backup.txt").write_text("snap", encoding="utf-8")
+
+    root_env = proj_root / ".env"
+    root_env.write_text("GEMINI_API_KEY=testkey", encoding="utf-8")
+
+    monkeypatch.setattr(settings, "PROJECT_ROOT", proj_root)
+    monkeypatch.setattr(settings, "DATA_DIR", data_dir)
+    monkeypatch.setattr(settings, "STORAGE_DIR", storage_dir)
+    monkeypatch.setattr(settings, "BACKUP_DIR", backup_dir)
+    monkeypatch.setattr(settings, "DB_NAME", "sten_f.db")
+
+    # Act 1: Run migration
+    migrate_legacy_data_to_data_dir()
+
+    # Assert 1: Assets properly migrated
+    assert (data_dir / "sten_f.db").read_bytes() == b"legacy-sqlite"
+    assert (data_dir / "sten_f.db-wal").read_bytes() == b"legacy-wal"
+    assert (storage_dir / "old_receipt.pdf").read_bytes() == b"pdf-data"
+    assert (backup_dir / "20260101_120000" / "backup.txt").read_text(
+        encoding="utf-8"
+    ) == "snap"
+    assert (data_dir / ".env").read_text(encoding="utf-8") == "GEMINI_API_KEY=testkey"
+
+    # Act 2: Re-run migration should not overwrite existing target assets
+    (data_dir / "sten_f.db").write_bytes(b"modified-sten-f-db")
+    migrate_legacy_data_to_data_dir()
+    assert (data_dir / "sten_f.db").read_bytes() == b"modified-sten-f-db"
 
 
 # --- 3. Persistence Repository Tests ---

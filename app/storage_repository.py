@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 import datetime
 from pathlib import Path
+import shutil
 from typing import Final, TypeVar
 from sqlalchemy import ForeignKey, func, select, text
 from sqlalchemy.ext.asyncio import (
@@ -42,7 +43,7 @@ from app.domain_contracts import (
 # --- 1. Datum Plane (ORM Schemas & Engine Binding) ---
 DATABASE_URL: Final[str] = (
     settings.DATABASE_URL
-    or f"sqlite+aiosqlite:///{settings.PROJECT_ROOT / 'data' / settings.DB_NAME}"
+    or f"sqlite+aiosqlite:///{settings.DATA_DIR / settings.DB_NAME}"
 )
 engine: Final[AsyncEngine] = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal: Final[async_sessionmaker[AsyncSession]] = async_sessionmaker(
@@ -194,6 +195,79 @@ def _to_domain_transaction(row: TransactionTable) -> Transaction:
     )
 
 
+def migrate_legacy_data_to_data_dir() -> None:
+    """Migrate legacy root-level databases, storage files, backups, and configs into data/ directory."""
+    data_dir = settings.DATA_DIR
+    data_dir.mkdir(parents=True, exist_ok=True)
+    settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    settings.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 1. Database Migration: root bookkeeping.db or sten_f.db -> data/sten_f.db
+    target_db = data_dir / settings.DB_NAME
+    if not target_db.exists():
+        legacy_candidates = [
+            settings.PROJECT_ROOT / "bookkeeping.db",
+            settings.PROJECT_ROOT / "sten_f.db",
+        ]
+        for leg_db in legacy_candidates:
+            if leg_db.exists():
+                shutil.copy2(leg_db, target_db)
+                log.info(
+                    "legacy_db_migrated",
+                    source=str(leg_db),
+                    destination=str(target_db),
+                )
+                for ext in ("-wal", "-shm"):
+                    leg_extra = leg_db.parent / f"{leg_db.name}{ext}"
+                    if leg_extra.exists():
+                        shutil.copy2(leg_extra, data_dir / f"{settings.DB_NAME}{ext}")
+                break
+
+    # 2. Evidence Storage Migration: root storage/ -> data/storage/
+    legacy_storage = settings.PROJECT_ROOT / "storage"
+    if (
+        legacy_storage.exists()
+        and legacy_storage.is_dir()
+        and legacy_storage.resolve() != settings.STORAGE_DIR.resolve()
+    ):
+        migrated_storage_files = 0
+        for item in legacy_storage.iterdir():
+            if item.is_file():
+                dest = settings.STORAGE_DIR / item.name
+                if not dest.exists():
+                    shutil.copy2(item, dest)
+                    migrated_storage_files += 1
+        if migrated_storage_files > 0:
+            log.info("legacy_storage_migrated", count=migrated_storage_files)
+
+    # 3. Backups Migration: root backups/ -> data/backups/
+    legacy_backups = settings.PROJECT_ROOT / "backups"
+    if (
+        legacy_backups.exists()
+        and legacy_backups.is_dir()
+        and legacy_backups.resolve() != settings.BACKUP_DIR.resolve()
+    ):
+        migrated_backup_dirs = 0
+        for item in legacy_backups.iterdir():
+            dest = settings.BACKUP_DIR / item.name
+            if not dest.exists():
+                if item.is_dir():
+                    shutil.copytree(item, dest)
+                    migrated_backup_dirs += 1
+                elif item.is_file():
+                    shutil.copy2(item, dest)
+                    migrated_backup_dirs += 1
+        if migrated_backup_dirs > 0:
+            log.info("legacy_backups_migrated", count=migrated_backup_dirs)
+
+    # 4. Environment Config Migration: root .env -> data/.env (if data/.env does not exist)
+    root_env = settings.PROJECT_ROOT / ".env"
+    data_env = settings.DATA_DIR / ".env"
+    if root_env.exists() and not data_env.exists():
+        shutil.copy2(root_env, data_env)
+        log.info("env_config_mirrored_to_data", destination=str(data_env))
+
+
 # --- 3. Public Orchestration Layer ---
 async def init_db(target_engine: AsyncEngine | None = None) -> None:
     """Initialize SQLite schema and execute auto-migration for missing columns.
@@ -201,6 +275,7 @@ async def init_db(target_engine: AsyncEngine | None = None) -> None:
     Args:
         target_engine: Optional explicit AsyncEngine instance.
     """
+    migrate_legacy_data_to_data_dir()
     eng = target_engine or engine
     db_url = str(eng.url) if hasattr(eng, "url") else (settings.DATABASE_URL or "")
     if db_url and "sqlite" in db_url:

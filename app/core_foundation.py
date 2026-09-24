@@ -61,6 +61,9 @@ class Settings(BaseSettings):
 
     APP_DIR: Path = Path(__file__).resolve().parent
     PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
+    DATA_DIR: Path = Path(__file__).resolve().parent.parent / "data"
+    STORAGE_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "storage"
+    BACKUP_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "backups"
 
     DB_NAME: str = "sten_f.db"
     DATABASE_URL: str | None = None
@@ -79,17 +82,24 @@ class Settings(BaseSettings):
     FONT_NAME: str = "HeiseiMin-W3"
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="forbid", case_sensitive=True
+        env_file=(".env", "data/.env"),
+        env_file_encoding="utf-8",
+        extra="forbid",
+        case_sensitive=True,
     )
 
     def model_post_init(self, __context: object) -> None:
-        """Resolve dynamic database URLs and system fonts upon initialization.
+        """Resolve dynamic database URLs, ensure data directories, and system fonts upon initialization.
 
         Args:
             __context: Initialization context provided by Pydantic.
         """
-        if not self.DATABASE_URL:
-            db_path = self.PROJECT_ROOT / "data" / self.DB_NAME
+        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        self.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+        if not self.DATABASE_URL or "bookkeeping.db" in self.DATABASE_URL:
+            db_path = self.DATA_DIR / self.DB_NAME
             self.DATABASE_URL = f"sqlite+aiosqlite:///{db_path}"
 
         if self.WINDOWS_FONT_PATH.exists():
