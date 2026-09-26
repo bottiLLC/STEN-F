@@ -28,7 +28,7 @@ if TYPE_CHECKING:
         LedgerService,
         MasterService,
     )
-    from app.external_services import BackupService, LocalFileService, PDFService
+    from app.external_services import LocalFileService, PDFService
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -338,17 +338,6 @@ class DI:
         return container.get_file_service()
 
     @staticmethod
-    def get_backup_service() -> BackupService:
-        """Resolve backup service instance.
-
-        Returns:
-            BackupService instance.
-        """
-        from app.application_services import container
-
-        return container.get_backup_service()
-
-    @staticmethod
     def get_pdf_service() -> PDFService:
         """Resolve PDF service instance.
 
@@ -406,19 +395,3 @@ def call_fiscal_year(fn: Callable[[FiscalYearService], Awaitable[T]]) -> T:
         Result produced by fn.
     """
     return run_scoped(DI.get_fiscal_year_service(), fn)
-
-
-def call_backup(fn: Callable[[BackupService], Awaitable[T]]) -> T:
-    """Execute BackupService coroutine within application context.
-
-    Args:
-        fn: Async callable taking BackupService.
-
-    Returns:
-        Result produced by fn.
-    """
-
-    async def _runner() -> T:
-        return await fn(DI.get_backup_service())
-
-    return run_async(_runner())

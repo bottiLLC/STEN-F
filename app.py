@@ -5,14 +5,22 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import sys
 from typing import Final
+
+# Prepend script root to sys.path for deterministic module resolution
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 import streamlit as st
 
+from backup_manager import get_backup_dir, run_backup, set_backup_dir
 from app.core_foundation import DI, log, run_async, run_scoped
 from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
 from app.storage_repository import seed_accounts
 
-_APP_ROOT: Final[Path] = Path(__file__).resolve().parent
+_APP_ROOT: Final[Path] = _ROOT
 
 
 # --- 1. Pure Transformation Helpers ---
@@ -46,6 +54,33 @@ async def load_sidebar_metadata(
 
 
 # --- 2. Presentation Orchestrator ---
+def _render_sidebar_backup() -> None:
+    """Render standardized data backup and persistence configuration controls."""
+    st.divider()
+    st.subheader("データ保護・バックアップ")
+
+    current_dir = str(get_backup_dir())
+    new_dir = st.text_input("保存先フォルダ", value=current_dir)
+    if new_dir != current_dir:
+        if st.button("保存先パスを更新", use_container_width=True):
+            save_res = set_backup_dir(new_dir)
+            if save_res["success"]:
+                st.success(save_res["message"])
+                st.rerun()
+            else:
+                st.error(save_res["message"])
+
+    if st.button("今すぐバックアップを実行", use_container_width=True):
+        with st.spinner("圧縮・整合性検証中..."):
+            res = run_backup(app_name="app")
+        if res["success"]:
+            st.success(res["message"])
+            st.caption(f"完了日時: {res['timestamp']}")
+            st.caption(f"保存先: {res['destination']}")
+        else:
+            st.error(res["message"])
+
+
 def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) -> None:
     """Render Streamlit sidebar navigation and tenant identity headers.
 
@@ -73,6 +108,8 @@ def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) ->
             )
         else:
             st.warning("⚠️ 進行中の会計年度がありません。")
+
+        _render_sidebar_backup()
 
         st.divider()
         st.caption("© 2026 合同会社ぼっち (GPL-3.0)")

@@ -18,7 +18,7 @@ from app.domain_contracts import (
     Transaction,
     TransactionLine,
 )
-from app.external_services import BackupService, LocalFileService, PDFService
+from app.external_services import LocalFileService, PDFService
 
 
 from typing import Final
@@ -192,7 +192,6 @@ def test_di_container_resolution_returns_active_service_instances() -> None:
     assert hasattr(DI.get_fiscal_year_service(), "__aenter__")
     assert isinstance(DI.get_ocr_service(), GeminiOCRService)
     assert isinstance(DI.get_file_service(), LocalFileService)
-    assert isinstance(DI.get_backup_service(), BackupService)
     assert isinstance(DI.get_pdf_service(), PDFService)
 
 

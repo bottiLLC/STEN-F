@@ -202,11 +202,11 @@ STEN-F/
 アプリケーションを停止した状態で、プロジェクト内の **`data` フォルダを丸ごと外付け HDD、USB メモリ、NAS、またはクラウドストレージ（Google Drive / OneDrive / Dropbox 等）へコピー**します。
 これだけでデータベース、証憑ファイル群、設定のすべてが完全に退避されます。
 
-#### 方法 B: 画面からのワンクリック・バックアップ
-1. STEN-F の画面から **「設定・管理」→「マスタ・システム管理」→「バックアップ」** タブを開きます。
-2. 「バックアップ保存先フォルダ」を確認（デフォルト: `./data/backups`。外部ドライブのパスを指定することも可能です）します。
-3. **「💾 ワンクリック・バックアップを実行」** ボタンをクリックします。
-4. 指定したフォルダ内に `YYYYMMDD_HHMMSS/` 形式のタイムスタンプ付きフォルダが作成され、データベースファイル（`-wal`, `-shm` 含む）、環境設定（`.env`）、および証憑ファイル群（`storage/`）が一括で安全に複製・退避されます。
+#### 方法 B: 画面サイドバーからのワンクリック・バックアップ
+1. STEN-F 画面左のサイドバーにある **「データ保護・バックアップ」** 領域を開きます。
+2. 「保存先フォルダ」を確認（デフォルト: `./backups`。Google Drive などの同期フォルダを指定して「保存先パスを更新」することも可能です）。
+3. **「今すぐバックアップを実行」** ボタンをクリックします。
+4. 一時ディレクトリでのアトミック圧縮と `testzip()` による破損検知（整合性チェック）が実行され、安全に検証された `app_backup_YYYYMMDD_HHMMSS.zip` 形式のアーカイブファイルが保存先へ確定配置されます。
 
 ---
 
@@ -262,32 +262,35 @@ STEN-F は、高凝集・単一責任原則（SRP）とテスタビリティを�
 ```text
 STEN-F/
 ├── app.py                      # Streamlit メインエントリポイント (st.navigation / ページ階層ルーティング)
+├── backup_manager.py           # データ保護基盤: 整合性検証付きアトミックZIPバックアップ・保存先管理 (Python-backup-script準拠)
 ├── run.bat                     # Windows 自動起動・環境構築ランチャー
 ├── start.command               # macOS / Linux 起動スクリプト
-├── data/                       # ★ユーザーデータ集約ディレクトリ (DB, 証憑, バックアップ, .env)
+├── data/                       # ★ユーザーデータ集約ディレクトリ (DB, 証憑, バックアップ設定, .env)
 │   ├── sten_f.db               # SQLite データベース本体
 │   ├── storage/                # 証憑ファイル (PDF・画像) 格納フォルダ
-│   ├── backups/                # バックアップスナップショット保存先
+│   ├── backup_config.json      # バックアップ保存先設定ファイル
 │   └── .env                    # ユーザー環境設定 (APIキー等)
+├── backups/                    # デフォルトのバックアップアーカイブ保存先
 ├── app/
 │   ├── __init__.py             # アプリケーションパッケージルート
 │   ├── core_foundation.py      # 基盤層 (Settings, Logging, Resilience, 非同期ランナー, DIファサード)
 │   ├── domain_contracts.py     # ドメイン契約層 (Pydantic V2 モデル, 勘定科目定数, リポジトリ抽象契約)
 │   ├── storage_repository.py   # データ永続化層 (SQLAlchemy 2.0 Async ORM, 自動マイグレーション, リポジトリ実装)
 │   ├── application_services.py # アプリケーションサービス層 (仕訳・元帳・決算・マスタ統括, DIコンテナ)
-│   ├── external_services.py    # 外部連携サービス (ローカル証憑安全保存, SHA-256検証付きZIP退避, 決算書PDF生成)
+│   ├── external_services.py    # 外部連携サービス (ローカル証憑安全保存, 決算書PDF生成)
 │   ├── ai_ocr_service.py       # AI OCR推論サービス (Gemini 1.5/2.0 API, 画像最適化・構造化仕訳抽出)
 │   └── ui/                     # プレゼンテーション層 (Streamlit ワークスペースUI)
 │       ├── editor.py           # 会計データグリッドエディタ (Key Rotation / PK追跡)
 │       └── views/              # 3大統合画面
 │           ├── journal_view.py # 仕訳・記帳 (AI証憑読取, 振替伝票入力, 仕訳帳・論理削除)
 │           ├── ledger_view.py  # 元帳・決算 (総勘定元帳, 試算表, B/S, P/L, PDF出力)
-│           └── master_view.py  # マスタ・設定 (自社情報, 会計年度・締め, 勘定科目・取引先, バックアップ)
-├── tests/                      # AAAパターン準拠・100%パス テストスイート (全100テスト)
+│           └── master_view.py  # マスタ・設定 (自社情報, 会計年度・締め, 勘定科目・取引先)
+├── tests/                      # AAAパターン準拠・100%パス テストスイート (全150+テスト)
 │   ├── conftest.py             # 共有テストフィクスチャ (インメモリDB, 非同期DIコンテナ)
+│   ├── test_backup_manager.py  # データバックアップ・整合性検証・サイドバーUIテスト
 │   ├── test_core_and_storage.py# 基盤・ストレージ・リポジトリ・自動マイグレーション・シード検証
 │   ├── test_domain_and_services.py # ドメインモデル・会計計算・ユースケースサービステスト
-│   ├── test_ocr_and_external.py    # AI OCR・PDF生成・バックアップ・証憑ファイル保存テスト
+│   ├── test_ocr_and_external.py    # AI OCR・PDF生成・証憑ファイル保存テスト
 │   ├── test_ui_and_system.py   # UIコンポーネント・Streamlit結合・システム統合テスト
 │   └── test_fuzz.py            # Hypothesis によるプロパティベース・ファズテスト
 └── pyproject.toml              # プロジェクト構成・依存関係・mypy/ruff/pytest設定

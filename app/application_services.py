@@ -38,7 +38,7 @@ from app.storage_repository import (
 
 if TYPE_CHECKING:
     from app.ai_ocr_service import GeminiOCRService
-    from app.external_services import BackupService, LocalFileService, PDFService
+    from app.external_services import LocalFileService, PDFService
 
 # --- 1. Datum Plane (Constants & Types) ---
 _DEBIT_POSITIVE_TYPES: Final[frozenset[AccountType]] = frozenset(
@@ -1042,16 +1042,6 @@ class Container:
         from app.external_services import PDFService
 
         return PDFService()
-
-    def get_backup_service(self) -> BackupService:
-        """Instantiate backup service.
-
-        Returns:
-            BackupService instance.
-        """
-        from app.external_services import BackupService
-
-        return BackupService()
 
 
 container: Final[Container] = Container()

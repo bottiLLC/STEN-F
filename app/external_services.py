@@ -3,11 +3,9 @@
 
 from __future__ import annotations
 
-import asyncio
-from datetime import date, datetime
+from datetime import date
 import io
 from pathlib import Path
-import shutil
 import aiofiles
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -15,7 +13,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from app.core_foundation import log, settings
+from app.core_foundation import settings
 from app.domain_contracts import (
     Corporation,
     FinancialReport,
@@ -150,92 +148,6 @@ class LocalFileService:
         async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)
         return str(save_path)
-
-
-class BackupService:
-    """Service performing scheduled or on-demand user data snapshots."""
-
-    async def create_backup(self, target_dir_str: str | None = None) -> str:
-        """Execute filesystem snapshot of SQLite database, environment, and evidence files.
-
-        Args:
-            target_dir_str: Optional target root directory for backup repository. Defaults to settings.BACKUP_DIR.
-
-        Returns:
-            Created backup directory path string.
-
-        Raises:
-            ValueError: If target_dir_str is empty string.
-        """
-        if target_dir_str is not None:
-            if not target_dir_str.strip():
-                raise ValueError("バックアップ先ディレクトリが指定されていません。")
-            target_path_str = target_dir_str
-        else:
-            target_path_str = str(settings.BACKUP_DIR)
-
-        target_base = Path(target_path_str)
-        target_base.mkdir(parents=True, exist_ok=True)
-
-        backup_sub = target_base / datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_sub.mkdir(parents=True, exist_ok=True)
-
-        db_file: Path | None = None
-        db_url = settings.DATABASE_URL
-        if db_url is not None and ":///" in db_url:
-            candidate = Path(db_url.split(":///", 1)[-1])
-            if candidate.exists():
-                db_file = candidate
-        if db_file is None:
-            for cand in (
-                settings.DATA_DIR / settings.DB_NAME,
-                settings.PROJECT_ROOT / "data" / settings.DB_NAME,
-                settings.PROJECT_ROOT / settings.DB_NAME,
-            ):
-                if cand.exists():
-                    db_file = cand
-                    break
-        if db_file is None:
-            db_file = settings.DATA_DIR / settings.DB_NAME
-
-        copied_files: list[str] = []
-
-        def _copy_sync() -> list[str]:
-            results: list[str] = []
-            if db_file.exists():
-                shutil.copy2(db_file, backup_sub / db_file.name)
-                results.append(db_file.name)
-                for ext in ("-wal", "-shm"):
-                    extra = db_file.parent / f"{db_file.name}{ext}"
-                    if extra.exists():
-                        shutil.copy2(extra, backup_sub / extra.name)
-                        results.append(extra.name)
-
-            for env_candidate in (
-                settings.DATA_DIR / ".env",
-                settings.PROJECT_ROOT / ".env",
-            ):
-                if env_candidate.exists():
-                    shutil.copy2(env_candidate, backup_sub / ".env")
-                    results.append(".env")
-                    break
-
-            storage_source = settings.STORAGE_DIR
-            if storage_source.exists() and storage_source.is_dir():
-                backup_storage = backup_sub / "storage"
-                backup_storage.mkdir(parents=True, exist_ok=True)
-                for item in storage_source.iterdir():
-                    if item.is_file():
-                        shutil.copy2(item, backup_storage / item.name)
-                        results.append(f"storage/{item.name}")
-
-            return results
-
-        copied_files = await asyncio.to_thread(_copy_sync)
-        log.info(
-            "backup_created", directory=str(backup_sub), file_count=len(copied_files)
-        )
-        return str(backup_sub)
 
 
 class PDFService:

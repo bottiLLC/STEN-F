@@ -29,12 +29,12 @@ jobs:
 
     - name: Lint with ruff
       run: |
-        uv run ruff check app tests
-        uv run ruff format --check app tests
+        uv run ruff check app tests backup_manager.py
+        uv run ruff format --check app tests backup_manager.py
 
     - name: Type check with mypy
       run: |
-        uv run mypy app
+        uv run mypy app tests backup_manager.py
 
     - name: Run tests with pytest
       env:
@@ -42,4 +42,4 @@ jobs:
         DATABASE_URL: "sqlite+aiosqlite:///:memory:"
         OPENAI_API_KEY: "dummy-key-for-ci"
       run: |
-        uv run pytest -v -m "not fuzz" --cov=app
+        uv run pytest -v -m "not fuzz" --cov=app --cov=backup_manager

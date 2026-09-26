@@ -39,7 +39,7 @@ dev = [
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q --asyncio-mode=auto --cov=app --cov-branch --cov-report=term-missing"
+addopts = "-ra -q --asyncio-mode=auto --cov=app --cov=backup_manager --cov-branch --cov-report=term-missing"
 testpaths = [
     "tests",
 ]
@@ -55,7 +55,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["app"]
+source = ["app", "backup_manager"]
 branch = true
 
 [tool.coverage.report]
@@ -81,4 +81,7 @@ python_version = "3.14"
 strict = true
 ignore_missing_imports = true
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
-files = ["app", "tests"]
+files = ["app", "tests", "backup_manager.py"]
+
+[tool.ruff.lint]
+ignore = ["E402", "EXE002"]

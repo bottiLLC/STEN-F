@@ -21,7 +21,6 @@ import streamlit as st
 
 from app.core_foundation import (
     DI,
-    call_backup,
     call_fiscal_year,
     call_journal,
     call_master,
@@ -40,10 +39,10 @@ from app.ui.editor import render_accounting_editor
 
 st.header("マスタ・システム設定", divider="blue")
 st.caption(
-    "事業者情報、会計年度・決算締め処理、期首残高、勘定科目・取引先・摘要マスタ、バックアップ、AI設定を一括管理します。"
+    "事業者情報、会計年度・決算締め処理、期首残高、勘定科目・取引先・摘要マスタ、AI設定を一括管理します。"
 )
 
-tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_backup, tab_sys = st.tabs(
+tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_sys = st.tabs(
     [
         "🏢 自社情報",
         "📅 会計年度・年度締め",
@@ -51,7 +50,6 @@ tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_backup, tab_sys = st.tab
         "📑 勘定科目",
         "🤝 取引先",
         "💬 よく使う摘要",
-        "💾 バックアップ",
         "⚙️ AI・システム設定",
     ]
 )
@@ -446,25 +444,7 @@ with tab_abs:
         abs_df, pk_column="id", base_key="editor_abstracts", on_commit=on_commit_abs
     )
 
-# 7. バックアップ
-with tab_backup:
-    st.subheader("ユーザーデータ（DB・証憑・設定）の一括バックアップ")
-    st.caption(
-        "本システムではすべてのデータ（SQLite DB・証憑ファイル・設定）が `data` フォルダに集約されています。\n"
-        "バージョンアップ時は新環境へ `data` フォルダを丸ごと移動するだけで全データが引き継がれます。\n"
-        "外部ドライブ等への退避が必要な場合は、下記の保存先を指定してバックアップを実行してください。"
-    )
-    backup_dir = st.text_input("バックアップ保存先フォルダ", value="./data/backups")
-    if st.button(
-        "💾 ワンクリック・バックアップを実行", type="primary", width="stretch"
-    ):
-        try:
-            bk_path = call_backup(lambda s: s.create_backup(backup_dir))
-            st.success(f"バックアップが正常に完了しました！\n保存先: `{bk_path}`")
-        except Exception as e:
-            st.error(f"バックアップ失敗: {e}")
-
-# 8. AI・システム設定
+# 7. AI・システム設定
 with tab_sys:
     st.subheader("⚙️ AI（Google Gemini）＆ システム設定")
     sys_conf = call_master(lambda s: s.get_system_settings())

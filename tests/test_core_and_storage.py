@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.application_services import Container
 from app.core_foundation import (
-    call_backup,
     call_fiscal_year,
     normalize_amount,
     settings,
@@ -26,7 +25,7 @@ from app.domain_contracts import (
     Transaction,
     TransactionLine,
 )
-from app.external_services import BackupService, LocalFileService
+from app.external_services import LocalFileService
 from app.storage_repository import (
     SQLAlchemyLedgerRepository,
     SQLAlchemyMasterRepository,
@@ -129,88 +128,6 @@ async def test_local_file_service_save_evidence_for_transaction_strips_corporate
     assert saved_tx_path.is_file()
     assert saved_tx_path.read_bytes() == raw_data
     assert f"20260401_25000_{expected_suffix}_{tx_id}.pdf" in saved_tx_path.name
-
-
-@pytest.mark.asyncio
-async def test_backup_service_create_backup_with_empty_target_dir_raises_value_error() -> (
-    None
-):
-    """Ensure BackupService raises ValueError with expected message when target directory is empty."""
-    # Arrange
-    service = BackupService()
-
-    # Act & Assert
-    with pytest.raises(
-        ValueError, match="バックアップ先ディレクトリが指定されていません。"
-    ):
-        await service.create_backup("")
-
-
-@pytest.mark.asyncio
-async def test_backup_service_create_backup_copies_db_wal_shm_storage_and_env_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Verify SQLite database, environment, and evidence storage backup snapshot generation."""
-    # Arrange
-    service = BackupService()
-    db_file = tmp_path / "sten_f.db"
-    db_file.write_bytes(b"SQLite format 3\x00dummy-db-content")
-    wal_file = tmp_path / "sten_f.db-wal"
-    wal_file.write_bytes(b"wal-sample-content")
-    shm_file = tmp_path / "sten_f.db-shm"
-    shm_file.write_bytes(b"shm-sample-content")
-    env_file = tmp_path / ".env"
-    env_file.write_text("DUMMY_KEY=12345", encoding="utf-8")
-
-    storage_dir = tmp_path / "storage"
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    evidence_file = storage_dir / "sample_receipt.pdf"
-    evidence_file.write_bytes(b"%PDF-1.4 test evidence")
-
-    monkeypatch.setattr(settings, "DATABASE_URL", f"sqlite+aiosqlite:///{db_file}")
-    monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(settings, "STORAGE_DIR", storage_dir)
-    target_backup_dir = tmp_path / "backups"
-
-    # Act
-    backup_result_path_str = await service.create_backup(str(target_backup_dir))
-    backup_result_dir = Path(backup_result_path_str)
-
-    # Assert
-    assert backup_result_dir.is_dir()
-    assert (
-        backup_result_dir / "sten_f.db"
-    ).read_bytes() == b"SQLite format 3\x00dummy-db-content"
-    assert (backup_result_dir / "sten_f.db-wal").read_bytes() == b"wal-sample-content"
-    assert (backup_result_dir / "sten_f.db-shm").read_bytes() == b"shm-sample-content"
-    assert (backup_result_dir / ".env").read_text(encoding="utf-8") == "DUMMY_KEY=12345"
-    assert (
-        backup_result_dir / "storage" / "sample_receipt.pdf"
-    ).read_bytes() == b"%PDF-1.4 test evidence"
-
-
-@pytest.mark.asyncio
-async def test_backup_service_defaults_to_settings_backup_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Verify BackupService defaults to settings.BACKUP_DIR when target_dir_str is None."""
-    # Arrange
-    service = BackupService()
-    backup_target = tmp_path / "default_backups"
-    monkeypatch.setattr(settings, "BACKUP_DIR", backup_target)
-    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(settings, "STORAGE_DIR", tmp_path / "non_existing_storage")
-    monkeypatch.setattr(settings, "DATABASE_URL", None)
-
-    # Act
-    res_str = await service.create_backup()
-    res_path = Path(res_str)
-
-    # Assert
-    assert res_path.exists()
-    assert res_path.parent == backup_target
 
 
 def test_local_file_service_default_path_and_resolve_evidence_path(
@@ -612,24 +529,16 @@ async def test_seed_accounts_with_service_populates_defaults_idempotently(
 
 
 @pytest.mark.asyncio
-async def test_call_fiscal_year_and_call_backup_helper_functions(
-    container: Container, tmp_path: Path
+async def test_call_fiscal_year_helper_function(
+    container: Container,
 ) -> None:
-    """Verify call_fiscal_year and call_backup helper functions execute under active scopes."""
+    """Verify call_fiscal_year helper function executes under active scope."""
     # Arrange & Act: call_fiscal_year
     fys = call_fiscal_year(lambda s: s.master_service.get_fiscal_years())
 
     # Assert
     assert isinstance(fys, list)
     assert len(fys) > 0
-
-    # Arrange & Act: call_backup
-    backup_target = tmp_path / "backups_test"
-    backup_dir = call_backup(lambda b: b.create_backup(str(backup_target)))
-
-    # Assert
-    assert isinstance(backup_dir, str)
-    assert Path(backup_dir).exists()
 
 
 @pytest.mark.asyncio
