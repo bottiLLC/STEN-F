@@ -56,6 +56,8 @@ _DEBIT_POSITIVE_TYPES: Final[frozenset[AccountType]] = frozenset(
 
 
 class GeneralLedgerLine(TypedDict):
+    """General ledger line representation for account ledger display."""
+
     日付: date
     摘要: str
     借方: int

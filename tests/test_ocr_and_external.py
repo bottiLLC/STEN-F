@@ -196,9 +196,11 @@ class TestOCRStructuralValidation:
     """Test suite ensuring fail-fast semantic validation of parsed receipts."""
 
     def setup_method(self) -> None:
+        """Initialize OCR service fixture for structural validation test suite."""
         self.service = GeminiOCRService()
 
     def test_valid_receipt_passes_without_manual_review(self) -> None:
+        """Verify structurally valid receipt payload clears validation flags without errors."""
         # Arrange
         data = ReceiptData(
             tax_breakdown=[

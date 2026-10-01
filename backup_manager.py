@@ -13,6 +13,7 @@ _DEFAULT_BACKUP_DIR = Path("./backups")
 
 
 def get_backup_dir() -> Path:
+    """Retrieve resolved destination directory path for data backups."""
     if _CONFIG_FILE.exists():
         try:
             with open(_CONFIG_FILE, encoding="utf-8") as f:
@@ -31,6 +32,7 @@ def get_backup_dir() -> Path:
 
 
 def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
+    """Configure and persist destination directory path for data backups."""
     path = Path(target_dir).resolve()
     try:
         path.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,7 @@ def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
 def run_backup(
     app_name: str = "app", source_dir: str = "./data"
 ) -> dict[str, str | bool]:
+    """Execute atomic data backup with testzip integrity verification."""
     source_path = Path(source_dir).resolve()
 
     # 1. Interlock: Source presence

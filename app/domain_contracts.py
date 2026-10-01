@@ -136,6 +136,8 @@ _RAW_ACCOUNTS: Final[tuple[tuple[str, str, AccountType, str], ...]] = (
 
 
 class DefaultAccountDict(TypedDict):
+    """Dictionary representation of a standard default account template."""
+
     code: str
     name: str
     type: AccountType
@@ -143,6 +145,8 @@ class DefaultAccountDict(TypedDict):
 
 
 class TrialBalanceRawRow(TypedDict):
+    """Raw aggregated row from database query representing trial balance totals."""
+
     account_id: int
     total_debit: int
     total_credit: int
