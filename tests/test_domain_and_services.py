@@ -50,10 +50,10 @@ async def test_master_service_account_and_counterparty_lifecycle(
 
         # Act & Assert: Counterparty sorting by Japanese Kana reading
         cp1 = await ms.save_counterparty(
-            Counterparty(name="株式会社ベータ", reading="カブシキガイシャベータ")
+            Counterparty(name="株式会社ベータ", name_kana="カブシキガイシャベータ")
         )
         cp2 = await ms.save_counterparty(
-            Counterparty(name="合同会社アルファ", reading="ゴウドウガイシャアルファ")
+            Counterparty(name="合同会社アルファ", name_kana="ゴウドウガイシャアルファ")
         )
         assert cp1.id is not None and cp2.id is not None
 
@@ -371,7 +371,7 @@ def test_account_type_label_and_constants() -> None:
     acc = Account(code="1110", name="現金", type=AccountType.CURRENT_ASSET)
 
     # Assert
-    assert acc.type_label == "流動資産"
+    assert acc.type.label == "流動資産"
     assert len(DEFAULT_ACCOUNTS) >= 20
 
 

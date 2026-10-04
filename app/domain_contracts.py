@@ -165,11 +165,6 @@ class Account(BaseModel):
     type: AccountType
     description: str | None = None
 
-    @property
-    def type_label(self) -> str:
-        """Japanese localized label for account category."""
-        return self.type.label
-
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
@@ -192,7 +187,6 @@ class Counterparty(BaseModel):
     id: int | None = None
     name: str
     name_kana: str | None = None
-    reading: str | None = None
     invoice_number: str | None = Field(None, pattern=r"^T[0-9]{13}$")
     debit_account_id: int | None = None
     credit_account_id: int | None = None

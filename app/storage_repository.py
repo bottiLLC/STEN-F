@@ -555,10 +555,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
             row = res.scalar_one_or_none()
 
         row = row or CounterpartyTable()
-        row.name, row.name_kana = (
-            cp.name,
-            getattr(cp, "reading", None) or getattr(cp, "name_kana", None),
-        )
+        row.name, row.name_kana = cp.name, cp.name_kana
         row.invoice_number = cp.invoice_number or None
         row.debit_account_id = getattr(cp, "debit_account_id", None)
         row.credit_account_id = getattr(cp, "credit_account_id", None)

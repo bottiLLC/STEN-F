@@ -116,7 +116,7 @@ def _clean_counterparty_sort_key(cp: Counterparty) -> str:
     Returns:
         Cleansed kana or name string suitable for sorting.
     """
-    key = str(cp.reading or cp.name_kana or cp.name or "")
+    key = str(cp.name_kana or cp.name or "")
     for token in _LEGAL_ENTITY_KANA:
         key = key.replace(token, "")
     return key
