@@ -40,6 +40,6 @@ jobs:
       env:
         PYTHONPATH: .:app
         DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-        OPENAI_API_KEY: "dummy-key-for-ci"
+        GEMINI_API_KEY: "dummy-key-for-ci"
       run: |
         uv run pytest -v -m "not fuzz" --cov=app --cov=backup_manager
