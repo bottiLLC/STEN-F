@@ -610,4 +610,3 @@ Extract the following fields into a valid JSON object matching the requested sch
         return f"⚠️ **Gemini API エラー (Code: {code or '不明'})**\n\n{raw_msg}"
 
     _validate_receipt = staticmethod(validate_receipt_structure)
-    analyze_receipt = extract_receipt_data

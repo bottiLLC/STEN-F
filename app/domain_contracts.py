@@ -181,9 +181,7 @@ class Corporation(BaseModel):
     address: str | None = None
     representative_title: str | None = None
     representative_name: str | None = None
-    corporate_number: str | None = None
     invoice_number: str | None = None
-    phone_number: str | None = None
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -228,7 +226,6 @@ class FiscalYear(BaseModel):
     end_date: date = Field(..., description="終了日")
     status: str = Field("OPEN", description="ステータス (OPEN/CLOSED)")
     period_number: int | None = Field(None, description="期数 (数値)")
-    created_at: datetime | None = Field(None, description="作成日時")
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -330,7 +327,6 @@ class ReceiptData(BaseModel):
     tax_breakdown: list[TaxBreakdownItem] | None = None
     total_tax_amount: int | None = None
     total_amount_excl_tax: int | None = None
-    confidence_score: float = 0.0
     needs_manual_review: bool = False
     is_registered_merchant: bool = False
     error_message: str | None = None
@@ -342,16 +338,12 @@ class ReceiptData(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
-Receipt = ReceiptData
-
-
 class SystemSettings(BaseModel):
     """Global system configuration model stored in database."""
 
     id: int | None = Field(None, description="Database ID")
     ai_api_key: str | None = Field(None, description="Gemini API Key for AI operations")
     backup_path: str | None = Field(None, description="Database backup directory path")
-    ai_model: str | None = Field(None, description="AI Model")
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 

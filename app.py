@@ -20,8 +20,6 @@ from app.core_foundation import DI, log, run_async, run_scoped
 from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
 from app.storage_repository import seed_accounts
 
-_APP_ROOT: Final[Path] = _ROOT
-
 
 # --- 1. Pure Transformation Helpers ---
 def resolve_active_fiscal_year(fys: list[FiscalYear]) -> FiscalYear | None:
@@ -131,7 +129,7 @@ def main() -> None:
         except Exception as e:
             log.error("startup_seeding_error", error=str(e))
 
-    views_dir = _APP_ROOT / "app" / "ui" / "views"
+    views_dir = _ROOT / "app" / "ui" / "views"
     pages = [
         st.Page(
             str(views_dir / "journal_view.py"),

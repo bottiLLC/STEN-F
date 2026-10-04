@@ -31,7 +31,6 @@ st.caption(
 
 accounts = call_master(lambda s: s.get_accounts())
 abstracts = call_master(lambda s: s.get_abstracts())
-counterparties = call_master(lambda s: s.get_counterparties())
 all_fys = call_master(lambda s: s.get_fiscal_years())
 open_fy = next((f for f in all_fys if f.status == "OPEN"), None)
 account_labels = [""] + [
@@ -248,7 +247,7 @@ with tab_entry:
 # 2. 仕訳帳一覧
 with tab_history:
     st.subheader("仕訳帳 (General Journal) 一覧・検索・CSV出力")
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
+    _, _, col_f3 = st.columns([2, 2, 2])
     s_date = st.date_input(
         "開始日",
         value=open_fy.start_date if open_fy else date(date.today().year, 1, 1),

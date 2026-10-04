@@ -53,7 +53,6 @@ _TRANS_MAP: Final[MappingProxyType[int, str | None]] = MappingProxyType(
 class Settings(BaseSettings):
     """Immutable application settings anchored to filesystem location."""
 
-    APP_DIR: Path = Path(__file__).resolve().parent
     PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
     DATA_DIR: Path = Path(__file__).resolve().parent.parent / "data"
     STORAGE_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "storage"
@@ -64,9 +63,6 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str | None = None
     GEMINI_DEFAULT_MODEL: str = "gemini-3.5-flash-lite"
-
-    APP_TITLE: str = "STEN-F"
-    CURRENCY_SYMBOL: str = "¥"
 
     WINDOWS_FONT_PATH: Path = Path("C:/Windows/Fonts/msgothic.ttc")
     FONT_PATH: Path | None = None
