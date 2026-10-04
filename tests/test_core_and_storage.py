@@ -68,34 +68,6 @@ def test_normalize_amount_with_various_inputs_returns_expected_integer(
 
 # --- 2. Storage & Backup External Services Tests ---
 @pytest.mark.asyncio
-async def test_local_file_service_save_evidence_creates_file_with_sanitized_name_and_content(
-    tmp_path: Path,
-) -> None:
-    """Verify local evidence storage creates valid file with sanitized name and content."""
-    # Arrange
-    service = LocalFileService(base_dir=tmp_path)
-    raw_data = b"%PDF-1.4 dummy file content"
-    target_date = date(2026, 4, 1)
-
-    # Act
-    saved_path_str = await service.save_evidence(
-        file_bytes=raw_data,
-        original_filename="receipt.pdf",
-        date_obj=target_date,
-        description="Office Supplies / PC",
-        amount=15000,
-    )
-    saved_path = Path(saved_path_str)
-
-    # Assert
-    assert (tmp_path / "storage").is_dir()
-    assert saved_path.is_file()
-    assert saved_path.read_bytes() == raw_data
-    assert "2026-04-01" in saved_path.name
-    assert "15000.pdf" in saved_path.name
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("corp_input", "expected_suffix"),
     [

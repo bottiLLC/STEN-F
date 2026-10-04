@@ -335,11 +335,7 @@ class GeminiOCRService:
 
         async with container.master_service_scope() as ms:
             settings_obj = await ms.get_system_settings()
-            api_key = (
-                settings_obj.ai_api_key
-                or settings.GEMINI_API_KEY
-                or settings.OPENAI_API_KEY
-            )
+            api_key = settings_obj.ai_api_key or settings.GEMINI_API_KEY
 
         if not api_key:
             raise ValueError(
@@ -615,6 +611,3 @@ Extract the following fields into a valid JSON object matching the requested sch
 
     _validate_receipt = staticmethod(validate_receipt_structure)
     analyze_receipt = extract_receipt_data
-
-
-OpenAIOCRService: Final[type[GeminiOCRService]] = GeminiOCRService

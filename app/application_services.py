@@ -5,9 +5,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-import csv
 from datetime import date, timedelta
-import io
 from typing import TYPE_CHECKING, Final, TypedDict
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -223,17 +221,6 @@ class MasterService:
             Persisted FiscalYear instance.
         """
         return await self.repository.save_fiscal_year(fy)
-
-    async def create_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
-        """Alias for creating fiscal year boundary.
-
-        Args:
-            fy: FiscalYear domain model.
-
-        Returns:
-            Persisted FiscalYear instance.
-        """
-        return await self.save_fiscal_year(fy)
 
     async def delete_fiscal_year(self, fy_id: int) -> None:
         """Remove fiscal year record.
@@ -746,76 +733,6 @@ class JournalService:
             transaction_id: Primary key of transaction to delete.
         """
         await self.repository.delete_transaction(transaction_id)
-
-    async def export_journal_entries_csv(
-        self, start_date: date | None = None, end_date: date | None = None
-    ) -> str:
-        """Export filtered journal entries to RFC 4180 CSV string.
-
-        Args:
-            start_date: Optional inclusive start date.
-            end_date: Optional inclusive end date.
-
-        Returns:
-            CSV encoded string of journal entries.
-        """
-        txs = await self.repository.get_transactions(
-            start_date=start_date,
-            end_date=end_date,
-            include_deleted=False,
-            include_relationships=True,
-        )
-        output = io.StringIO()
-        w = csv.writer(output)
-        w.writerow(
-            [
-                "取引日",
-                "ID",
-                "摘要",
-                "取引先",
-                "登録番号",
-                "勘定科目コード",
-                "勘定科目",
-                "借方金額",
-                "貸方金額",
-            ]
-        )
-
-        for t in txs:
-            common = [
-                t.date.isoformat(),
-                t.id,
-                t.description,
-                t.counterparty or "",
-                t.invoice_number or "",
-            ]
-            for line in t.lines:
-                code = line.account.code if line.account else ""
-                name = line.account.name if line.account else f"ID:{line.account_id}"
-                w.writerow(
-                    common
-                    + [
-                        code,
-                        name,
-                        line.debit if line.debit > 0 else 0,
-                        line.credit if line.credit > 0 else 0,
-                    ]
-                )
-        return output.getvalue()
-
-    async def get_frequent_account_ids(self, limit: int = 5) -> list[int]:
-        """Fetch most frequently utilized account identifiers.
-
-        Args:
-            limit: Maximum count of IDs to return.
-
-        Returns:
-            List of account IDs ordered by usage.
-        """
-        try:
-            return await self.repository.get_frequent_account_ids(limit)
-        except Exception:
-            return []
 
 
 class FiscalYearService:

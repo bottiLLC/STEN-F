@@ -89,35 +89,6 @@ class LocalFileService:
 
         return None
 
-    async def save_evidence(
-        self,
-        file_bytes: bytes,
-        original_filename: str,
-        date_obj: date,
-        description: str,
-        amount: int,
-    ) -> str:
-        """Persist evidence file with date, description, and amount tags.
-
-        Args:
-            file_bytes: Raw binary file payload.
-            original_filename: Name of source document uploaded.
-            date_obj: Transaction date.
-            description: Summary of transaction.
-            amount: Integer total amount.
-
-        Returns:
-            Saved absolute or anchored filesystem path string.
-        """
-        ext = Path(original_filename).suffix or ".pdf"
-        save_path = (
-            self.storage_dir
-            / f"{date_obj}_{_sanitize_file_name(description)}_{amount}{ext}"
-        )
-        async with aiofiles.open(save_path, "wb") as f:
-            await f.write(file_bytes)
-        return str(save_path)
-
     async def save_evidence_for_transaction(
         self,
         file_bytes: bytes,
@@ -163,8 +134,6 @@ class PDFService:
         fy: FiscalYear | None = None,
         report_date: date | None = None,
         audit_date: date | None = None,
-        *,
-        fiscal_year: FiscalYear | None = None,
     ) -> bytes:
         """Synthesize A4 PDF annual financial statements.
 
@@ -174,16 +143,11 @@ class PDFService:
             fy: Active fiscal period metadata.
             report_date: Report issuance date.
             audit_date: Statutory audit completion date.
-            fiscal_year: Keyword alias for active fiscal period metadata.
 
         Returns:
             Raw PDF bytes stream.
         """
-        target_fy: FiscalYear = (
-            fy
-            if fy is not None
-            else (fiscal_year if fiscal_year is not None else rpt.fiscal_year)
-        )
+        target_fy: FiscalYear = fy if fy is not None else rpt.fiscal_year
         rep_date: date = report_date if report_date is not None else date.today()
         aud_date: date = audit_date if audit_date is not None else rep_date
 

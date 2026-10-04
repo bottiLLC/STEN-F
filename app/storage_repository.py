@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 import datetime
 from pathlib import Path
 import shutil
@@ -294,16 +293,6 @@ async def init_db(target_engine: AsyncEngine | None = None) -> None:
                 )
             except Exception as e:
                 log.warning("db_migration_skip", column="backup_path", error=str(e))
-
-
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Yield managed async session instance.
-
-    Yields:
-        Active AsyncSession for database operations.
-    """
-    async with AsyncSessionLocal() as session:
-        yield session
 
 
 class SQLAlchemyMasterRepository(IMasterRepository):
@@ -909,29 +898,6 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             db_tx.evidence_path = path
             return True
         return False
-
-    async def get_frequent_account_ids(self, limit: int = 5) -> list[int]:
-        """Retrieve most frequently utilized account ids.
-
-        Args:
-            limit: Maximum count of account ids to return.
-
-        Returns:
-            List of account IDs ranked by usage frequency.
-        """
-        stmt = (
-            select(TransactionLineTable.account_id)
-            .join(
-                TransactionTable,
-                TransactionTable.id == TransactionLineTable.transaction_id,
-            )
-            .where(TransactionTable.is_deleted.is_(False))
-            .group_by(TransactionLineTable.account_id)
-            .order_by(func.count(TransactionLineTable.account_id).desc())
-            .limit(limit)
-        )
-        res = await self.session.execute(stmt)
-        return list(res.scalars().all())
 
 
 async def seed_accounts_with_service(

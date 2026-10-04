@@ -6,7 +6,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date, datetime
 from enum import Enum
-import re
 from typing import Final, TypedDict
 
 from pydantic import (
@@ -409,22 +408,7 @@ class FinancialReport(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
-# --- 2. Internal Pure Transformations ---
-def validate_invoice_number_format(number: str | None) -> bool:
-    """Validate Qualified Invoice registration number syntax (T + 13 digits).
-
-    Args:
-        number: Candidate registration number string.
-
-    Returns:
-        True if matching official T-number format, False otherwise.
-    """
-    if not number:
-        return False
-    return bool(re.match(r"^T[0-9]{13}$", number.strip()))
-
-
-# --- 3. Public Domain Interfaces ---
+# --- 2. Public Domain Interfaces ---
 class IMasterRepository(ABC):
     """Abstract contract for master entity persistence and retrieval."""
 
@@ -584,11 +568,6 @@ class ILedgerRepository(ABC):
     @abstractmethod
     async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
         """Update storage file path of attached receipt evidence."""
-        ...
-
-    @abstractmethod
-    async def get_frequent_account_ids(self, limit: int = 5) -> list[int]:
-        """Fetch most frequently used debit/credit account IDs."""
         ...
 
     @abstractmethod

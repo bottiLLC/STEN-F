@@ -6,18 +6,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
 from decimal import Decimal, ROUND_HALF_UP
-import functools
-import logging
 from pathlib import Path
-import sys
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Final, TypeVar
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import sniffio
 import structlog
-import tenacity
-from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponential
 
 if TYPE_CHECKING:
     from contextlib import AbstractAsyncContextManager
@@ -30,7 +25,6 @@ if TYPE_CHECKING:
     )
     from app.external_services import LocalFileService, PDFService
 
-P = ParamSpec("P")
 T = TypeVar("T")
 S = TypeVar("S")
 
@@ -70,9 +64,6 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str | None = None
     GEMINI_DEFAULT_MODEL: str = "gemini-3.5-flash-lite"
-    OPENAI_API_KEY: str | None = None
-    OPENAI_DEFAULT_MODEL: str = "gpt-5.6-terra"
-    OPENAI_REASONING_EFFORT: str = "high"
 
     APP_TITLE: str = "STEN-F"
     CURRENCY_SYMBOL: str = "¥"
@@ -84,7 +75,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(".env", "data/.env"),
         env_file_encoding="utf-8",
-        extra="forbid",
+        extra="ignore",
         case_sensitive=True,
     )
 
@@ -137,79 +128,11 @@ def normalize_amount(value: object) -> int:
         return 0
 
 
-def configure_logging() -> None:
-    """Configure structured JSON logging for runtime observability."""
-    logging.basicConfig(format="%(message)s", stream=sys.stdout, level=logging.INFO)
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
-
-
 logger: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 log: Final[structlog.stdlib.BoundLogger] = logger
 
 
 # --- 3. Public Orchestration Layer ---
-def resilient_api_call(
-    max_retries: int = 3,
-    base_delay: float = 1.0,
-    exceptions: tuple[type[BaseException], ...] = (Exception,),
-) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
-    """Decorate async callable with exponential backoff retry clamping.
-
-    Args:
-        max_retries: Maximum number of execution attempts.
-        base_delay: Initial exponential delay factor in seconds.
-        exceptions: Tuple of catchable exception types eligible for retry.
-
-    Returns:
-        Decorated async function wrapper.
-    """
-
-    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
-        @functools.wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            def before_sleep(retry_state: tenacity.RetryCallState) -> None:
-                log.warning(
-                    "api_call_retry",
-                    function=func.__name__,
-                    attempt=retry_state.attempt_number,
-                    max_retries=max_retries,
-                    error=str(
-                        retry_state.outcome.exception()
-                        if retry_state.outcome
-                        else "unknown"
-                    ),
-                    delay=retry_state.next_action.sleep
-                    if retry_state.next_action
-                    else 0,
-                )
-
-            async for attempt in tenacity.AsyncRetrying(
-                wait=wait_exponential(multiplier=base_delay, min=2, max=10),
-                stop=stop_after_attempt(max_retries),
-                reraise=True,
-                retry=retry_if_exception_type(exceptions),
-                before_sleep=before_sleep,
-            ):
-                with attempt:
-                    return await func(*args, **kwargs)
-            raise RuntimeError("Retry loop exhausted unexpectedly")
-
-        return wrapper
-
-    return decorator
 
 
 def run_async(coro: Coroutine[Any, Any, T]) -> T:

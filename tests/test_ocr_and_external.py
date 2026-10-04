@@ -11,7 +11,7 @@ import pytest
 from pytest_mock import MockerFixture
 from google.genai.errors import APIError
 
-from app.ai_ocr_service import GeminiOCRService, OpenAIOCRService
+from app.ai_ocr_service import GeminiOCRService
 from app.application_services import Container
 from app.domain_contracts import (
     AccountType,
@@ -37,13 +37,14 @@ def _create_dummy_image() -> bytes:
 
 # --- 1. OCR Service Extraction & Mocking Tests ---
 @pytest.mark.asyncio
-async def test_ocr_service_validations_and_aliases(container: Container) -> None:
-    """Verify OCR input boundary validation and backward compatibility aliases."""
+async def test_ocr_service_validations(container: Container) -> None:
+    """Verify OCR input boundary validation."""
     # Arrange
     service = GeminiOCRService()
-
-    # Assert alias
-    assert OpenAIOCRService is GeminiOCRService
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-gemini-key"
+        await ms.save_system_settings(settings_obj)
 
     # Act & Assert
     with pytest.raises(ValueError, match="アップロードされたファイルが空です"):
@@ -55,10 +56,13 @@ async def test_ocr_service_validations_and_aliases(container: Container) -> None
 
 @pytest.mark.asyncio
 async def test_ocr_service_extraction_without_api_key_raises_value_error(
-    container: Container,
+    container: Container, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Ensure OCR extraction fails with actionable error message when AI API key is not configured."""
     # Arrange
+    from app.core_foundation import settings
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
     service = GeminiOCRService()
     dummy_img = _create_dummy_image()
 
@@ -68,7 +72,9 @@ async def test_ocr_service_extraction_without_api_key_raises_value_error(
         await ms.save_system_settings(settings_obj)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="Gemini API キーが無効または未設定です"):
+    with pytest.raises(
+        ValueError, match="AI連携用のAPIキー（Gemini）が設定されていません"
+    ):
         await service.extract_receipt_data(dummy_img, "png")
 
 
@@ -356,7 +362,7 @@ def test_pdf_service_generation_with_standard_profit_report() -> None:
     pdf_bytes = PDFService.generate_annual_report(
         corp=corp,
         rpt=rpt,
-        fiscal_year=fy,
+        fy=fy,
         report_date=date(2026, 12, 31),
         audit_date=date(2026, 12, 31),
     )

@@ -19,7 +19,6 @@ from app.domain_contracts import (
     FiscalYear,
     Transaction,
     TransactionLine,
-    validate_invoice_number_format,
 )
 from app.external_services import LocalFileService
 
@@ -165,12 +164,7 @@ async def test_journal_entry_lifecycle_and_updates(container: Container) -> None
         assert u.description == "更新後の摘要"
         assert sum(line.debit for line in u.lines) == 15000
 
-        # Act 3: CSV Export
-        csv_text = await js.export_journal_entries_csv()
-        assert "取引日,ID,摘要,取引先" in csv_text
-        assert "更新後の摘要" in csv_text
-
-        # Act 4: Opening Balance
+        # Act 3: Opening Balance
         op_id = await js.register_opening_balance(
             opening_date=date.today(),
             debit_balances={str(acc1.id): "50000"},
@@ -178,12 +172,7 @@ async def test_journal_entry_lifecycle_and_updates(container: Container) -> None
         )
         assert op_id > 0
 
-        # Act 5: Frequent Account IDs
-        freq = await js.get_frequent_account_ids(limit=5)
-        assert isinstance(freq, list)
-        assert len(freq) >= 1
-
-        # Act 6: Delete entry via repository
+        # Act 4: Delete entry via repository
         delete_res = await js.repository.delete_transaction(tx_id)
         await js.repository.commit()
         delete_fail = await js.repository.delete_transaction(999999)
@@ -386,27 +375,6 @@ def test_account_type_label_and_constants() -> None:
     assert len(DEFAULT_ACCOUNTS) >= 20
 
 
-@pytest.mark.parametrize(
-    ("invoice_candidate", "is_valid"),
-    [
-        ("T1234567890123", True),
-        (None, False),
-        ("", False),
-        ("   ", False),
-        ("1234567890123", False),
-        ("T123456789012", False),
-        ("T12345678901234", False),
-        ("T123456789012A", False),
-    ],
-)
-def test_validate_invoice_number_format_boundary_cases(
-    invoice_candidate: str | None, is_valid: bool
-) -> None:
-    """Verify standalone invoice registration number validation across valid and boundary values."""
-    # Act & Assert
-    assert validate_invoice_number_format(invoice_candidate) is is_valid
-
-
 # --- 7. Boundary Logic & Branch Coverage Tests ---
 @pytest.mark.parametrize(
     ("current_end", "expected_start", "expected_end"),
@@ -436,10 +404,10 @@ def test_compute_next_fiscal_year_dates_handles_standard_and_leap_years(
 
 
 @pytest.mark.asyncio
-async def test_master_service_fiscal_year_create_alias_and_delete(
+async def test_master_service_fiscal_year_save_and_delete(
     container: Container,
 ) -> None:
-    """Verify MasterService create_fiscal_year alias and deletion lifecycle."""
+    """Verify MasterService save_fiscal_year and deletion lifecycle."""
     # Arrange
     async with container.master_service_scope() as ms:
         fy_input = FiscalYear(
@@ -451,7 +419,7 @@ async def test_master_service_fiscal_year_create_alias_and_delete(
         )
 
         # Act
-        created_fy = await ms.create_fiscal_year(fy_input)
+        created_fy = await ms.save_fiscal_year(fy_input)
         assert created_fy.id is not None
         await ms.delete_fiscal_year(created_fy.id)
         fetched_fy = await ms.get_fiscal_year_by_id(created_fy.id)
@@ -867,22 +835,3 @@ async def test_fiscal_year_closing_with_net_loss_records_debit_to_retained_earni
         )
         assert re_line.debit == 30000
         assert re_line.credit == 0
-
-
-@pytest.mark.asyncio
-async def test_journal_service_get_frequent_account_ids_handles_repository_error_gracefully(
-    container: Container,
-) -> None:
-    """Verify get_frequent_account_ids catches unexpected repository exceptions and returns empty list."""
-    # Arrange
-    async with container.journal_service_scope() as js:
-        js.repository.get_frequent_account_ids = AsyncMock(  # type: ignore[method-assign]
-            side_effect=RuntimeError("Database failure")
-        )
-
-        # Act
-        result = await js.get_frequent_account_ids(limit=5)
-
-        # Assert
-        assert result == []
-        assert isinstance(result, list)
