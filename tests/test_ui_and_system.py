@@ -55,6 +55,8 @@ def test_journal_view_interactions_renders_essential_widgets() -> None:
     assert not at.exception, f"journal_view.py raised exception: {at.exception}"
     assert len(at.tabs) >= 1
     assert len(at.date_input) >= 1
+    assert len(at.file_uploader) >= 1
+    assert len(at.checkbox) >= 1
 
 
 def test_ledger_view_interactions_renders_essential_widgets() -> None:

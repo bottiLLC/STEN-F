@@ -24,7 +24,7 @@ from app.domain_contracts import (
     TaxBreakdownItem,
     TrialBalanceRow,
 )
-from app.external_services import PDFService
+from app.external_services import LocalFileService, PDFService
 
 
 def _create_dummy_image() -> bytes:
@@ -642,9 +642,6 @@ async def test_local_file_service_save_evidence_for_transaction_sanitizes_legal_
 ) -> None:
     """Verify save_evidence_for_transaction cleans Japanese corporate entity prefixes from filename."""
     # Arrange
-    from pathlib import Path
-    from app.external_services import LocalFileService
-
     file_service = LocalFileService(base_dir=tmp_path)
     file_payload = b"dummy electronic receipt payload"
     tx_date = date(2026, 4, 15)
@@ -662,4 +659,28 @@ async def test_local_file_service_save_evidence_for_transaction_sanitizes_legal_
     saved_path = Path(saved_path_str)
     assert saved_path.exists()
     assert saved_path.name == "20260415_12000_サンプルパートナーズ_101.pdf"
+    assert saved_path.read_bytes() == file_payload
+
+
+@pytest.mark.asyncio
+async def test_local_file_service_save_evidence_for_transaction_preserves_extension(
+    tmp_path: Path,
+) -> None:
+    """Verify save_evidence_for_transaction preserves specified image extension."""
+    file_service = LocalFileService(base_dir=tmp_path)
+    file_payload = b"dummy png receipt payload"
+    tx_date = date(2026, 4, 15)
+
+    saved_path_str = await file_service.save_evidence_for_transaction(
+        file_bytes=file_payload,
+        transaction_id=102,
+        date_obj=tx_date,
+        amount=5000,
+        corp_name="テスト商店",
+        extension=".png",
+    )
+
+    saved_path = Path(saved_path_str)
+    assert saved_path.exists()
+    assert saved_path.name == "20260415_5000_テスト商店_102.png"
     assert saved_path.read_bytes() == file_payload

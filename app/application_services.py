@@ -710,6 +710,7 @@ class JournalService:
         transaction: Transaction,
         file_bytes: bytes,
         file_service: LocalFileService,
+        extension: str = ".pdf",
     ) -> int:
         """Persist journal entry and link stored electronic evidence file.
 
@@ -717,6 +718,7 @@ class JournalService:
             transaction: Balanced Transaction domain model.
             file_bytes: Raw binary content of receipt/invoice file.
             file_service: LocalFileService instance for file saving.
+            extension: File extension suffix (defaults to .pdf).
 
         Returns:
             Created Transaction ID.
@@ -731,6 +733,7 @@ class JournalService:
             date_obj=transaction.date,
             amount=total_amt,
             corp_name=corp,
+            extension=extension,
         )
         await self.repository.update_evidence_path(tx_id, path)
         await self.repository.commit()

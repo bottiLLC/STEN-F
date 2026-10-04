@@ -14,8 +14,10 @@
 
 from __future__ import annotations
 
+import base64
 from datetime import date
 import io
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 
@@ -52,19 +54,37 @@ with tab_entry:
         key="journal_file_uploader",
     )
 
-    if uploaded_file and st.button(
-        "🤖 AIで自動読み取りを実行", type="primary", key="btn_run_ocr"
-    ):
-        fb, mime = uploaded_file.getvalue(), uploaded_file.type or "image/png"
-        with st.spinner("Gemini AI が証憑を解析中..."):
-            try:
-                ocr_res = run_async(DI.get_ocr_service().extract_receipt_data(fb, mime))
-                st.session_state["ocr_result"] = ocr_res
-                st.session_state["ocr_bytes"] = fb
-                st.session_state["ocr_filename"] = uploaded_file.name
-                st.success("AI解析が完了しました！下の振替伝票に自動展開されました。")
-            except Exception as e:
-                st.error(f"AI解析エラー: {e}")
+    if uploaded_file is not None:
+        file_bytes = uploaded_file.getvalue()
+        file_name = uploaded_file.name
+        is_pdf = file_name.lower().endswith(".pdf")
+
+        if is_pdf:
+            st.info(
+                f"📄 PDF形式の証憑がセットされました: **{file_name}** ({len(file_bytes) / 1024:.1f} KB)"
+            )
+        else:
+            st.image(
+                file_bytes,
+                caption=f"証憑プレビュー: {file_name}",
+                use_container_width=True,
+            )
+
+        if st.button("🤖 AIで自動読み取りを実行", type="primary", key="btn_run_ocr"):
+            mime = uploaded_file.type or ("application/pdf" if is_pdf else "image/png")
+            with st.spinner("Gemini AI が証憑を解析中..."):
+                try:
+                    ocr_res = run_async(
+                        DI.get_ocr_service().extract_receipt_data(file_bytes, mime)
+                    )
+                    st.session_state["ocr_result"] = ocr_res
+                    st.session_state["ocr_bytes"] = file_bytes
+                    st.session_state["ocr_filename"] = file_name
+                    st.success(
+                        "AI解析が完了しました！下の振替伝票に自動展開されました。"
+                    )
+                except Exception as e:
+                    st.error(f"AI解析エラー: {e}")
 
     ocr = st.session_state.get("ocr_result")
 
@@ -177,6 +197,18 @@ with tab_entry:
         "✅ 一致" if is_balanced else f"差額: ¥{total_debit - total_credit:,}",
     )
 
+    # Active evidence attachment indicator
+    active_evidence_bytes = (
+        uploaded_file.getvalue() if uploaded_file else st.session_state.get("ocr_bytes")
+    )
+    active_evidence_name = (
+        uploaded_file.name if uploaded_file else st.session_state.get("ocr_filename")
+    )
+    if active_evidence_name:
+        st.caption(
+            f"🔒 添付証憑: **{active_evidence_name}**（登録時に電帳法準拠ストレージへ自動保存されます）"
+        )
+
     if st.button(
         "💾 この内容で仕訳帳に登録する",
         type="primary",
@@ -192,18 +224,22 @@ with tab_entry:
         )
 
         try:
-            ocr_raw_bytes: bytes | None = st.session_state.get("ocr_bytes")
+            ext = Path(active_evidence_name).suffix if active_evidence_name else ".pdf"
             call_journal(
                 lambda s: (
                     s.add_journal_entry_with_evidence(
-                        new_tx, ocr_raw_bytes, DI.get_file_service()
+                        new_tx,
+                        active_evidence_bytes,
+                        DI.get_file_service(),
+                        extension=ext,
                     )
-                    if ocr_raw_bytes
+                    if active_evidence_bytes
                     else s.add_journal_entry(new_tx)
                 ),
             )
             st.session_state["ocr_result"] = None
             st.session_state["ocr_bytes"] = None
+            st.session_state["ocr_filename"] = None
             st.success("仕訳が正常に登録されました！")
             st.rerun()
         except Exception as e:
@@ -212,7 +248,7 @@ with tab_entry:
 # 2. 仕訳帳一覧
 with tab_history:
     st.subheader("仕訳帳 (General Journal) 一覧・検索・CSV出力")
-    col_f1, col_f2 = st.columns(2)
+    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
     s_date = st.date_input(
         "開始日",
         value=open_fy.start_date if open_fy else date(date.today().year, 1, 1),
@@ -223,10 +259,19 @@ with tab_history:
         value=open_fy.end_date if open_fy else date(date.today().year, 12, 31),
         key="hist_e_date",
     )
+    with col_f3:
+        st.write("")
+        st.write("")
+        evidence_only = st.checkbox(
+            "証憑添付ありのみ表示", value=False, key="hist_evidence_only"
+        )
 
     entries = call_journal(
         lambda s: s.get_entries(start_date=s_date, end_date=e_date),
     )
+    if evidence_only:
+        entries = [tx for tx in entries if tx.evidence_path]
+
     if not entries:
         st.info("該当する仕訳データはありません。")
     else:
@@ -241,6 +286,9 @@ with tab_history:
                     {
                         "id": tx.id,
                         "取引日": str(tx.date),
+                        "証憑": ("📄 あり" if tx.evidence_path else "-")
+                        if i == 0
+                        else "",
                         "借方科目": account_id_to_label.get(d.account_id, "")
                         if d
                         else "",
@@ -265,3 +313,88 @@ with tab_history:
             mime="text/csv",
             width="stretch",
         )
+
+        st.divider()
+        st.markdown("##### 🔍 選択仕訳の詳細・証憑確認 (PDF/画像)")
+        tx_options = {
+            f"ID {tx.id} | {tx.date} | {tx.description or '振替仕訳'} (¥{sum(line.debit for line in tx.lines):,}) [{'📄 証憑あり' if tx.evidence_path else '証憑なし'}]": tx
+            for tx in entries
+        }
+        selected_label = st.selectbox(
+            "確認する仕訳を選択",
+            options=[""] + list(tx_options.keys()),
+            key="hist_selected_tx_box",
+        )
+        if selected_label and (selected_tx := tx_options.get(selected_label)):
+            col_d_left, col_d_right = st.columns([3, 2])
+            with col_d_left:
+                st.markdown(
+                    f"**取引日:** `{selected_tx.date}` | **摘要:** `{selected_tx.description or '-'}`"
+                )
+                st.markdown(
+                    f"**取引先:** `{selected_tx.counterparty or '-'}` | **インボイス番号:** `{selected_tx.invoice_number or '-'}`"
+                )
+
+                if selected_tx.evidence_path:
+                    file_service = DI.get_file_service()
+                    resolved = file_service.resolve_evidence_path(
+                        selected_tx.evidence_path
+                    )
+                    if resolved and resolved.exists():
+                        evidence_bytes = resolved.read_bytes()
+                        evidence_filename = resolved.name
+                        is_evidence_pdf = evidence_filename.lower().endswith(".pdf")
+                        st.success(
+                            f"📎 添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)"
+                        )
+                        st.download_button(
+                            label=f"📥 証憑ファイル ({evidence_filename}) をダウンロード",
+                            data=evidence_bytes,
+                            file_name=evidence_filename,
+                            mime="application/pdf"
+                            if is_evidence_pdf
+                            else (
+                                "image/png"
+                                if evidence_filename.lower().endswith(".png")
+                                else "image/jpeg"
+                            ),
+                            icon=":material/download:",
+                            key=f"dl_evidence_{selected_tx.id}",
+                        )
+                        if is_evidence_pdf:
+                            with st.expander("📄 PDFプレビューを表示", expanded=True):
+                                b64_pdf = base64.b64encode(evidence_bytes).decode(
+                                    "utf-8"
+                                )
+                                st.markdown(
+                                    f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="500" type="application/pdf"></iframe>',
+                                    unsafe_allow_html=True,
+                                )
+                        else:
+                            st.image(
+                                evidence_bytes,
+                                caption=f"証憑プレビュー: {evidence_filename}",
+                                use_container_width=True,
+                            )
+                    else:
+                        st.warning(
+                            f"⚠️ 証憑ファイルがストレージ上に見つかりません: {selected_tx.evidence_path}"
+                        )
+                else:
+                    st.caption("※ この仕訳に添付された証憑はありません。")
+
+            with col_d_right:
+                if not selected_tx.is_deleted and selected_tx.id is not None:
+                    target_id: int = selected_tx.id
+                    if st.button(
+                        "🗑️ この仕訳を削除する",
+                        type="secondary",
+                        icon=":material/delete:",
+                        key=f"del_tx_{target_id}",
+                    ):
+                        try:
+                            call_journal(lambda s: s.delete_entry(target_id))
+                            st.toast("仕訳を論理削除しました", icon="🗑️")
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"削除エラー: {ex}")

@@ -125,6 +125,7 @@ class LocalFileService:
         date_obj: date,
         amount: int,
         corp_name: str,
+        extension: str = ".pdf",
     ) -> str:
         """Persist evidence file bound to transaction id under legal standard naming.
 
@@ -134,6 +135,7 @@ class LocalFileService:
             date_obj: Transaction date.
             amount: Transaction absolute amount.
             corp_name: Vendor or counterparty name.
+            extension: File extension suffix (defaults to .pdf).
 
         Returns:
             Saved filesystem path string.
@@ -141,9 +143,10 @@ class LocalFileService:
         clean_name = corp_name
         for prefix in ("株式会社", "合同会社", "有限会社"):
             clean_name = clean_name.replace(prefix, "")
+        ext = extension if extension.startswith(".") else f".{extension}"
         save_path = (
             self.storage_dir
-            / f"{date_obj.strftime('%Y%m%d')}_{amount}_{_sanitize_file_name(clean_name)}_{transaction_id}.pdf"
+            / f"{date_obj.strftime('%Y%m%d')}_{amount}_{_sanitize_file_name(clean_name)}_{transaction_id}{ext}"
         )
         async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)
