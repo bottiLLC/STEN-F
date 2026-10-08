@@ -29,11 +29,12 @@ def render_accounting_editor(
         | None
     ) = None,
     column_config: dict[str, Any] | None = None,
+    column_order: list[str] | None = None,
     disabled: bool = False,
     num_rows: Literal["fixed", "dynamic"] = "dynamic",
     hide_index: bool = True,
 ) -> pd.DataFrame:
-    """Render autonomous accounting data editor with Key Rotation and PK tracking.
+    """Render autonomous accounting data editor with Key Rotation, PK tracking, and cancellation.
 
     Args:
         df: Target pandas DataFrame to display and edit.
@@ -41,6 +42,7 @@ def render_accounting_editor(
         base_key: Streamlit widget unique state base identifier.
         on_commit: Callback invoked upon commit (added_list, pk_edited_map, pk_deleted_list).
         column_config: Column presentation and validation configurations.
+        column_order: Display order of columns. Columns omitted are hidden from UI.
         disabled: Whether the table is in read-only mode.
         num_rows: Dynamic or fixed row count mode.
         hide_index: Whether index column is hidden.
@@ -57,6 +59,7 @@ def render_accounting_editor(
     edited_df = st.data_editor(
         df,
         column_config=column_config,
+        column_order=column_order,
         num_rows=num_rows if not disabled else "fixed",
         disabled=disabled,
         width="stretch",
@@ -69,15 +72,12 @@ def render_accounting_editor(
     raw_edited: dict[str, dict[str, Any]] = state.get("edited_rows", {})
     raw_deleted: list[int] = state.get("deleted_rows", [])
 
-    if not (on_commit and (raw_added or raw_edited or raw_deleted)):
-        return edited_df
-
     has_pk = pk_column in df.columns
     pk_edited_map: dict[Any, dict[str, Any]] = (
         {
-            df.iloc[int(i)][pk_column]: c
+            df.iloc[int(i)][pk_column]: {k: v for k, v in c.items() if k != "selected"}
             for i, c in raw_edited.items()
-            if int(i) < len(df)
+            if int(i) < len(df) and any(k != "selected" for k in c)
         }
         if has_pk
         else {}
@@ -85,14 +85,28 @@ def render_accounting_editor(
     pk_deleted_list: list[Any] = (
         [df.iloc[i][pk_column] for i in raw_deleted if i < len(df)] if has_pk else []
     )
-    added_list = list(raw_added)
+    added_list = [{k: v for k, v in r.items() if k != "selected"} for r in raw_added]
 
-    col_info, col_save = st.columns([4, 2])
+    has_changes = bool(added_list or pk_edited_map or pk_deleted_list)
+    if not (on_commit and has_changes):
+        return edited_df
+
+    col_info, col_cancel, col_save = st.columns([3, 1, 2])
     with col_info:
         st.info(
             f"📝 変更が検出されました（追加: {len(added_list)}件, "
             f"更新: {len(pk_edited_map)}件, 削除: {len(pk_deleted_list)}件）"
         )
+    with col_cancel:
+        if st.button(
+            "❌ 編集を取り消す",
+            key=f"btn_cancel_{current_key}",
+            width="stretch",
+            help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
+        ):
+            st.session_state[version_key] += 1
+            st.toast("編集内容を取り消しました", icon="↩️")
+            st.rerun()
     with col_save:
         if st.button(
             "💾 変更をデータベースに保存する",
