@@ -90,10 +90,22 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
     # Assert
     assert not at.exception, f"master_view.py raised exception: {at.exception}"
     assert len(at.tabs) >= 1
-    assert len(at.text_input) >= 1
+    # Verify account master data editor retains all columns including selected
+    acc_editor = at.dataframe[1]
+    expected_acc_cols = [
+        "selected",
+        "id",
+        "code",
+        "name",
+        "type",
+        "description",
+    ]
+    assert list(acc_editor.value.columns) == expected_acc_cols
+
     # Verify counterparty data editor retains all columns even when table has zero records
     cp_editor = at.dataframe[2]
     expected_cols = [
+        "selected",
         "id",
         "name",
         "name_kana",
@@ -107,7 +119,7 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
 
     # Verify frequent abstract data editor retains all columns even when table has zero records
     abs_editor = at.dataframe[3]
-    expected_abs_cols = ["id", "text", "account"]
+    expected_abs_cols = ["selected", "id", "text", "account"]
     assert list(abs_editor.value.columns) == expected_abs_cols
 
 

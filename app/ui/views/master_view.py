@@ -263,6 +263,7 @@ with tab_acc:
     acc_df = pd.DataFrame(
         [
             {
+                "selected": False,
                 "id": a.id,
                 "code": a.code,
                 "name": a.name,
@@ -270,7 +271,8 @@ with tab_acc:
                 "description": a.description or "",
             }
             for a in sorted(acc_list, key=lambda x: int(x.code))
-        ]
+        ],
+        columns=["selected", "id", "code", "name", "type", "description"],
     )
 
     def on_commit_accounts(
@@ -325,6 +327,11 @@ with tab_acc:
         run_async(do_commit())
 
     col_cfg_acc = {
+        "selected": st.column_config.CheckboxColumn(
+            "選択",
+            help="削除対象の勘定科目を選択してください",
+            default=False,
+        ),
         "id": st.column_config.NumberColumn("ID", disabled=True),
         "code": st.column_config.TextColumn("科目コード", required=True),
         "name": st.column_config.TextColumn("科目名", required=True),
@@ -333,16 +340,77 @@ with tab_acc:
         ),
         "description": st.column_config.TextColumn("説明・用途"),
     }
-    col_order_acc = ["code", "name", "type", "description"]
+    col_order_acc = ["selected", "code", "name", "type", "description"]
 
-    render_accounting_editor(
+    edited_acc_df = render_accounting_editor(
         acc_df,
         pk_column="id",
         base_key="editor_accounts",
         on_commit=on_commit_accounts,
         column_config=col_cfg_acc,
         column_order=col_order_acc,
+        num_rows="add",
     )
+
+    selected_targets = (
+        edited_acc_df[edited_acc_df["selected"].astype(bool)]
+        if "selected" in edited_acc_df.columns
+        else pd.DataFrame()
+    )
+
+    if not selected_targets.empty:
+        col_del_info, col_del_btn = st.columns([4, 2])
+        with col_del_info:
+            st.warning(f"⚠️ {len(selected_targets)} 件の勘定科目が選択されています。")
+        with col_del_btn:
+            if st.button(
+                f"🗑️ 勘定科目を削除 ({len(selected_targets)}件)",
+                type="primary",
+                key="btn_delete_selected_accounts",
+                width="stretch",
+            ):
+
+                async def execute_batch_delete() -> None:
+                    async with DI.get_master_service() as ms:
+                        blocked_names: list[str] = []
+                        valid_delete_ids: list[int] = []
+
+                        for _, row in selected_targets.iterrows():
+                            raw_id = row.get("id")
+                            if pd.isna(raw_id) or raw_id is None:
+                                continue
+                            acc_id = int(raw_id)
+                            acc_name = str(row["name"])
+                            if (
+                                ms.ledger_repository
+                                and await ms.ledger_repository.has_transactions_for_account(
+                                    acc_id
+                                )
+                            ):
+                                blocked_names.append(acc_name)
+                            else:
+                                valid_delete_ids.append(acc_id)
+
+                        if blocked_names:
+                            st.error(
+                                "❌ 以下の勘定科目は仕訳データで使用されているため削除できません:\n"
+                                + "、".join(blocked_names)
+                            )
+                            return
+
+                        for target_id in valid_delete_ids:
+                            await ms.delete_account(target_id)
+
+                        st.session_state["editor_accounts_version"] = (
+                            st.session_state.get("editor_accounts_version", 0) + 1
+                        )
+                        st.toast(
+                            f"{len(valid_delete_ids)} 件の勘定科目を正常に削除しました",
+                            icon="🗑️",
+                        )
+                        st.rerun()
+
+                run_async(execute_batch_delete())
 
 # 5. 取引先マスタ
 with tab_cp:
@@ -363,6 +431,7 @@ with tab_cp:
     cp_df = pd.DataFrame(
         [
             {
+                "selected": False,
                 "id": c.id,
                 "name": c.name,
                 "name_kana": c.name_kana or "",
@@ -375,6 +444,7 @@ with tab_cp:
             for c in cps
         ],
         columns=[
+            "selected",
             "id",
             "name",
             "name_kana",
@@ -450,6 +520,12 @@ with tab_cp:
         run_async(do_commit())
 
     col_cfg_cp = {
+        "selected": st.column_config.CheckboxColumn(
+            "選択",
+            help="削除対象の取引先を選択してください",
+            default=False,
+        ),
+        "id": st.column_config.NumberColumn("ID", disabled=True),
         "name": st.column_config.TextColumn(
             "会社名", required=True, help="正式な法人名または個人事業主名"
         ),
@@ -478,6 +554,7 @@ with tab_cp:
         ),
     }
     col_order_cp = [
+        "selected",
         "name",
         "name_kana",
         "trade_name",
@@ -487,14 +564,56 @@ with tab_cp:
         "description_template",
     ]
 
-    render_accounting_editor(
+    edited_cp_df = render_accounting_editor(
         cp_df,
         pk_column="id",
         base_key="editor_counterparties",
         on_commit=on_commit_cps,
         column_config=col_cfg_cp,
         column_order=col_order_cp,
+        num_rows="add",
     )
+
+    selected_cp_targets = (
+        edited_cp_df[edited_cp_df["selected"].astype(bool)]
+        if "selected" in edited_cp_df.columns
+        else pd.DataFrame()
+    )
+
+    if not selected_cp_targets.empty:
+        col_del_info, col_del_btn = st.columns([4, 2])
+        with col_del_info:
+            st.warning(f"⚠️ {len(selected_cp_targets)} 件の取引先が選択されています。")
+        with col_del_btn:
+            if st.button(
+                f"🗑️ 取引先を削除 ({len(selected_cp_targets)}件)",
+                type="primary",
+                key="btn_delete_selected_counterparties",
+                width="stretch",
+            ):
+
+                async def execute_batch_delete_cp() -> None:
+                    async with DI.get_master_service() as ms:
+                        valid_delete_ids: list[int] = []
+                        for _, row in selected_cp_targets.iterrows():
+                            raw_id = row.get("id")
+                            if pd.isna(raw_id) or raw_id is None:
+                                continue
+                            valid_delete_ids.append(int(raw_id))
+
+                        for target_id in valid_delete_ids:
+                            await ms.delete_counterparty(target_id)
+
+                        st.session_state["editor_counterparties_version"] = (
+                            st.session_state.get("editor_counterparties_version", 0) + 1
+                        )
+                        st.toast(
+                            f"{len(valid_delete_ids)} 件の取引先を正常に削除しました",
+                            icon="🗑️",
+                        )
+                        st.rerun()
+
+                run_async(execute_batch_delete_cp())
 
 # 6. よく使う摘要マスタ
 with tab_abs:
@@ -511,13 +630,14 @@ with tab_abs:
     abs_df = pd.DataFrame(
         [
             {
+                "selected": False,
                 "id": a.id,
                 "text": a.text,
                 "account": acc_id_to_label.get(a.account_id, ""),
             }
             for a in abs_list
         ],
-        columns=["id", "text", "account"],
+        columns=["selected", "id", "text", "account"],
     )
 
     def on_commit_abs(
@@ -559,6 +679,12 @@ with tab_abs:
         run_async(do_commit())
 
     col_cfg_abs = {
+        "selected": st.column_config.CheckboxColumn(
+            "選択",
+            help="削除対象の摘要を選択してください",
+            default=False,
+        ),
+        "id": st.column_config.NumberColumn("ID", disabled=True),
         "text": st.column_config.TextColumn(
             "摘要", required=True, help="頻出する取引内容・定型文"
         ),
@@ -569,16 +695,58 @@ with tab_abs:
             help="当該摘要に標準で紐づける勘定科目",
         ),
     }
-    col_order_abs = ["text", "account"]
+    col_order_abs = ["selected", "text", "account"]
 
-    render_accounting_editor(
+    edited_abs_df = render_accounting_editor(
         abs_df,
         pk_column="id",
         base_key="editor_abstracts",
         on_commit=on_commit_abs,
         column_config=col_cfg_abs,
         column_order=col_order_abs,
+        num_rows="add",
     )
+
+    selected_abs_targets = (
+        edited_abs_df[edited_abs_df["selected"].astype(bool)]
+        if "selected" in edited_abs_df.columns
+        else pd.DataFrame()
+    )
+
+    if not selected_abs_targets.empty:
+        col_del_info, col_del_btn = st.columns([4, 2])
+        with col_del_info:
+            st.warning(f"⚠️ {len(selected_abs_targets)} 件の摘要が選択されています。")
+        with col_del_btn:
+            if st.button(
+                f"🗑️ 摘要を削除 ({len(selected_abs_targets)}件)",
+                type="primary",
+                key="btn_delete_selected_abstracts",
+                width="stretch",
+            ):
+
+                async def execute_batch_delete_abs() -> None:
+                    async with DI.get_master_service() as ms:
+                        valid_delete_ids: list[int] = []
+                        for _, row in selected_abs_targets.iterrows():
+                            raw_id = row.get("id")
+                            if pd.isna(raw_id) or raw_id is None:
+                                continue
+                            valid_delete_ids.append(int(raw_id))
+
+                        for target_id in valid_delete_ids:
+                            await ms.delete_abstract(target_id)
+
+                        st.session_state["editor_abstracts_version"] = (
+                            st.session_state.get("editor_abstracts_version", 0) + 1
+                        )
+                        st.toast(
+                            f"{len(valid_delete_ids)} 件の摘要を正常に削除しました",
+                            icon="🗑️",
+                        )
+                        st.rerun()
+
+                run_async(execute_batch_delete_abs())
 
 # 7. AI・システム設定
 with tab_sys:

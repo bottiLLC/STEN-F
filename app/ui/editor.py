@@ -31,7 +31,7 @@ def render_accounting_editor(
     column_config: dict[str, Any] | None = None,
     column_order: list[str] | None = None,
     disabled: bool = False,
-    num_rows: Literal["fixed", "dynamic"] = "dynamic",
+    num_rows: Literal["fixed", "dynamic", "add", "delete"] = "dynamic",
     hide_index: bool = True,
 ) -> pd.DataFrame:
     """Render autonomous accounting data editor with Key Rotation, PK tracking, and cancellation.
@@ -44,7 +44,7 @@ def render_accounting_editor(
         column_config: Column presentation and validation configurations.
         column_order: Display order of columns. Columns omitted are hidden from UI.
         disabled: Whether the table is in read-only mode.
-        num_rows: Dynamic or fixed row count mode.
+        num_rows: Dynamic, fixed, add-only, or delete-only row count mode.
         hide_index: Whether index column is hidden.
 
     Returns:
@@ -109,7 +109,7 @@ def render_accounting_editor(
             st.rerun()
     with col_save:
         if st.button(
-            "💾 変更をデータベースに保存する",
+            "💾 変更を保存",
             type="primary",
             key=f"btn_commit_{current_key}",
             width="stretch",
