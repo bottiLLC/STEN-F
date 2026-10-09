@@ -69,19 +69,43 @@ with tab_entry:
                 use_container_width=True,
             )
 
-        if st.button("🤖 AIで自動読み取りを実行", type="primary", key="btn_run_ocr"):
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            run_fast = st.button(
+                "⚡ 通常読取（高速）",
+                key="btn_run_ocr_fast",
+                use_container_width=True,
+            )
+        with col_btn2:
+            run_boost = st.button(
+                "🎯 高精度読取（ブースト）",
+                type="primary",
+                key="btn_run_ocr_boost",
+                use_container_width=True,
+            )
+
+        if run_fast or run_boost:
+            target_model = "gemini-3.5-flash-lite" if run_fast else "gemini-3.8-flash"
+            model_label = "通常読取（高速）" if run_fast else "高精度読取（ブースト）"
             mime = uploaded_file.type or ("application/pdf" if is_pdf else "image/png")
-            with st.spinner("Gemini AI が証憑を解析中..."):
+            with st.spinner(f"Gemini AI ({model_label}) が証憑を解析中..."):
                 try:
                     ocr_res = run_async(
-                        DI.get_ocr_service().extract_receipt_data(file_bytes, mime)
+                        DI.get_ocr_service().extract_receipt_data(
+                            file_bytes, mime, model_id=target_model
+                        )
                     )
                     st.session_state["ocr_result"] = ocr_res
                     st.session_state["ocr_bytes"] = file_bytes
                     st.session_state["ocr_filename"] = file_name
-                    st.success(
-                        "AI解析が完了しました！下の振替伝票に自動展開されました。"
-                    )
+                    if ocr_res.needs_manual_review:
+                        st.warning(
+                            f"AI解析完了（照合スコア: {ocr_res.match_score:.1f}点 / 75点未満）: 取引先マスターと完全一致しませんでした。読み取れた生データを入力欄に自動入力しましたので、赤枠内容を確認・修正してください。"
+                        )
+                    else:
+                        st.success(
+                            f"AI解析・取引先特定成功（照合スコア: {ocr_res.match_score:.1f}点）: 取引先マスターと紐付け、振替伝票に自動展開しました。"
+                        )
                 except Exception as e:
                     st.error(f"AI解析エラー: {e}")
 
@@ -89,6 +113,21 @@ with tab_entry:
 
     st.divider()
     st.subheader("Step 2: 振替伝票入力")
+
+    if ocr and ocr.needs_manual_review:
+        st.markdown(
+            """
+            <div style="border: 2px solid #ef4444; border-radius: 8px; padding: 12px; margin-bottom: 16px; background-color: rgba(239, 68, 68, 0.08);">
+                <div style="color: #b91c1c; font-weight: bold; font-size: 1.05rem; margin-bottom: 4px;">
+                    ⚠️ 新規・要確認（未確定）
+                </div>
+                <div style="color: #374151; font-size: 0.9rem;">
+                    取引先マスター照合スコアが75点未満のため、未確定として表示しています。AIが読み取った日付・金額・店名等の生データは自動入力されています。内容を確認し、必要に応じて修正してください。
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     ocr_date = date.today()
     if ocr and ocr.transaction_date:
@@ -130,9 +169,23 @@ with tab_entry:
     if ocr:
         init_amt = ocr.total_amount_incl_tax or 0
         if ocr.inferred_debit_account_id:
-            d_init = account_id_to_label.get(int(ocr.inferred_debit_account_id), "")
+            val_d = str(ocr.inferred_debit_account_id)
+            if val_d.isdigit() and int(val_d) in account_id_to_label:
+                d_init = account_id_to_label[int(val_d)]
+            else:
+                for lbl in account_labels:
+                    if val_d in lbl:
+                        d_init = lbl
+                        break
         if ocr.inferred_credit_account_id:
-            c_init = account_id_to_label.get(int(ocr.inferred_credit_account_id), "")
+            val_c = str(ocr.inferred_credit_account_id)
+            if val_c.isdigit() and int(val_c) in account_id_to_label:
+                c_init = account_id_to_label[int(val_c)]
+            else:
+                for lbl in account_labels:
+                    if val_c in lbl:
+                        c_init = lbl
+                        break
 
     lines_df = pd.DataFrame(
         [

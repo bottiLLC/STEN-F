@@ -20,6 +20,7 @@ dependencies = [
     "tenacity>=9.1.0",
     "pymupdf>=1.25.0",
     "google-genai>=2.22.0",
+    "rapidfuzz>=3.10.0",
 ]
 
 

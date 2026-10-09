@@ -12,16 +12,25 @@ import json
 import re
 from typing import Final
 import unicodedata
+
 import fitz
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 from PIL import Image
-from pydantic import BaseModel, Field
+from rapidfuzz import fuzz
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core_foundation import log, settings
-from app.domain_contracts import ReceiptData
+from app.domain_contracts import (
+    MatchScoreResult,
+    ReceiptData,
+    ReceiptRawExtractionSchema,
+    VendorMasterRecord,
+)
+
+# Backwards compatibility alias
+ReceiptExtractionSchema = ReceiptRawExtractionSchema
 
 
 # --- 1. Datum Plane (Schemas & Patterns) ---
@@ -31,30 +40,7 @@ _CORP_STATUS_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"特定非営利活動法人|NPO法人|\(株\)|\(有\)|\(同\)|\(名\)|\(資\)|\(財\)|\(社\)|"
     r"㈱|㈲|㈇|㈆|㈅|㈄|㈃|㈂|㈁"
 )
-
-
-class ReceiptExtractionSchema(BaseModel):
-    """Structured extraction schema for Gemini function calling."""
-
-    merchant_name: str | None = Field(None, description="The name of store or vendor")
-    transaction_date: str | None = Field(
-        None, description="Transaction date (YYYY-MM-DD)"
-    )
-    total_amount_incl_tax: int | None = Field(
-        None, description="Total amount paid including tax"
-    )
-    invoice_registration_number: str | None = Field(
-        None, description="Invoice registration number"
-    )
-
-
-class AccountInferenceSchema(BaseModel):
-    """Inference schema for accounting accounts."""
-
-    debit_account: str | None = Field(None, description="Inferred debit account name")
-    credit_account: str | None = Field(None, description="Inferred credit account name")
-    description: str | None = Field(None, description="Inferred transaction summary")
-
+_DIGIT_PATTERN: Final[re.Pattern[str]] = re.compile(r"\D")
 
 MatcherFunc = Callable[[int | None, str], bool]
 FormatterFunc = Callable[[str], str]
@@ -104,7 +90,7 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
             or c == 429
         ),
         lambda msg: (
-            f"⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\n(詳細エラー: `{msg}`)"
+            f"⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\nしばらく時間をおいてから再試行してください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
@@ -122,7 +108,7 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
     (
         lambda c, m: "SAFETY" in m or "IMAGE_SAFETY" in m,
         lambda msg: (
-            f"⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n(詳細エラー: `{msg}`)"
+            f"⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
@@ -143,16 +129,23 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
     (
         lambda c, m: "DEADLINE_EXCEEDED" in m or c == 504,
         lambda msg: (
-            f"⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\n(詳細エラー: `{msg}`)"
+            f"⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\nネットワーク接続をご確認の上、再試行してください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: (
             c in (500, 502, 503)
-            or any(k in m for k in ("INTERNAL", "SERVICE_UNAVAILABLE", "UNAVAILABLE"))
+            or any(
+                k in m
+                for k in (
+                    "INTERNAL",
+                    "SERVICE_UNAVAILABLE",
+                    "UNAVAILABLE",
+                )
+            )
         ),
         lambda msg: (
-            f"⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n(詳細エラー: `{msg}`)"
+            f"⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n時間をおいて再試行してください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
@@ -164,7 +157,7 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
 )
 
 
-# --- 2. Internal Pure Transformations ---
+# --- 2. Internal Pure Transformations & Scoring Engine ---
 def clean_json_codeblock(text: str) -> str:
     """Strip markdown fencing and clean extracted JSON raw string.
 
@@ -195,6 +188,163 @@ def normalize_merchant_name(name: str) -> str:
         return ""
     norm = unicodedata.normalize("NFKC", name).replace(" ", "").replace("　", "")
     return _CORP_STATUS_PATTERN.sub("", norm)
+
+
+def calculate_match_score(
+    extracted: ReceiptRawExtractionSchema,
+    vendor: VendorMasterRecord,
+) -> tuple[float, dict[str, float]]:
+    """Calculate multi-tier composite confidence score against single vendor master record.
+
+    Scoring rules (100-point scale):
+      1. Invoice registration number:
+         - 13 digits exact match: Immediate 100.0 (short-circuit).
+         - Partial match (>=10 digits or substring in master): +70.0.
+      2. Telephone number:
+         - Digits-only normalized exact match: +80.0.
+      3. Company name fuzzy matching:
+         - rapidfuzz partial ratio (0-100) scaled by 0.3 (up to 30.0).
+
+    Args:
+        extracted: Raw structured fields extracted by Gemini.
+        vendor: Registered vendor master entity.
+
+    Returns:
+        Tuple of (total_score clamped to 100.0, score_breakdown_dictionary).
+    """
+    breakdown: dict[str, float] = {
+        "invoice": 0.0,
+        "tel": 0.0,
+        "name_fuzzy": 0.0,
+    }
+
+    # 1. Invoice registration number matching
+    if extracted.invoice_number and vendor.invoice_number:
+        ext_digits = _DIGIT_PATTERN.sub("", extracted.invoice_number)
+        mst_digits = _DIGIT_PATTERN.sub("", vendor.invoice_number)
+        if len(ext_digits) == 13 and ext_digits == mst_digits:
+            breakdown["invoice"] = 100.0
+            return 100.0, breakdown
+        if len(ext_digits) >= 10 and (
+            ext_digits in mst_digits or mst_digits.endswith(ext_digits)
+        ):
+            breakdown["invoice"] = 70.0
+
+    # 2. Telephone number matching
+    if extracted.tel and vendor.tel:
+        ext_tel = _DIGIT_PATTERN.sub("", extracted.tel)
+        mst_tel = _DIGIT_PATTERN.sub("", vendor.tel)
+        if ext_tel and mst_tel and ext_tel == mst_tel:
+            breakdown["tel"] = 80.0
+
+    # 3. Fuzzy company name matching
+    if extracted.raw_company_name and vendor.name:
+        ext_norm = normalize_merchant_name(extracted.raw_company_name)
+        mst_norm = normalize_merchant_name(vendor.name)
+        ratio = float(fuzz.partial_ratio(ext_norm, mst_norm))
+        breakdown["name_fuzzy"] = round(ratio * 0.3, 2)
+
+    total_score = min(
+        100.0,
+        breakdown["invoice"] + breakdown["tel"] + breakdown["name_fuzzy"],
+    )
+    return total_score, breakdown
+
+
+def match_counterparty_master(
+    extracted: ReceiptRawExtractionSchema,
+    master_records: list[VendorMasterRecord],
+    threshold: float = 75.0,
+) -> MatchScoreResult:
+    """Execute multi-tier composite scoring over vendor master collection.
+
+    Args:
+        extracted: Raw structured fields extracted by Gemini.
+        master_records: Full collection of registered vendor master records.
+        threshold: Score cut-off for definitive entity identification (default: 75.0).
+
+    Returns:
+        MatchScoreResult carrying top candidate details, identified flag, and score.
+    """
+    if not master_records:
+        return MatchScoreResult(score=0.0, is_identified=False, matched_vendor=None)
+
+    best_score = 0.0
+    best_vendor: VendorMasterRecord | None = None
+    best_breakdown: dict[str, float] = {}
+
+    for vendor in master_records:
+        score, breakdown = calculate_match_score(extracted, vendor)
+        if score >= 100.0:
+            return MatchScoreResult(
+                score=100.0,
+                is_identified=True,
+                matched_vendor=vendor,
+                breakdown=breakdown,
+            )
+        if score > best_score:
+            best_score = score
+            best_vendor = vendor
+            best_breakdown = breakdown
+
+    is_identified = best_score >= threshold
+    return MatchScoreResult(
+        score=best_score,
+        is_identified=is_identified,
+        matched_vendor=best_vendor if is_identified else None,
+        breakdown=best_breakdown,
+    )
+
+
+def map_extraction_to_receipt_data(
+    raw: ReceiptRawExtractionSchema,
+    match_result: MatchScoreResult,
+) -> ReceiptData:
+    """Map raw extracted fields and match outcome into ReceiptData domain entity.
+
+    Guarantees preservation and automatic prefilling of all successfully extracted
+    text fields (date, total_amount, raw_company_name, invoice_number, tel) even when
+    the composite score falls below the 75-point identification threshold.
+
+    Args:
+        raw: Structured fields extracted directly by Gemini.
+        match_result: Multi-stage scoring evaluation result.
+
+    Returns:
+        Fully populated ReceiptData ready for UI form prefilling and validation.
+    """
+    matched = match_result.matched_vendor
+
+    # If identified, bind master's canonical metadata; otherwise fallback to raw readings
+    merchant_name = matched.name if matched else raw.raw_company_name
+    inv_number = (
+        matched.invoice_number
+        if (matched and matched.invoice_number)
+        else raw.invoice_number
+    )
+    tax_rate = matched.tax_rate if matched else None
+    debit_acc = matched.debit_account if matched else None
+
+    if inv_number:
+        m = re.search(r"(T\d{13})", inv_number)
+        if m:
+            inv_number = m.group(1)
+
+    return ReceiptData(
+        merchant_name=merchant_name,
+        raw_company_name=raw.raw_company_name,
+        transaction_date=raw.date,
+        total_amount_incl_tax=raw.total_amount,
+        invoice_registration_number=inv_number,
+        tel=raw.tel,
+        tax_rate=tax_rate,
+        match_score=match_result.score,
+        needs_manual_review=not match_result.is_identified,
+        is_registered_merchant=match_result.is_identified,
+        is_dictionary_matched=match_result.is_identified,
+        inferred_debit_account_id=debit_acc,
+        description=f"仕入・経費 ({merchant_name})" if merchant_name else None,
+    )
 
 
 def validate_receipt_structure(data: ReceiptData) -> ReceiptData:
@@ -314,19 +464,21 @@ class GeminiOCRService:
         self,
         file_bytes: bytes,
         file_type: str,
+        model_id: str = "gemini-3.5-flash-lite",
         account_list: list[str] | None = None,
         counterparty_list: list[str] | None = None,
     ) -> ReceiptData:
-        """Extract structured receipt metadata and perform hybrid matching.
+        """Extract structured receipt metadata and execute Python composite master matching.
 
         Args:
             file_bytes: Raw binary file payload.
             file_type: File extension or format type.
-            account_list: Predefined chart of account names for inference.
-            counterparty_list: Predefined vendor names for candidate matching.
+            model_id: Gemini model identifier (e.g. gemini-3.5-flash-lite or gemini-3.8-flash).
+            account_list: Optional legacy parameter for backward compatibility.
+            counterparty_list: Optional legacy parameter for backward compatibility.
 
         Returns:
-            Extracted and validated ReceiptData domain model.
+            Extracted, matched, and validated ReceiptData domain model.
 
         Raises:
             ValueError: If API key missing, file invalid, or parsing fails.
@@ -365,28 +517,21 @@ class GeminiOCRService:
             )
 
         opt_bytes, opt_mime = optimize_receipt_image(file_bytes, mime_type)
-        cp_str = (
-            "\n".join([f"- {cp}" for cp in counterparty_list])
-            if counterparty_list
-            else ""
+        sys_instruct = (
+            "You are an expert OCR assistant. Extract text accurately from the receipt or invoice image into the structured JSON schema.\n"
+            "Do not make any accounting inferences, assumptions, or translations.\n\n"
+            "Extract the following fields:\n"
+            "1. date: Transaction date formatted as YYYY-MM-DD. If illegible or missing, return null.\n"
+            "2. total_amount: Total paid amount including tax as an integer. If illegible, return null.\n"
+            "3. invoice_number: Japanese invoice registration number (T+13 digits or partial digits exactly as visible). Return raw string without alteration. If absent, null.\n"
+            "4. raw_company_name: Store, merchant, or company name exactly as visible on the receipt. If illegible, return null.\n"
+            "5. tel: Telephone number as printed on the receipt (with or without hyphens). If illegible, return null."
         )
-        sys_instruct = f"""You are an expert OCR assistant. Extract EXACTLY the following fields from the receipt image.
-Do not make any accounting inferences.
 
-### Registered Counterparty List
-If the merchant name matches or resembles one of these, use the EXACT name from this list for "merchant_name".
-{cp_str}
-
-Extract the following fields into a valid JSON object matching the requested schema:
-1. **merchant_name**: The name of the store or vendor. If illegible, use null.
-2. **transaction_date**: The date of the transaction (Format: YYYY-MM-DD).
-3. **total_amount_incl_tax**: The total amount paid including tax (integer).
-4. **invoice_registration_number**: The Japanese invoice registration number (Format: T + 13 digits). If not present or illegible, use null.
-"""
         client = genai.Client(api_key=api_key)
         try:
             resp = await self._call_gemini_api(
-                client, sys_instruct, opt_bytes, opt_mime
+                client, sys_instruct, opt_bytes, opt_mime, model_id=model_id
             )
             if not resp:
                 raise ValueError("Gemini APIから応答が得られませんでした。")
@@ -398,94 +543,35 @@ Extract the following fields into a valid JSON object matching the requested sch
                     f"AI解析結果のJSONパースに失敗しました: {str(e)}"
                 ) from e
 
-            receipt = ReceiptData(
-                merchant_name=data.get("merchant_name"),
-                transaction_date=data.get("transaction_date"),
-                total_amount_incl_tax=data.get("total_amount_incl_tax"),
-                invoice_registration_number=data.get("invoice_registration_number"),
-            )
-            if receipt.merchant_name:
-                receipt.merchant_name = unicodedata.normalize(
-                    "NFKC", receipt.merchant_name
-                ).strip()
-            if receipt.invoice_registration_number:
-                m = re.search(r"(T\d{13})", receipt.invoice_registration_number)
-                receipt.invoice_registration_number = m.group(1) if m else None
+            raw_extracted = ReceiptRawExtractionSchema.model_validate(data)
 
+            # Retrieve master records for deterministic Python-side matching
             async with container.master_service_scope() as master_service:
                 cps = await master_service.get_counterparties()
-                matched = None
-                if receipt.invoice_registration_number:
-                    matched = next(
-                        (
-                            c
-                            for c in cps
-                            if c.invoice_number == receipt.invoice_registration_number
+                accounts = await master_service.get_accounts()
+                acc_id_to_name: dict[str, str] = {
+                    str(a.id): a.name for a in accounts if a.id is not None
+                }
+                master_records: list[VendorMasterRecord] = [
+                    VendorMasterRecord(
+                        vendor_id=cp.id or 0,
+                        name=cp.name,
+                        invoice_number=cp.invoice_number,
+                        tel=cp.tel,
+                        debit_account=(
+                            acc_id_to_name.get(str(cp.debit_account_id))
+                            if cp.debit_account_id
+                            else None
                         ),
-                        None,
+                        tax_rate=cp.tax_rate if cp.tax_rate is not None else 0.10,
                     )
-                if not matched and receipt.merchant_name:
-                    norm = normalize_merchant_name(receipt.merchant_name)
-                    matched = next(
-                        (c for c in cps if norm == normalize_merchant_name(c.name)),
-                        None,
-                    )
+                    for cp in cps
+                ]
 
-                if matched:
-                    receipt.merchant_name = matched.name
-                    receipt.invoice_registration_number = matched.invoice_number
-                    receipt.inferred_debit_account_id = (
-                        str(matched.debit_account_id)
-                        if matched.debit_account_id
-                        else None
-                    )
-                    receipt.inferred_credit_account_id = (
-                        str(matched.credit_account_id)
-                        if matched.credit_account_id
-                        else None
-                    )
-                    receipt.description = getattr(matched, "description_template", None)
-                    receipt.is_registered_merchant = True
-                    receipt.is_dictionary_matched = True
-                    return validate_receipt_structure(receipt)
-
-                try:
-                    acc_str = "\n".join(account_list) if account_list else "一覧なし"
-                    sys_fb = f"""あなたは免税事業者の経理担当です。
-取引先『{receipt.merchant_name or "不明"}』で『{receipt.total_amount_incl_tax or 0}円』支払った。
-適切な借方科目と貸方科目を推論しJSON形式で返答してください。
-【貸方推論ルール】当社はほぼ全て代表個人のポケットマネーからの立替払いであるため「役員借入金」を優先推論すること。
-【借方推論ルール】当社の自家用車は法人賃貸のため「車両運搬具」は絶対に含めないこと。
-【勘定科目一覧】\n{acc_str}
-出力形式 (JSON): {{"debit_account": "借方科目名", "credit_account": "貸方科目名", "description": "摘要文"}}"""
-                    fb_text = await self._call_gemini_fallback(client, sys_fb)
-                    if fb_text:
-                        fb_data = json.loads(clean_json_codeblock(fb_text))
-                        accounts_db = await master_service.get_accounts()
-
-                        def find_id(name: str | None) -> str | None:
-                            if not name:
-                                return None
-                            for a in accounts_db:
-                                if a.name == name or name in f"{a.code}: {a.name}":
-                                    return str(a.id)
-                            return None
-
-                        receipt.inferred_debit_account_id = find_id(
-                            fb_data.get("debit_account")
-                        )
-                        receipt.inferred_credit_account_id = find_id(
-                            fb_data.get("credit_account")
-                        )
-                        receipt.description = fb_data.get(
-                            "description", receipt.merchant_name
-                        )
-                except Exception as fb_err:
-                    self.log.warning(
-                        "fallback_account_inference_failed", error=str(fb_err)
-                    )
-
+            match_result = match_counterparty_master(raw_extracted, master_records)
+            receipt = map_extraction_to_receipt_data(raw_extracted, match_result)
             return validate_receipt_structure(receipt)
+
         except APIError as e:
             self.log.error(
                 "gemini_api_error", error=str(e), code=getattr(e, "code", None)
@@ -510,6 +596,7 @@ Extract the following fields into a valid JSON object matching the requested sch
         sys_instruct: str,
         image_bytes: bytes,
         mime_type: str,
+        model_id: str = "gemini-3.5-flash-lite",
     ) -> str:
         """Call Gemini multimodal API under retry clamping.
 
@@ -518,6 +605,7 @@ Extract the following fields into a valid JSON object matching the requested sch
             sys_instruct: System instructions prompt.
             image_bytes: Optimized receipt image binary.
             mime_type: Image MIME type.
+            model_id: Target Gemini model identifier.
 
         Returns:
             JSON text payload returned by Gemini.
@@ -531,12 +619,12 @@ Extract the following fields into a valid JSON object matching the requested sch
         ]
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=ReceiptExtractionSchema,
+            response_schema=ReceiptRawExtractionSchema,
             temperature=0.0,
         )
         response = await asyncio.to_thread(
             lambda: client.models.generate_content(
-                model=settings.GEMINI_DEFAULT_MODEL,
+                model=model_id,
                 contents=contents,
                 config=config,
             )
@@ -560,37 +648,6 @@ Extract the following fields into a valid JSON object matching the requested sch
                     )
             raise ValueError("Gemini APIから空の応答が返されました。")
         return result
-
-    @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(3),
-        reraise=True,
-    )
-    async def _call_gemini_fallback(
-        self, client: genai.Client, sys_instruct_fallback: str
-    ) -> str:
-        """Execute accounting account inference fallback under retry clamping.
-
-        Args:
-            client: Authenticated genai.Client instance.
-            sys_instruct_fallback: Fallback accounting prompt.
-
-        Returns:
-            JSON text payload returned by Gemini.
-        """
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=AccountInferenceSchema,
-            temperature=0.0,
-        )
-        response = await asyncio.to_thread(
-            lambda: client.models.generate_content(
-                model=settings.GEMINI_DEFAULT_MODEL,
-                contents=sys_instruct_fallback,
-                config=config,
-            )
-        )
-        return response.text or ""
 
     def _format_api_error_message(self, e: APIError) -> str:
         """Transform low-level Gemini API exception into user-friendly error string.

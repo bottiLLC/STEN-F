@@ -82,13 +82,13 @@ async def test_ocr_service_extraction_without_api_key_raises_value_error(
 async def test_ocr_service_extraction_with_mock(
     container: Container, mocker: MockerFixture
 ) -> None:
-    """Verify Gemini API JSON response parsing, mocking assertions, and data contracts."""
+    """Verify Gemini API JSON response parsing, single-shot execution, and data contracts."""
     # Arrange
     service = GeminiOCRService()
     dummy_img = _create_dummy_image()
 
     mock_resp = mocker.MagicMock()
-    mock_resp.text = '{"merchant_name": " ㈱テストストア ", "transaction_date": "2026-05-10", "total_amount_incl_tax": 4800, "invoice_registration_number": "T1234567890123"}'
+    mock_resp.text = '{"raw_company_name": "㈱テストストア", "date": "2026-05-10", "total_amount": 4800, "invoice_number": "T1234567890123"}'
     mock_generate = mocker.patch(
         "google.genai.models.Models.generate_content", return_value=mock_resp
     )
@@ -101,12 +101,46 @@ async def test_ocr_service_extraction_with_mock(
     # Act
     receipt = await service.extract_receipt_data(dummy_img, "png")
 
-    # Assert
-    assert mock_generate.call_count == 2
-    assert receipt.merchant_name == "(株)テストストア"
+    # Assert - Single shot execution
+    assert mock_generate.call_count == 1
     assert receipt.transaction_date == "2026-05-10"
     assert receipt.total_amount_incl_tax == 4800
     assert receipt.invoice_registration_number == "T1234567890123"
+
+
+@pytest.mark.asyncio
+async def test_ocr_service_dual_model_invocation(
+    container: Container, mocker: MockerFixture
+) -> None:
+    """Verify that both gemini-3.5-flash-lite and gemini-3.8-flash can be invoked."""
+    # Arrange
+    service = GeminiOCRService()
+    dummy_img = _create_dummy_image()
+
+    mock_resp = mocker.MagicMock()
+    mock_resp.text = '{"raw_company_name": "モデルテスト商店", "date": "2026-07-20", "total_amount": 12000, "invoice_number": null}'
+    mock_generate = mocker.patch(
+        "google.genai.models.Models.generate_content", return_value=mock_resp
+    )
+
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-golden-key"
+        await ms.save_system_settings(settings_obj)
+
+    # Act 1: Fast model
+    receipt_fast = await service.extract_receipt_data(
+        dummy_img, "png", model_id="gemini-3.5-flash-lite"
+    )
+    assert receipt_fast.total_amount_incl_tax == 12000
+    assert mock_generate.call_args_list[0].kwargs["model"] == "gemini-3.5-flash-lite"
+
+    # Act 2: Boost model
+    receipt_boost = await service.extract_receipt_data(
+        dummy_img, "png", model_id="gemini-3.8-flash"
+    )
+    assert receipt_boost.total_amount_incl_tax == 12000
+    assert mock_generate.call_args_list[1].kwargs["model"] == "gemini-3.8-flash"
 
 
 @pytest.mark.asyncio
@@ -119,7 +153,7 @@ async def test_ocr_service_extraction_parses_markdown_fenced_json(
     dummy_img = _create_dummy_image()
 
     mock_resp = mocker.MagicMock()
-    mock_resp.text = '```json\n{"merchant_name": "マークダウン商店", "transaction_date": "2026-06-01", "total_amount_incl_tax": 3300}\n```'
+    mock_resp.text = '```json\n{"raw_company_name": "マークダウン商店", "date": "2026-06-01", "total_amount": 3300}\n```'
     mock_generate = mocker.patch(
         "google.genai.models.Models.generate_content", return_value=mock_resp
     )
@@ -133,9 +167,141 @@ async def test_ocr_service_extraction_parses_markdown_fenced_json(
     receipt = await service.extract_receipt_data(dummy_img, "png")
 
     # Assert
-    assert mock_generate.call_count == 2
+    assert mock_generate.call_count == 1
     assert receipt.merchant_name == "マークダウン商店"
     assert receipt.total_amount_incl_tax == 3300
+    assert receipt.transaction_date == "2026-06-01"
+
+
+# --- 1.1 Python Multi-stage Composite Scoring & Extraction Preservation Tests ---
+def test_composite_scoring_invoice_13_digits_exact_match_short_circuit() -> None:
+    """Verify that 13-digit exact invoice match yields immediate 100 points short-circuit."""
+    from app.ai_ocr_service import calculate_match_score
+    from app.domain_contracts import ReceiptRawExtractionSchema, VendorMasterRecord
+
+    raw = ReceiptRawExtractionSchema(
+        invoice_number="T1234567890123",
+        raw_company_name="全く異なる社名",
+        tel="09099999999",
+    )
+    vendor = VendorMasterRecord(
+        vendor_id=1,
+        name="株式会社本物商事",
+        invoice_number="T1234567890123",
+        tel="0312345678",
+    )
+
+    score, breakdown = calculate_match_score(raw, vendor)
+    assert score == 100.0
+    assert breakdown["invoice"] == 100.0
+
+
+def test_composite_scoring_invoice_partial_10_digits_match() -> None:
+    """Verify that partial 10-digit invoice match awards 70 points."""
+    from app.ai_ocr_service import calculate_match_score
+    from app.domain_contracts import ReceiptRawExtractionSchema, VendorMasterRecord
+
+    raw = ReceiptRawExtractionSchema(
+        invoice_number="1234567890",  # 10 digits
+        raw_company_name=None,
+        tel=None,
+    )
+    vendor = VendorMasterRecord(
+        vendor_id=1,
+        name="テスト商事",
+        invoice_number="T0001234567890",
+        tel=None,
+    )
+
+    score, breakdown = calculate_match_score(raw, vendor)
+    assert score == 70.0
+    assert breakdown["invoice"] == 70.0
+
+
+def test_composite_scoring_telephone_normalized_exact_match() -> None:
+    """Verify that telephone number match awards 80 points."""
+    from app.ai_ocr_service import calculate_match_score
+    from app.domain_contracts import ReceiptRawExtractionSchema, VendorMasterRecord
+
+    raw = ReceiptRawExtractionSchema(
+        tel="03-1234-5678",
+        raw_company_name=None,
+        invoice_number=None,
+    )
+    vendor = VendorMasterRecord(
+        vendor_id=2,
+        name="電話一致商事",
+        tel="0312345678",
+    )
+
+    score, breakdown = calculate_match_score(raw, vendor)
+    assert score == 80.0
+    assert breakdown["tel"] == 80.0
+
+
+def test_composite_scoring_fuzzy_company_name_and_threshold_pass() -> None:
+    """Verify company name partial ratio scaling and combined threshold clearance."""
+    from app.ai_ocr_service import (
+        match_counterparty_master,
+    )
+    from app.domain_contracts import ReceiptRawExtractionSchema, VendorMasterRecord
+
+    raw = ReceiptRawExtractionSchema(
+        invoice_number="1234567890",  # +70 pts
+        raw_company_name="スターバックス渋谷店",  # partial match with "スターバックス"
+        tel=None,
+    )
+    vendor = VendorMasterRecord(
+        vendor_id=3,
+        name="スターバックス コーヒー ジャパン 株式会社",
+        invoice_number="T9991234567890",
+        debit_account="会議費",
+        tax_rate=0.10,
+    )
+
+    result = match_counterparty_master(raw, [vendor])
+    assert result.score >= 75.0
+    assert result.is_identified is True
+    assert result.matched_vendor is not None
+    assert result.matched_vendor.name == "スターバックス コーヒー ジャパン 株式会社"
+
+
+def test_composite_scoring_below_75_preserves_raw_extracted_fields() -> None:
+    """Verify that score < 75 flags manual review while preserving all extracted fields."""
+    from app.ai_ocr_service import (
+        map_extraction_to_receipt_data,
+        match_counterparty_master,
+    )
+    from app.domain_contracts import ReceiptRawExtractionSchema, VendorMasterRecord
+
+    raw = ReceiptRawExtractionSchema(
+        date="2026-08-15",
+        total_amount=5400,
+        raw_company_name="未登録カフェ",
+        invoice_number="T9876543210123",
+        tel="0399998888",
+    )
+    unmatched_vendor = VendorMasterRecord(
+        vendor_id=99,
+        name="全く無関係な電気通信",
+        invoice_number="T1111111111111",
+        tel="0300000000",
+    )
+
+    match_result = match_counterparty_master(raw, [unmatched_vendor])
+    assert match_result.score < 75.0
+    assert match_result.is_identified is False
+
+    receipt = map_extraction_to_receipt_data(raw, match_result)
+    # Architectural Invariant: Field preservation under unconfirmed status
+    assert receipt.needs_manual_review is True
+    assert receipt.is_registered_merchant is False
+    assert receipt.transaction_date == "2026-08-15"
+    assert receipt.total_amount_incl_tax == 5400
+    assert receipt.merchant_name == "未登録カフェ"
+    assert receipt.raw_company_name == "未登録カフェ"
+    assert receipt.invoice_registration_number == "T9876543210123"
+    assert receipt.tel == "0399998888"
 
 
 @pytest.mark.parametrize(
@@ -525,14 +691,16 @@ async def test_ocr_service_extraction_with_registered_counterparty_sets_dictiona
     dummy_img = _create_dummy_image()
 
     mock_resp = mocker.MagicMock()
-    mock_resp.text = '{"merchant_name": "登録済み珈琲店", "transaction_date": "2026-05-15", "total_amount_incl_tax": 650}'
+    mock_resp.text = '{"raw_company_name": "登録済み珈琲店", "date": "2026-05-15", "total_amount": 650, "invoice_number": "T1234567890123"}'
     mocker.patch("google.genai.models.Models.generate_content", return_value=mock_resp)
 
     async with container.master_service_scope() as ms:
         settings_obj = await ms.get_system_settings()
         settings_obj.ai_api_key = "test-key"
         await ms.save_system_settings(settings_obj)
-        await ms.save_counterparty(Counterparty(name="登録済み珈琲店"))
+        await ms.save_counterparty(
+            Counterparty(name="登録済み珈琲店", invoice_number="T1234567890123")
+        )
 
     # Act
     receipt = await service.extract_receipt_data(dummy_img, "png")

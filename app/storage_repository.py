@@ -97,6 +97,8 @@ class CounterpartyTable(Base):
         ForeignKey("accounts.id"), nullable=True
     )
     description_template: Mapped[str | None] = mapped_column(nullable=True)
+    tel: Mapped[str | None] = mapped_column(nullable=True)
+    tax_rate: Mapped[float | None] = mapped_column(nullable=True)
 
 
 class FiscalYearTable(Base):
@@ -303,6 +305,24 @@ async def init_db(target_engine: AsyncEngine | None = None) -> None:
                 )
             except Exception as e:
                 log.warning("db_migration_skip", column="trade_name", error=str(e))
+        try:
+            await conn.execute(text("SELECT tel FROM counterparties LIMIT 1"))
+        except Exception:
+            try:
+                await conn.execute(
+                    text("ALTER TABLE counterparties ADD COLUMN tel TEXT")
+                )
+            except Exception as e:
+                log.warning("db_migration_skip", column="tel", error=str(e))
+        try:
+            await conn.execute(text("SELECT tax_rate FROM counterparties LIMIT 1"))
+        except Exception:
+            try:
+                await conn.execute(
+                    text("ALTER TABLE counterparties ADD COLUMN tax_rate REAL")
+                )
+            except Exception as e:
+                log.warning("db_migration_skip", column="tax_rate", error=str(e))
 
 
 class SQLAlchemyMasterRepository(IMasterRepository):
@@ -572,6 +592,8 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         credit_id = getattr(cp, "credit_account_id", None)
         row.credit_account_id = credit_id
         row.description_template = getattr(cp, "description_template", None)
+        row.tel = getattr(cp, "tel", None)
+        row.tax_rate = getattr(cp, "tax_rate", None)
         return Counterparty.model_validate(await self._save_and_refresh(row))
 
     async def get_counterparties(self) -> list[Counterparty]:

@@ -218,6 +218,8 @@ class Counterparty(BaseModel):
     name_kana: str | None = None
     trade_name: str | None = None
     invoice_number: str | None = Field(None, pattern=r"^T[0-9]{13}$")
+    tel: str | None = None
+    tax_rate: float | None = None
     debit_account_id: int | None = None
     credit_account_id: int | None = None
     description_template: str | None = None
@@ -237,7 +239,9 @@ class Counterparty(BaseModel):
         """
         return _normalize_invoice_number(v)
 
-    @field_validator("name_kana", "trade_name", "description_template", mode="before")
+    @field_validator(
+        "name_kana", "trade_name", "description_template", "tel", mode="before"
+    )
     @classmethod
     def clean_empty_strings(cls, v: object) -> str | None:
         """Convert empty strings to None for optional text attributes."""
@@ -344,16 +348,86 @@ class TaxBreakdownItem(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class ReceiptRawExtractionSchema(BaseModel):
+    """Structured raw extraction schema for Gemini multimodal OCR."""
+
+    date: str | None = Field(None, description="Transaction date in YYYY-MM-DD format")
+    total_amount: int | None = Field(
+        None, description="Total amount paid including tax (integer)"
+    )
+    invoice_number: str | None = Field(
+        None,
+        description="Invoice registration number exactly as visible on receipt (e.g. T1234567890123 or partial digits)",
+    )
+    raw_company_name: str | None = Field(
+        None, description="Store or company name exactly as visible on image"
+    )
+    tel: str | None = Field(
+        None,
+        description="Telephone number visible on receipt (with or without hyphens)",
+    )
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _remap_legacy_fields(cls, data: object) -> object:
+        """Remap legacy schema field names for backward compatibility."""
+        if isinstance(data, dict):
+            mapped = dict(data)
+            if "merchant_name" in mapped and "raw_company_name" not in mapped:
+                mapped["raw_company_name"] = mapped.pop("merchant_name")
+            if "transaction_date" in mapped and "date" not in mapped:
+                mapped["date"] = mapped.pop("transaction_date")
+            if "total_amount_incl_tax" in mapped and "total_amount" not in mapped:
+                mapped["total_amount"] = mapped.pop("total_amount_incl_tax")
+            if (
+                "invoice_registration_number" in mapped
+                and "invoice_number" not in mapped
+            ):
+                mapped["invoice_number"] = mapped.pop("invoice_registration_number")
+            return mapped
+        return data
+
+
+class VendorMasterRecord(BaseModel):
+    """Vendor master entry schema for Python-side composite matching."""
+
+    vendor_id: int
+    name: str
+    invoice_number: str | None = None
+    tel: str | None = None
+    debit_account: str | None = None
+    tax_rate: float | None = 0.10
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+
+class MatchScoreResult(BaseModel):
+    """Evaluation result from multi-stage composite scoring."""
+
+    score: float
+    is_identified: bool
+    matched_vendor: VendorMasterRecord | None = None
+    breakdown: dict[str, float] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
 class ReceiptData(BaseModel):
     """Parsed structured data payload from OCR receipts."""
 
     merchant_name: str | None = None
+    raw_company_name: str | None = None
     transaction_date: str | None = None
     total_amount_incl_tax: int | None = None
     invoice_registration_number: str | None = None
+    tel: str | None = None
+    tax_rate: float | None = None
     tax_breakdown: list[TaxBreakdownItem] | None = None
     total_tax_amount: int | None = None
     total_amount_excl_tax: int | None = None
+    match_score: float = 0.0
     needs_manual_review: bool = False
     is_registered_merchant: bool = False
     error_message: str | None = None
