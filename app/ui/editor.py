@@ -114,7 +114,14 @@ def render_accounting_editor(
             key=f"btn_commit_{current_key}",
             width="stretch",
         ):
-            on_commit(added_list, pk_edited_map, pk_deleted_list)
+            try:
+                commit_ok = on_commit(added_list, pk_edited_map, pk_deleted_list)
+                if commit_ok is False:
+                    return edited_df
+            except Exception as err:
+                st.error(f"❌ 変更の保存に失敗しました: {err}")
+                return edited_df
+
             st.session_state[version_key] += 1
             st.toast("変更が正常に保存されました！", icon="✅")
             st.rerun()

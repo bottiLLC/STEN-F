@@ -354,6 +354,23 @@ def test_invoice_cleansing_validator(
     assert cp.invoice_number == expected_invoice
 
 
+@pytest.mark.parametrize(
+    "invalid_invoice",
+    [
+        "123456789",  # 9 digits (insufficient)
+        "T123456789",  # T + 9 digits (insufficient)
+        "12345678901234",  # 14 digits (excessive)
+        "ABC1234567890",  # non-numeric
+    ],
+)
+def test_counterparty_invalid_invoice_number_raises_validation_error(
+    invalid_invoice: str,
+) -> None:
+    """Verify Counterparty raises ValidationError when invoice_number pattern is mismatched."""
+    with pytest.raises(ValidationError):
+        Counterparty(name="無効インボイス商事", invoice_number=invalid_invoice)
+
+
 def test_counterparty_trade_name_and_empty_string_normalization() -> None:
     """Verify Counterparty trade_name attribute and empty string to None normalization."""
     # Act

@@ -123,6 +123,21 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
     assert list(abs_editor.value.columns) == expected_abs_cols
 
 
+def test_format_counterparty_validation_error_insufficient_digits() -> None:
+    """Verify _format_counterparty_validation_error generates clear Japanese explanation for short digits."""
+    from pydantic import ValidationError
+    from app.domain_contracts import Counterparty
+    from app.ui.views.master_view import _format_counterparty_validation_error
+
+    try:
+        Counterparty(name="テスト商店", invoice_number="123456789")
+    except ValidationError as err:
+        msg = _format_counterparty_validation_error(err, "テスト商店", "123456789")
+        assert "桁数が不足しています" in msg
+        assert "13桁必要ですが現在9桁です" in msg
+        assert "'123456789'" in msg
+
+
 # --- 2. End-to-End System Integration Tests ---
 @pytest.mark.asyncio
 async def test_full_system_accounting_cycle(container: Container) -> None:

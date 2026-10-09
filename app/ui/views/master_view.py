@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 from datetime import date
+import re
 from typing import Any
 import pandas as pd
+from pydantic import ValidationError
 import streamlit as st
 
 from app.core_foundation import (
@@ -279,8 +281,9 @@ with tab_acc:
         added: list[dict[str, Any]],
         edited: dict[Any, dict[str, Any]],
         deleted: list[Any],
-    ) -> None:
-        async def do_commit() -> None:
+    ) -> bool:
+        async def do_commit() -> list[str]:
+            errors: list[str] = []
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("code") and r.get("name") and r.get("type"):
@@ -289,14 +292,19 @@ with tab_acc:
                             acc_type = AccountType.from_label(t_val)
                         except ValueError:
                             acc_type = AccountType(t_val)
-                        await s.save_account(
-                            Account(
-                                code=str(r["code"]),
-                                name=str(r["name"]),
-                                type=acc_type,
-                                description=r.get("description"),
+                        try:
+                            await s.save_account(
+                                Account(
+                                    code=str(r["code"]),
+                                    name=str(r["name"]),
+                                    type=acc_type,
+                                    description=r.get("description"),
+                                )
                             )
-                        )
+                        except Exception as err:
+                            errors.append(
+                                f"勘定科目「{r.get('name')}」の保存に失敗しました: {err}"
+                            )
                 for pk, chg in edited.items():
                     cur = next((a for a in acc_list if a.id == pk), None)
                     if cur:
@@ -309,22 +317,36 @@ with tab_acc:
                                 if isinstance(t_val, str)
                                 else cur.type
                             )
-                        await s.save_account(
-                            Account(
-                                id=pk,
-                                code=str(chg.get("code", cur.code)),
-                                name=str(chg.get("name", cur.name)),
-                                type=acc_type,
-                                description=chg.get("description", cur.description),
+                        try:
+                            await s.save_account(
+                                Account(
+                                    id=pk,
+                                    code=str(chg.get("code", cur.code)),
+                                    name=str(chg.get("name", cur.name)),
+                                    type=acc_type,
+                                    description=chg.get("description", cur.description),
+                                )
                             )
-                        )
+                        except Exception as err:
+                            errors.append(
+                                f"勘定科目「{cur.name}」の更新に失敗しました: {err}"
+                            )
                 for pk in deleted:
                     try:
                         await s.delete_account(pk)
                     except ValueError as err:
-                        st.error(f"❌ 勘定科目の削除に失敗しました (ID: {pk}): {err}")
+                        errors.append(
+                            f"勘定科目 (ID: {pk}) の削除に失敗しました: {err}"
+                        )
 
-        run_async(do_commit())
+            return errors
+
+        commit_errors = run_async(do_commit())
+        if commit_errors:
+            for err_msg in commit_errors:
+                st.error(f"❌ {err_msg}")
+            return False
+        return True
 
     col_cfg_acc = {
         "selected": st.column_config.CheckboxColumn(
@@ -412,6 +434,43 @@ with tab_acc:
 
                 run_async(execute_batch_delete())
 
+
+def _format_counterparty_validation_error(
+    err: Exception, name: str, raw_inv: Any
+) -> str:
+    """Format Counterparty validation error into user-actionable Japanese message."""
+    if isinstance(err, ValidationError):
+        messages: list[str] = []
+        for e in err.errors():
+            loc = e.get("loc", ())
+            if "invoice_number" in loc:
+                inv_str = str(raw_inv or "").strip()
+                cleaned = re.sub(r"[\s\-]", "", inv_str)
+                digits = re.sub(r"^[Tt]", "", cleaned)
+                if digits.isdigit():
+                    if len(digits) < 13:
+                        messages.append(
+                            f"インボイス番号の桁数が不足しています（13桁必要ですが現在{len(digits)}桁です: '{raw_inv}'）。"
+                            "「T」+数字13桁、または数字13桁を入力してください。"
+                        )
+                    else:
+                        messages.append(
+                            f"インボイス番号の桁数が超過しています（13桁必要ですが現在{len(digits)}桁です: '{raw_inv}'）。"
+                            "「T」+数字13桁、または数字13桁を入力してください。"
+                        )
+                else:
+                    messages.append(
+                        f"インボイス番号の形式が正しくありません（入力値: '{raw_inv}'）。"
+                        "「T」+数字13桁、または数字13桁を入力してください。"
+                    )
+            elif "name" in loc:
+                messages.append("会社名を入力してください。")
+            else:
+                messages.append(f"{loc}: {e.get('msg')}")
+        return f"取引先「{name}」: " + " / ".join(messages)
+    return f"取引先「{name}」: {err}"
+
+
 # 5. 取引先マスタ
 with tab_cp:
     st.subheader("取引先マスタ一括管理")
@@ -460,29 +519,43 @@ with tab_cp:
         added: list[dict[str, Any]],
         edited: dict[Any, dict[str, Any]],
         deleted: list[Any],
-    ) -> None:
-        async def do_commit() -> None:
+    ) -> bool:
+        async def do_commit() -> list[str]:
+            errors: list[str] = []
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("name"):
                         deb_label = r.get("debit_account")
                         cred_label = r.get("credit_account")
-                        await s.save_counterparty(
-                            Counterparty(
-                                name=str(r["name"]),
-                                name_kana=r.get("name_kana") or None,
-                                trade_name=r.get("trade_name") or None,
-                                invoice_number=r.get("invoice_number") or None,
-                                debit_account_id=acc_label_to_id.get(deb_label)
-                                if deb_label
-                                else None,
-                                credit_account_id=acc_label_to_id.get(cred_label)
-                                if cred_label
-                                else None,
-                                description_template=r.get("description_template")
-                                or None,
+                        raw_inv = r.get("invoice_number")
+                        cp_name = str(r["name"])
+                        try:
+                            await s.save_counterparty(
+                                Counterparty(
+                                    name=cp_name,
+                                    name_kana=r.get("name_kana") or None,
+                                    trade_name=r.get("trade_name") or None,
+                                    invoice_number=raw_inv or None,
+                                    debit_account_id=acc_label_to_id.get(deb_label)
+                                    if deb_label
+                                    else None,
+                                    credit_account_id=acc_label_to_id.get(cred_label)
+                                    if cred_label
+                                    else None,
+                                    description_template=r.get("description_template")
+                                    or None,
+                                )
                             )
-                        )
+                        except (ValidationError, ValueError) as err:
+                            errors.append(
+                                _format_counterparty_validation_error(
+                                    err, cp_name, raw_inv
+                                )
+                            )
+                        except Exception as err:
+                            errors.append(
+                                f"取引先「{cp_name}」の保存に失敗しました: {err}"
+                            )
                 for pk, chg in edited.items():
                     cur = next((c for c in cps if c.id == pk), None)
                     if cur:
@@ -494,30 +567,52 @@ with tab_cp:
                             "credit_account",
                             acc_id_to_label.get(cur.credit_account_id, ""),
                         )
-                        await s.save_counterparty(
-                            Counterparty(
-                                id=pk,
-                                name=str(chg.get("name", cur.name)),
-                                name_kana=chg.get("name_kana", cur.name_kana),
-                                trade_name=chg.get("trade_name", cur.trade_name),
-                                invoice_number=chg.get(
-                                    "invoice_number", cur.invoice_number
-                                ),
-                                debit_account_id=acc_label_to_id.get(deb_label)
-                                if deb_label
-                                else None,
-                                credit_account_id=acc_label_to_id.get(cred_label)
-                                if cred_label
-                                else None,
-                                description_template=chg.get(
-                                    "description_template", cur.description_template
-                                ),
+                        raw_inv = chg.get("invoice_number", cur.invoice_number)
+                        cp_name = str(chg.get("name", cur.name))
+                        try:
+                            await s.save_counterparty(
+                                Counterparty(
+                                    id=pk,
+                                    name=cp_name,
+                                    name_kana=chg.get("name_kana", cur.name_kana),
+                                    trade_name=chg.get("trade_name", cur.trade_name),
+                                    invoice_number=raw_inv or None,
+                                    debit_account_id=acc_label_to_id.get(deb_label)
+                                    if deb_label
+                                    else None,
+                                    credit_account_id=acc_label_to_id.get(cred_label)
+                                    if cred_label
+                                    else None,
+                                    description_template=chg.get(
+                                        "description_template",
+                                        cur.description_template,
+                                    ),
+                                )
                             )
-                        )
+                        except (ValidationError, ValueError) as err:
+                            errors.append(
+                                _format_counterparty_validation_error(
+                                    err, cp_name, raw_inv
+                                )
+                            )
+                        except Exception as err:
+                            errors.append(
+                                f"取引先「{cp_name}」の更新に失敗しました: {err}"
+                            )
                 for pk in deleted:
-                    await s.delete_counterparty(pk)
+                    try:
+                        await s.delete_counterparty(pk)
+                    except Exception as err:
+                        errors.append(f"取引先 (ID: {pk}) の削除に失敗しました: {err}")
 
-        run_async(do_commit())
+            return errors
+
+        commit_errors = run_async(do_commit())
+        if commit_errors:
+            for err_msg in commit_errors:
+                st.error(f"❌ {err_msg}")
+            return False
+        return True
 
     col_cfg_cp = {
         "selected": st.column_config.CheckboxColumn(
@@ -644,17 +739,23 @@ with tab_abs:
         added: list[dict[str, Any]],
         edited: dict[Any, dict[str, Any]],
         deleted: list[Any],
-    ) -> None:
-        async def do_commit() -> None:
+    ) -> bool:
+        async def do_commit() -> list[str]:
+            errors: list[str] = []
             async with DI.get_master_service() as s:
                 for r in added:
                     raw_text = str(r.get("text", "")).strip()
                     acc_label = r.get("account")
                     acc_id = acc_label_to_id.get(acc_label) if acc_label else None
                     if raw_text and acc_id:
-                        await s.save_abstract(
-                            Abstract(text=raw_text, account_id=acc_id)
-                        )
+                        try:
+                            await s.save_abstract(
+                                Abstract(text=raw_text, account_id=acc_id)
+                            )
+                        except Exception as err:
+                            errors.append(
+                                f"摘要「{raw_text}」の保存に失敗しました: {err}"
+                            )
                 for pk, chg in edited.items():
                     cur = next((a for a in abs_list if a.id == pk), None)
                     if cur:
@@ -666,17 +767,32 @@ with tab_abs:
                             else cur.account_id
                         )
                         if new_text and acc_id:
-                            await s.save_abstract(
-                                Abstract(
-                                    id=pk,
-                                    text=new_text,
-                                    account_id=acc_id,
+                            try:
+                                await s.save_abstract(
+                                    Abstract(
+                                        id=pk,
+                                        text=new_text,
+                                        account_id=acc_id,
+                                    )
                                 )
-                            )
+                            except Exception as err:
+                                errors.append(
+                                    f"摘要「{new_text}」の更新に失敗しました: {err}"
+                                )
                 for pk in deleted:
-                    await s.delete_abstract(pk)
+                    try:
+                        await s.delete_abstract(pk)
+                    except Exception as err:
+                        errors.append(f"摘要 (ID: {pk}) の削除に失敗しました: {err}")
 
-        run_async(do_commit())
+            return errors
+
+        commit_errors = run_async(do_commit())
+        if commit_errors:
+            for err_msg in commit_errors:
+                st.error(f"❌ {err_msg}")
+            return False
+        return True
 
     col_cfg_abs = {
         "selected": st.column_config.CheckboxColumn(
