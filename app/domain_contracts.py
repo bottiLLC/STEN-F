@@ -6,7 +6,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date, datetime
 from enum import Enum
+import re
 from typing import Final, TypedDict
+import unicodedata
 
 from pydantic import (
     BaseModel,
@@ -15,6 +17,33 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+_DIGIT_13_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9]{13}$")
+
+
+def _normalize_invoice_number(v: object) -> str | None:
+    """Normalize invoice number by trimming, removing hyphens, and prepending 'T' if 13 digits.
+
+    Args:
+        v: Input invoice number representation.
+
+    Returns:
+        Normalized registration number string starting with 'T' or None.
+    """
+    if not isinstance(v, str):
+        return None
+    cleaned = (
+        unicodedata.normalize("NFKC", v)
+        .strip()
+        .replace("-", "")
+        .replace(" ", "")
+        .upper()
+    )
+    if not cleaned:
+        return None
+    if _DIGIT_13_PATTERN.fullmatch(cleaned):
+        return f"T{cleaned}"
+    return cleaned
 
 
 # --- 1. Datum Plane (Enums, Constants, and Schemas) ---
@@ -187,6 +216,7 @@ class Counterparty(BaseModel):
     id: int | None = None
     name: str
     name_kana: str | None = None
+    trade_name: str | None = None
     invoice_number: str | None = Field(None, pattern=r"^T[0-9]{13}$")
     debit_account_id: int | None = None
     credit_account_id: int | None = None
@@ -197,7 +227,7 @@ class Counterparty(BaseModel):
     @field_validator("invoice_number", mode="before")
     @classmethod
     def clean_invoice_number(cls, v: object) -> str | None:
-        """Strip whitespace and normalize blank strings to None.
+        """Strip whitespace, normalize zenkaku, and auto-prepend 'T' if 13 digits.
 
         Args:
             v: Input invoice number representation.
@@ -205,9 +235,15 @@ class Counterparty(BaseModel):
         Returns:
             Normalized registration number string or None.
         """
+        return _normalize_invoice_number(v)
+
+    @field_validator("name_kana", "trade_name", "description_template", mode="before")
+    @classmethod
+    def clean_empty_strings(cls, v: object) -> str | None:
+        """Convert empty strings to None for optional text attributes."""
         if isinstance(v, str):
-            v_stripped = v.strip()
-            return v_stripped if v_stripped else None
+            s = v.strip()
+            return s if s else None
         return None
 
 
@@ -288,18 +324,15 @@ class Transaction(BaseModel):
     @field_validator("invoice_number", mode="before")
     @classmethod
     def clean_invoice_number(cls, v: object) -> str | None:
-        """Sanitize invoice registration number string.
+        """Sanitize invoice registration number string and auto-prepend 'T' if 13 digits.
 
         Args:
             v: Input invoice number representation.
 
         Returns:
-            Stripped string or None.
+            Normalized registration number string or None.
         """
-        if isinstance(v, str):
-            v_stripped = v.strip()
-            return v_stripped if v_stripped else None
-        return None
+        return _normalize_invoice_number(v)
 
 
 class TaxBreakdownItem(BaseModel):

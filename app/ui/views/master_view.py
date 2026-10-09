@@ -407,15 +407,26 @@ with tab_acc:
 # 5. 取引先マスタ
 with tab_cp:
     st.subheader("取引先マスタ一括管理")
+    accounts = call_master(lambda s: s.get_accounts())
+    sorted_accounts = sorted(
+        accounts, key=lambda a: int(a.code) if a.code.isdigit() else 9999
+    )
+    account_options = [""] + [f"{a.code}: {a.name}" for a in sorted_accounts]
+    acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
+    acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
+
     cps = call_master(lambda s: s.get_counterparties())
     cp_df = pd.DataFrame(
         [
             {
                 "id": c.id,
                 "name": c.name,
+                "name_kana": c.name_kana or "",
+                "trade_name": c.trade_name or "",
                 "invoice_number": c.invoice_number or "",
-                "debit_account_id": c.debit_account_id or None,
-                "credit_account_id": c.credit_account_id or None,
+                "debit_account": acc_id_to_label.get(c.debit_account_id, ""),
+                "credit_account": acc_id_to_label.get(c.credit_account_id, ""),
+                "description_template": c.description_template or "",
             }
             for c in cps
         ]
@@ -430,34 +441,53 @@ with tab_cp:
             async with DI.get_master_service() as s:
                 for r in added:
                     if r.get("name"):
+                        deb_label = r.get("debit_account")
+                        cred_label = r.get("credit_account")
                         await s.save_counterparty(
                             Counterparty(
                                 name=str(r["name"]),
+                                name_kana=r.get("name_kana") or None,
+                                trade_name=r.get("trade_name") or None,
                                 invoice_number=r.get("invoice_number") or None,
-                                debit_account_id=int(r["debit_account_id"])
-                                if r.get("debit_account_id")
+                                debit_account_id=acc_label_to_id.get(deb_label)
+                                if deb_label
                                 else None,
-                                credit_account_id=int(r["credit_account_id"])
-                                if r.get("credit_account_id")
+                                credit_account_id=acc_label_to_id.get(cred_label)
+                                if cred_label
                                 else None,
+                                description_template=r.get("description_template")
+                                or None,
                             )
                         )
                 for pk, chg in edited.items():
                     cur = next((c for c in cps if c.id == pk), None)
                     if cur:
+                        deb_label = chg.get(
+                            "debit_account",
+                            acc_id_to_label.get(cur.debit_account_id, ""),
+                        )
+                        cred_label = chg.get(
+                            "credit_account",
+                            acc_id_to_label.get(cur.credit_account_id, ""),
+                        )
                         await s.save_counterparty(
                             Counterparty(
                                 id=pk,
                                 name=str(chg.get("name", cur.name)),
+                                name_kana=chg.get("name_kana", cur.name_kana),
+                                trade_name=chg.get("trade_name", cur.trade_name),
                                 invoice_number=chg.get(
                                     "invoice_number", cur.invoice_number
                                 ),
-                                debit_account_id=int(chg["debit_account_id"])
-                                if chg.get("debit_account_id")
-                                else cur.debit_account_id,
-                                credit_account_id=int(chg["credit_account_id"])
-                                if chg.get("credit_account_id")
-                                else cur.credit_account_id,
+                                debit_account_id=acc_label_to_id.get(deb_label)
+                                if deb_label
+                                else None,
+                                credit_account_id=acc_label_to_id.get(cred_label)
+                                if cred_label
+                                else None,
+                                description_template=chg.get(
+                                    "description_template", cur.description_template
+                                ),
                             )
                         )
                 for pk in deleted:
@@ -465,8 +495,51 @@ with tab_cp:
 
         run_async(do_commit())
 
+    col_cfg_cp = {
+        "name": st.column_config.TextColumn(
+            "会社名", required=True, help="正式な法人名または個人事業主名"
+        ),
+        "name_kana": st.column_config.TextColumn(
+            "フリガナ", help="五十音順ソート用の全角カナ"
+        ),
+        "trade_name": st.column_config.TextColumn(
+            "屋号", help="店舗名・屋号・ブランド名（AI OCR照合にも利用されます）"
+        ),
+        "invoice_number": st.column_config.TextColumn(
+            "インボイス番号",
+            help="適格請求書発行事業者番号。数字13桁を入力すると「T」が自動付与されます",
+        ),
+        "debit_account": st.column_config.SelectboxColumn(
+            "借方勘定科目",
+            options=account_options,
+            help="AI OCR読取時に自動補完するデフォルト借方勘定科目",
+        ),
+        "credit_account": st.column_config.SelectboxColumn(
+            "貸方勘定科目",
+            options=account_options,
+            help="AI OCR読取時に自動補完するデフォルト貸方勘定科目",
+        ),
+        "description_template": st.column_config.TextColumn(
+            "摘要", help="仕訳伝票に自動補完する取引内容・摘要"
+        ),
+    }
+    col_order_cp = [
+        "name",
+        "name_kana",
+        "trade_name",
+        "invoice_number",
+        "debit_account",
+        "credit_account",
+        "description_template",
+    ]
+
     render_accounting_editor(
-        cp_df, pk_column="id", base_key="editor_counterparties", on_commit=on_commit_cps
+        cp_df,
+        pk_column="id",
+        base_key="editor_counterparties",
+        on_commit=on_commit_cps,
+        column_config=col_cfg_cp,
+        column_order=col_order_cp,
     )
 
 # 6. よく使う摘要マスタ

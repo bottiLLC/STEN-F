@@ -299,9 +299,21 @@ async def test_master_repository_counterparty_and_abstract_crud(
         assert first_acc.id is not None
 
         # Act
-        cp = await repo.save_counterparty(Counterparty(name="リポジトリ専用取引先"))
+        cp = await repo.save_counterparty(
+            Counterparty(
+                name="リポジトリ専用取引先",
+                trade_name="専用屋号カフェ",
+                invoice_number="9876543210123",
+            )
+        )
         assert cp.id is not None
+        assert cp.trade_name == "専用屋号カフェ"
+        assert cp.invoice_number == "T9876543210123"
+
         matched_cp = await repo.get_counterparty_by_keyword("専用取引先")
+        matched_by_trade = await repo.get_counterparty_by_keyword("専用屋号")
+        matched_by_inv_digits = await repo.get_counterparty_by_keyword("9876543210123")
+        matched_by_inv_full = await repo.get_counterparty_by_keyword("T9876543210123")
         unmatched_cp = await repo.get_counterparty_by_keyword("存在しない取引先名XYZ")
 
         ab = await repo.save_abstract(
@@ -319,6 +331,9 @@ async def test_master_repository_counterparty_and_abstract_crud(
         assert isinstance(matched_cp, Counterparty)
         assert matched_cp.id == cp.id
         assert matched_cp.name == "リポジトリ専用取引先"
+        assert matched_by_trade is not None and matched_by_trade.id == cp.id
+        assert matched_by_inv_digits is not None and matched_by_inv_digits.id == cp.id
+        assert matched_by_inv_full is not None and matched_by_inv_full.id == cp.id
         assert unmatched_cp is None
         assert any(a.id == ab.id and a.text == "テスト摘要" for a in all_abs)
         assert delete_cp_res is True

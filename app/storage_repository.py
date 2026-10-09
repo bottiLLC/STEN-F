@@ -7,7 +7,7 @@ import datetime
 from pathlib import Path
 import shutil
 from typing import Final, TypeVar
-from sqlalchemy import ForeignKey, func, select, text
+from sqlalchemy import ForeignKey, func, or_, select, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -88,6 +88,7 @@ class CounterpartyTable(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(nullable=False)
     name_kana: Mapped[str | None] = mapped_column(nullable=True)
+    trade_name: Mapped[str | None] = mapped_column(nullable=True)
     invoice_number: Mapped[str | None] = mapped_column(unique=True, nullable=True)
     debit_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("accounts.id"), nullable=True
@@ -293,6 +294,15 @@ async def init_db(target_engine: AsyncEngine | None = None) -> None:
                 )
             except Exception as e:
                 log.warning("db_migration_skip", column="backup_path", error=str(e))
+        try:
+            await conn.execute(text("SELECT trade_name FROM counterparties LIMIT 1"))
+        except Exception:
+            try:
+                await conn.execute(
+                    text("ALTER TABLE counterparties ADD COLUMN trade_name TEXT")
+                )
+            except Exception as e:
+                log.warning("db_migration_skip", column="trade_name", error=str(e))
 
 
 class SQLAlchemyMasterRepository(IMasterRepository):
@@ -556,9 +566,11 @@ class SQLAlchemyMasterRepository(IMasterRepository):
 
         row = row or CounterpartyTable()
         row.name, row.name_kana = cp.name, cp.name_kana
+        row.trade_name = cp.trade_name
         row.invoice_number = cp.invoice_number or None
         row.debit_account_id = getattr(cp, "debit_account_id", None)
-        row.credit_account_id = getattr(cp, "credit_account_id", None)
+        credit_id = getattr(cp, "credit_account_id", None)
+        row.credit_account_id = credit_id
         row.description_template = getattr(cp, "description_template", None)
         return Counterparty.model_validate(await self._save_and_refresh(row))
 
@@ -574,17 +586,28 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         return [Counterparty.model_validate(r) for r in res.scalars().all()]
 
     async def get_counterparty_by_keyword(self, keyword: str) -> Counterparty | None:
-        """Find counterparty by fuzzy name substring.
+        """Find counterparty by fuzzy match across name, kana, trade name, or invoice number.
 
         Args:
-            keyword: Substring to match against counterparty name.
+            keyword: Substring or registration number to search.
 
         Returns:
             Matched Counterparty model or None.
         """
+        kw = keyword.strip()
+        if not kw:
+            return None
+        inv_match = f"T{kw}" if kw.isdigit() and len(kw) == 13 else kw
         res = await self.session.execute(
             select(CounterpartyTable)
-            .where(CounterpartyTable.name.ilike(f"%{keyword}%"))
+            .where(
+                or_(
+                    CounterpartyTable.name.ilike(f"%{kw}%"),
+                    CounterpartyTable.name_kana.ilike(f"%{kw}%"),
+                    CounterpartyTable.trade_name.ilike(f"%{kw}%"),
+                    CounterpartyTable.invoice_number == inv_match,
+                )
+            )
             .limit(1)
         )
         row = res.scalar_one_or_none()

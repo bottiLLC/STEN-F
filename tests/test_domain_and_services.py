@@ -334,6 +334,10 @@ async def test_fiscal_year_closing_workflow_and_boundary_checks(
     [
         ("  T1234567890123  ", "T1234567890123"),
         ("T1234567890123", "T1234567890123"),
+        ("1234567890123", "T1234567890123"),
+        ("t1234567890123", "T1234567890123"),
+        ("１２３４５６７８９０１２３", "T1234567890123"),
+        ("T-1234-5678-90123", "T1234567890123"),
         ("   ", None),
         ("", None),
         (None, None),
@@ -342,12 +346,29 @@ async def test_fiscal_year_closing_workflow_and_boundary_checks(
 def test_invoice_cleansing_validator(
     raw_input: str | None, expected_invoice: str | None
 ) -> None:
-    """Verify invoice number whitespace stripping and strict pattern verification."""
+    """Verify invoice number whitespace stripping, auto-T prepending, and strict pattern verification."""
     # Act
     cp = Counterparty(name="テスト商事", invoice_number=raw_input)
 
     # Assert
     assert cp.invoice_number == expected_invoice
+
+
+def test_counterparty_trade_name_and_empty_string_normalization() -> None:
+    """Verify Counterparty trade_name attribute and empty string to None normalization."""
+    # Act
+    cp = Counterparty(
+        name="株式会社サンプル",
+        name_kana="  ",
+        trade_name="サンプルカフェ",
+        description_template="   ",
+    )
+
+    # Assert
+    assert cp.name == "株式会社サンプル"
+    assert cp.name_kana is None
+    assert cp.trade_name == "サンプルカフェ"
+    assert cp.description_template is None
 
 
 def test_unbalanced_transaction_raises_validation_error() -> None:
