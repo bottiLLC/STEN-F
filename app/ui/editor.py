@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
 from typing import Any, Literal
 import pandas as pd
+from pydantic import ValidationError
 import streamlit as st
 
 
@@ -55,6 +57,7 @@ def render_accounting_editor(
         st.session_state[version_key] = 0
 
     current_key = f"{base_key}_v{st.session_state[version_key]}"
+    pending_key = f"{current_key}_pending"
 
     edited_df = st.data_editor(
         df,
@@ -87,6 +90,19 @@ def render_accounting_editor(
     )
     added_list = [{k: v for k, v in r.items() if k != "selected"} for r in raw_added]
 
+    editor_has_changes = bool(added_list or pk_edited_map or pk_deleted_list)
+    if editor_has_changes:
+        st.session_state[pending_key] = {
+            "added": added_list,
+            "edited": pk_edited_map,
+            "deleted": pk_deleted_list,
+        }
+    elif pending_key in st.session_state:
+        pending = st.session_state[pending_key]
+        added_list = pending.get("added", [])
+        pk_edited_map = pending.get("edited", {})
+        pk_deleted_list = pending.get("deleted", [])
+
     has_changes = bool(added_list or pk_edited_map or pk_deleted_list)
     if not (on_commit and has_changes):
         return edited_df
@@ -104,6 +120,7 @@ def render_accounting_editor(
             width="stretch",
             help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
         ):
+            st.session_state.pop(pending_key, None)
             st.session_state[version_key] += 1
             st.toast("編集内容を取り消しました", icon="↩️")
             st.rerun()
@@ -122,8 +139,45 @@ def render_accounting_editor(
                 st.error(f"❌ 変更の保存に失敗しました: {err}")
                 return edited_df
 
+            st.session_state.pop(pending_key, None)
             st.session_state[version_key] += 1
             st.toast("変更が正常に保存されました！", icon="✅")
             st.rerun()
 
     return edited_df
+
+
+def format_counterparty_validation_error(
+    err: Exception, name: str, raw_inv: Any
+) -> str:
+    """Format Counterparty validation error into user-actionable Japanese message."""
+    if isinstance(err, ValidationError):
+        messages: list[str] = []
+        for e in err.errors():
+            loc = e.get("loc", ())
+            if "invoice_number" in loc:
+                inv_str = str(raw_inv or "").strip()
+                cleaned = re.sub(r"[\s\-]", "", inv_str)
+                digits = re.sub(r"^[Tt]", "", cleaned)
+                if digits.isdigit():
+                    if len(digits) < 13:
+                        messages.append(
+                            f"インボイス番号の桁数が不足しています（13桁必要ですが現在{len(digits)}桁です: '{raw_inv}'）。"
+                            "「T」+数字13桁、または数字13桁を入力してください。"
+                        )
+                    else:
+                        messages.append(
+                            f"インボイス番号の桁数が超過しています（13桁必要ですが現在{len(digits)}桁です: '{raw_inv}'）。"
+                            "「T」+数字13桁、または数字13桁を入力してください。"
+                        )
+                else:
+                    messages.append(
+                        f"インボイス番号の形式が正しくありません（入力値: '{raw_inv}'）。"
+                        "「T」+数字13桁、または数字13桁を入力してください。"
+                    )
+            elif "name" in loc:
+                messages.append("会社名を入力してください。")
+            else:
+                messages.append(f"{loc}: {e.get('msg')}")
+        return f"取引先「{name}」: " + " / ".join(messages)
+    return f"取引先「{name}」: {err}"

@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from datetime import date
-import re
 from typing import Any
 import pandas as pd
 from pydantic import ValidationError
@@ -37,7 +36,10 @@ from app.domain_contracts import (
     FiscalYear,
     SystemSettings,
 )
-from app.ui.editor import render_accounting_editor
+from app.ui.editor import (
+    format_counterparty_validation_error,
+    render_accounting_editor,
+)
 
 st.header("マスタ・システム設定", divider="blue")
 st.caption(
@@ -435,40 +437,7 @@ with tab_acc:
                 run_async(execute_batch_delete())
 
 
-def _format_counterparty_validation_error(
-    err: Exception, name: str, raw_inv: Any
-) -> str:
-    """Format Counterparty validation error into user-actionable Japanese message."""
-    if isinstance(err, ValidationError):
-        messages: list[str] = []
-        for e in err.errors():
-            loc = e.get("loc", ())
-            if "invoice_number" in loc:
-                inv_str = str(raw_inv or "").strip()
-                cleaned = re.sub(r"[\s\-]", "", inv_str)
-                digits = re.sub(r"^[Tt]", "", cleaned)
-                if digits.isdigit():
-                    if len(digits) < 13:
-                        messages.append(
-                            f"インボイス番号の桁数が不足しています（13桁必要ですが現在{len(digits)}桁です: '{raw_inv}'）。"
-                            "「T」+数字13桁、または数字13桁を入力してください。"
-                        )
-                    else:
-                        messages.append(
-                            f"インボイス番号の桁数が超過しています（13桁必要ですが現在{len(digits)}桁です: '{raw_inv}'）。"
-                            "「T」+数字13桁、または数字13桁を入力してください。"
-                        )
-                else:
-                    messages.append(
-                        f"インボイス番号の形式が正しくありません（入力値: '{raw_inv}'）。"
-                        "「T」+数字13桁、または数字13桁を入力してください。"
-                    )
-            elif "name" in loc:
-                messages.append("会社名を入力してください。")
-            else:
-                messages.append(f"{loc}: {e.get('msg')}")
-        return f"取引先「{name}」: " + " / ".join(messages)
-    return f"取引先「{name}」: {err}"
+_format_counterparty_validation_error = format_counterparty_validation_error
 
 
 # 5. 取引先マスタ

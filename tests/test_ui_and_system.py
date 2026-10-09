@@ -14,6 +14,7 @@ from app.application_services import Container
 from app.core_foundation import DI, call_journal, call_master
 from app.domain_contracts import (
     Corporation,
+    Counterparty,
     FiscalYear,
     Transaction,
     TransactionLine,
@@ -127,7 +128,9 @@ def test_format_counterparty_validation_error_insufficient_digits() -> None:
     """Verify _format_counterparty_validation_error generates clear Japanese explanation for short digits."""
     from pydantic import ValidationError
     from app.domain_contracts import Counterparty
-    from app.ui.views.master_view import _format_counterparty_validation_error
+    from app.ui.editor import (
+        format_counterparty_validation_error as _format_counterparty_validation_error,
+    )
 
     try:
         Counterparty(name="テスト商店", invoice_number="123456789")
@@ -136,6 +139,49 @@ def test_format_counterparty_validation_error_insufficient_digits() -> None:
         assert "桁数が不足しています" in msg
         assert "13桁必要ですが現在9桁です" in msg
         assert "'123456789'" in msg
+
+
+def test_master_view_counterparty_commit_persists_to_database() -> None:
+    """Verify that clicking save button in counterparty master editor correctly persists new entries to DB."""
+    from app.core_foundation import run_async, DI
+
+    at = AppTest.from_file(
+        str(_REPO_ROOT / "app" / "ui" / "views" / "master_view.py"),
+        default_timeout=15,
+    )
+    at.run()
+
+    current_ver = at.session_state.get("editor_counterparties_version", 0)
+    current_key = f"editor_counterparties_v{current_ver}"
+
+    test_company = f"統合テスト株式会社_{current_ver}"
+    test_invoice = "T9876543210987"
+    at.session_state[current_key] = {
+        "added_rows": [{"name": test_company, "invoice_number": test_invoice}],
+        "edited_rows": {},
+        "deleted_rows": [],
+    }
+    at.run()
+
+    save_btns = [
+        b for b in at.button if b.key and "btn_commit_editor_counterparties" in b.key
+    ]
+    assert len(save_btns) == 1, (
+        "Save button should be rendered when pending changes exist"
+    )
+
+    save_btns[0].click().run()
+
+    async def _fetch_counterparties() -> list[Counterparty]:
+        async with DI.get_master_service() as ms:
+            return await ms.get_counterparties()
+
+    counterparties = run_async(_fetch_counterparties())
+    saved_cp = next((c for c in counterparties if c.name == test_company), None)
+    assert saved_cp is not None, (
+        f"Counterparty '{test_company}' should be persisted in database"
+    )
+    assert saved_cp.invoice_number == test_invoice
 
 
 # --- 2. End-to-End System Integration Tests ---
