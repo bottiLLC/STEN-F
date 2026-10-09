@@ -263,7 +263,6 @@ with tab_acc:
     acc_df = pd.DataFrame(
         [
             {
-                "selected": False,
                 "id": a.id,
                 "code": a.code,
                 "name": a.name,
@@ -318,16 +317,14 @@ with tab_acc:
                             )
                         )
                 for pk in deleted:
-                    await s.delete_account(pk)
+                    try:
+                        await s.delete_account(pk)
+                    except ValueError as err:
+                        st.error(f"❌ 勘定科目の削除に失敗しました (ID: {pk}): {err}")
 
         run_async(do_commit())
 
     col_cfg_acc = {
-        "selected": st.column_config.CheckboxColumn(
-            "選択",
-            help="削除対象の勘定科目を選択してください",
-            default=False,
-        ),
         "id": st.column_config.NumberColumn("ID", disabled=True),
         "code": st.column_config.TextColumn("科目コード", required=True),
         "name": st.column_config.TextColumn("科目名", required=True),
@@ -336,9 +333,9 @@ with tab_acc:
         ),
         "description": st.column_config.TextColumn("説明・用途"),
     }
-    col_order_acc = ["selected", "code", "name", "type", "description"]
+    col_order_acc = ["code", "name", "type", "description"]
 
-    edited_acc_df = render_accounting_editor(
+    render_accounting_editor(
         acc_df,
         pk_column="id",
         base_key="editor_accounts",
@@ -346,63 +343,6 @@ with tab_acc:
         column_config=col_cfg_acc,
         column_order=col_order_acc,
     )
-
-    selected_targets = (
-        edited_acc_df[edited_acc_df["selected"].astype(bool)]
-        if "selected" in edited_acc_df.columns
-        else pd.DataFrame()
-    )
-
-    if not selected_targets.empty:
-        col_del_info, col_del_btn = st.columns([4, 2])
-        with col_del_info:
-            st.warning(f"⚠️ {len(selected_targets)} 件の勘定科目が選択されています。")
-        with col_del_btn:
-            if st.button(
-                f"🗑️ 勘定科目を削除 ({len(selected_targets)}件)",
-                type="primary",
-                key="btn_delete_selected_accounts",
-                width="stretch",
-            ):
-
-                async def execute_batch_delete() -> None:
-                    async with DI.get_master_service() as ms:
-                        blocked_names: list[str] = []
-                        valid_delete_ids: list[int] = []
-
-                        for _, row in selected_targets.iterrows():
-                            acc_id = int(row["id"])
-                            acc_name = str(row["name"])
-                            if (
-                                ms.ledger_repository
-                                and await ms.ledger_repository.has_transactions_for_account(
-                                    acc_id
-                                )
-                            ):
-                                blocked_names.append(acc_name)
-                            else:
-                                valid_delete_ids.append(acc_id)
-
-                        if blocked_names:
-                            st.error(
-                                "❌ 以下の勘定科目は仕訳データで使用されているため削除できません:\n"
-                                + "、".join(blocked_names)
-                            )
-                            return
-
-                        for target_id in valid_delete_ids:
-                            await ms.delete_account(target_id)
-
-                        st.session_state["editor_accounts_version"] = (
-                            st.session_state.get("editor_accounts_version", 0) + 1
-                        )
-                        st.toast(
-                            f"{len(valid_delete_ids)} 件の勘定科目を正常に削除しました",
-                            icon="🗑️",
-                        )
-                        st.rerun()
-
-                run_async(execute_batch_delete())
 
 # 5. 取引先マスタ
 with tab_cp:
