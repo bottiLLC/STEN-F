@@ -105,6 +105,11 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
     ]
     assert list(cp_editor.value.columns) == expected_cols
 
+    # Verify frequent abstract data editor retains all columns even when table has zero records
+    abs_editor = at.dataframe[3]
+    expected_abs_cols = ["id", "text", "account"]
+    assert list(abs_editor.value.columns) == expected_abs_cols
+
 
 # --- 2. End-to-End System Integration Tests ---
 @pytest.mark.asyncio

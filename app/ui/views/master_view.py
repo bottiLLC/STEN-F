@@ -499,10 +499,25 @@ with tab_cp:
 # 6. よく使う摘要マスタ
 with tab_abs:
     st.subheader("よく使う摘要マスタ一括管理")
+    accounts = call_master(lambda s: s.get_accounts())
+    sorted_accounts = sorted(
+        accounts, key=lambda a: int(a.code) if a.code.isdigit() else 9999
+    )
+    account_options = [f"{a.code}: {a.name}" for a in sorted_accounts]
+    acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
+    acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
+
     abs_list = call_master(lambda s: s.get_abstracts())
     abs_df = pd.DataFrame(
-        [{"id": a.id, "text": a.text, "account_id": a.account_id} for a in abs_list],
-        columns=["id", "text", "account_id"],
+        [
+            {
+                "id": a.id,
+                "text": a.text,
+                "account": acc_id_to_label.get(a.account_id, ""),
+            }
+            for a in abs_list
+        ],
+        columns=["id", "text", "account"],
     )
 
     def on_commit_abs(
@@ -513,29 +528,56 @@ with tab_abs:
         async def do_commit() -> None:
             async with DI.get_master_service() as s:
                 for r in added:
-                    if r.get("text") and r.get("account_id"):
+                    raw_text = str(r.get("text", "")).strip()
+                    acc_label = r.get("account")
+                    acc_id = acc_label_to_id.get(acc_label) if acc_label else None
+                    if raw_text and acc_id:
                         await s.save_abstract(
-                            Abstract(
-                                text=str(r["text"]), account_id=int(r["account_id"])
-                            )
+                            Abstract(text=raw_text, account_id=acc_id)
                         )
                 for pk, chg in edited.items():
                     cur = next((a for a in abs_list if a.id == pk), None)
                     if cur:
-                        await s.save_abstract(
-                            Abstract(
-                                id=pk,
-                                text=str(chg.get("text", cur.text)),
-                                account_id=int(chg.get("account_id", cur.account_id)),
-                            )
+                        new_text = str(chg.get("text", cur.text)).strip()
+                        acc_label = chg.get("account")
+                        acc_id = (
+                            acc_label_to_id.get(acc_label)
+                            if acc_label
+                            else cur.account_id
                         )
+                        if new_text and acc_id:
+                            await s.save_abstract(
+                                Abstract(
+                                    id=pk,
+                                    text=new_text,
+                                    account_id=acc_id,
+                                )
+                            )
                 for pk in deleted:
                     await s.delete_abstract(pk)
 
         run_async(do_commit())
 
+    col_cfg_abs = {
+        "text": st.column_config.TextColumn(
+            "摘要", required=True, help="頻出する取引内容・定型文"
+        ),
+        "account": st.column_config.SelectboxColumn(
+            "勘定科目",
+            options=account_options,
+            required=True,
+            help="当該摘要に標準で紐づける勘定科目",
+        ),
+    }
+    col_order_abs = ["text", "account"]
+
     render_accounting_editor(
-        abs_df, pk_column="id", base_key="editor_abstracts", on_commit=on_commit_abs
+        abs_df,
+        pk_column="id",
+        base_key="editor_abstracts",
+        on_commit=on_commit_abs,
+        column_config=col_cfg_abs,
+        column_order=col_order_abs,
     )
 
 # 7. AI・システム設定
