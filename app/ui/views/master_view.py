@@ -415,6 +415,10 @@ with tab_cp:
     acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
     acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
 
+    st.caption(
+        "会社名・屋号・インボイス番号・デフォルト勘定科目・摘要を一括設定します。"
+        "インボイス番号は13桁の数字を入力すると「T」が自動付与されます（例: 1234567890123 → T1234567890123）。"
+    )
     cps = call_master(lambda s: s.get_counterparties())
     cp_df = pd.DataFrame(
         [
@@ -429,7 +433,17 @@ with tab_cp:
                 "description_template": c.description_template or "",
             }
             for c in cps
-        ]
+        ],
+        columns=[
+            "id",
+            "name",
+            "name_kana",
+            "trade_name",
+            "invoice_number",
+            "debit_account",
+            "credit_account",
+            "description_template",
+        ],
     )
 
     def on_commit_cps(
@@ -547,7 +561,8 @@ with tab_abs:
     st.subheader("よく使う摘要マスタ一括管理")
     abs_list = call_master(lambda s: s.get_abstracts())
     abs_df = pd.DataFrame(
-        [{"id": a.id, "text": a.text, "account_id": a.account_id} for a in abs_list]
+        [{"id": a.id, "text": a.text, "account_id": a.account_id} for a in abs_list],
+        columns=["id", "text", "account_id"],
     )
 
     def on_commit_abs(

@@ -91,6 +91,19 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
     assert not at.exception, f"master_view.py raised exception: {at.exception}"
     assert len(at.tabs) >= 1
     assert len(at.text_input) >= 1
+    # Verify counterparty data editor retains all columns even when table has zero records
+    cp_editor = at.dataframe[2]
+    expected_cols = [
+        "id",
+        "name",
+        "name_kana",
+        "trade_name",
+        "invoice_number",
+        "debit_account",
+        "credit_account",
+        "description_template",
+    ]
+    assert list(cp_editor.value.columns) == expected_cols
 
 
 # --- 2. End-to-End System Integration Tests ---
