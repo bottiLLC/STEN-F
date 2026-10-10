@@ -20,6 +20,10 @@ import streamlit as st
 
 from app.core_foundation import DI, call_ledger, call_master, run_async
 from app.domain_contracts import Corporation, FiscalYear
+from app.ui.financial_statements import (
+    render_balance_sheet,
+    render_profit_and_loss,
+)
 
 st.header("帳簿・決算", divider="blue")
 st.caption(
@@ -149,69 +153,6 @@ with tab_fs:
     report = call_ledger(lambda s: s.generate_financial_report(selected_fy.id or 0))
 
     st.divider()
-    st.markdown("### 🏛️ 貸借対照表 (Balance Sheet)")
-    c_bs_l, c_bs_r = st.columns(2)
-    with c_bs_l:
-        st.markdown("#### 【 資産の部 】")
-        st.markdown("**流動資産**")
-        for r in report.current_assets.rows:
-            if not hide_zero or r.balance != 0:
-                st.write(f"- {r.account_name}: ¥{r.balance:,}")
-        st.markdown(f"**流動資産合計: ¥{report.current_assets.total:,}**")
-
-        st.markdown("**固定資産**")
-        for r in report.fixed_assets.rows:
-            if not hide_zero or r.balance != 0:
-                st.write(f"- {r.account_name}: ¥{r.balance:,}")
-        st.markdown(f"**固定資産合計: ¥{report.fixed_assets.total:,}**")
-        st.markdown(f"### 資産の部 合計: ¥{report.total_assets:,}")
-
-    with c_bs_r:
-        st.markdown("#### 【 負債・純資産の部 】")
-        st.markdown("**流動負債**")
-        for r in report.current_liabilities.rows:
-            if not hide_zero or r.balance != 0:
-                st.write(f"- {r.account_name}: ¥{r.balance:,}")
-        st.markdown(f"**流動負債合計: ¥{report.current_liabilities.total:,}**")
-
-        st.markdown("**固定負債**")
-        for r in report.fixed_liabilities.rows:
-            if not hide_zero or r.balance != 0:
-                st.write(f"- {r.account_name}: ¥{r.balance:,}")
-        st.markdown(f"**固定負債合計: ¥{report.fixed_liabilities.total:,}**")
-
-        st.markdown("**純資産の部**")
-        for r in report.equity.rows:
-            if not hide_zero or r.balance != 0:
-                st.write(f"- {r.account_name}: ¥{r.balance:,}")
-        st.markdown(f"**純資産合計: ¥{report.total_equity:,}**")
-        st.markdown(
-            f"### 負債・純資産の部 合計: ¥{report.total_liabilities + report.total_equity:,}"
-        )
-
+    render_balance_sheet(report, hide_zero=hide_zero)
     st.divider()
-    st.markdown("### 📈 損益計算書 (Profit & Loss Statement)")
-    c_pl1, c_pl2 = st.columns(2)
-    with c_pl1:
-        st.markdown("**1. 売上高 / 2. 売上原価**")
-        st.write(f"- 売上高: ¥{report.revenue.total:,}")
-        st.write(f"- 売上原価: ¥{report.cost_of_sales.total:,}")
-        st.markdown(f"**売上総利益: ¥{report.gross_profit:,}**")
-
-        st.markdown("**3. 販売費及び一般管理費**")
-        for r in report.sga.rows:
-            if not hide_zero or r.balance != 0:
-                st.write(f"- {r.account_name}: ¥{r.balance:,}")
-        st.markdown(f"**販売費及び一般管理費合計: ¥{report.sga.total:,}**")
-        st.markdown(f"### 営業利益: ¥{report.operating_income:,}")
-
-    with c_pl2:
-        st.markdown("**4. 営業外損益 / 5. 特別損益**")
-        st.write(f"- 営業外収益: ¥{report.non_op_income.total:,}")
-        st.write(f"- 営業外費用: ¥{report.non_op_expense.total:,}")
-        st.markdown(f"**経常利益: ¥{report.ordinary_income:,}**")
-
-        st.write(f"- 特別利益: ¥{report.extra_income.total:,}")
-        st.write(f"- 特別損失: ¥{report.extra_loss.total:,}")
-        st.markdown(f"**税引前当期純利益: ¥{report.income_before_tax:,}**")
-        st.markdown(f"### 🌟 当期純利益: ¥{report.net_income:,}")
+    render_profit_and_loss(report, hide_zero=hide_zero)
