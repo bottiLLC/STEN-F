@@ -25,7 +25,7 @@ from app.ui.financial_statements import (
     render_profit_and_loss,
 )
 
-st.header("帳簿・決算", divider="blue")
+st.header("帳簿・決算", divider="gray")
 st.caption(
     "総勘定元帳の閲覧、合計残高試算表 (T/B) による貸借検証、および貸借対照表 (B/S)・損益計算書 (P/L) の確認・PDF 出力を一元的に行います。"
 )
@@ -45,9 +45,9 @@ selected_fy = fy_map[
 
 tab_tb, tab_gl, tab_fs = st.tabs(
     [
-        "📊 合計残高試算表 (T/B)",
-        "📖 総勘定元帳 (General Ledger)",
-        "📑 決算書 (B/S・P/L・PDF)",
+        "合計残高試算表 (T/B)",
+        "総勘定元帳 (General Ledger)",
+        "決算書 (B/S・P/L・PDF)",
     ]
 )
 
@@ -81,9 +81,9 @@ with tab_tb:
         c1.metric("借方残高合計", f"¥{tot_db:,}")
         c2.metric("貸方残高合計", f"¥{tot_cb:,}")
         if tot_db == tot_cb:
-            c3.success("✅ 貸借一致 (バランス検証 OK)")
+            c3.success("貸借一致 (バランス検証 OK)")
         else:
-            c3.error(f"❌ 貸借不一致 (差額: ¥{abs(tot_db - tot_cb):,})")
+            c3.error(f"貸借不一致 (差額: ¥{abs(tot_db - tot_cb):,})")
 
 # 2. 総勘定元帳 (General Ledger)
 with tab_gl:
@@ -123,7 +123,7 @@ with tab_fs:
 
     with col_btn:
         if st.button(
-            "📑 決算書 PDF を生成・ダウンロード",
+            "決算書 PDF を生成・ダウンロード",
             type="primary",
             width="stretch",
         ):
@@ -141,7 +141,7 @@ with tab_fs:
             try:
                 pdf_bytes = run_async(generate_pdf(selected_fy))
                 st.download_button(
-                    "⬇️ 生成された決算書 PDF を保存",
+                    "生成された決算書 PDF を保存",
                     data=pdf_bytes,
                     file_name=f"report_{selected_fy.name}.pdf",
                     mime="application/pdf",

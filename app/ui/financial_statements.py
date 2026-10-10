@@ -204,7 +204,7 @@ _COMMON_CSS = """
 .fs-card {
     background-color: #ffffff;
     border: 1px solid #e5e7eb;
-    border-radius: 6px;
+    border-radius: 4px;
     padding: 20px 24px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
@@ -241,7 +241,7 @@ _COMMON_CSS = """
     margin-left: 12px;
 }
 .fs-subtotal {
-    border-top: 1px solid #ddd;
+    border-top: 1px solid #e5e7eb;
     font-weight: 600;
     background-color: #fafafa;
     margin-top: 2px;
@@ -260,7 +260,7 @@ _COMMON_CSS = """
     margin-top: auto;
     background-color: #f8f9fa;
     border-top: 1px solid #374151;
-    border-bottom: 3px double #333333;
+    border-bottom: 3px double #1f2937;
     font-weight: 700;
     font-size: 0.98rem;
     padding: 10px 12px;
@@ -342,7 +342,7 @@ _COMMON_CSS = """
 .fs-pl-net-income {
     background-color: #f8f9fa;
     border-top: 1px solid #374151;
-    border-bottom: 3px double #333333;
+    border-bottom: 3px double #1f2937;
     font-weight: 700;
     font-size: 1.02rem;
     margin-top: 12px;

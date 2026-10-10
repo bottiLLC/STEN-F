@@ -136,7 +136,7 @@ def test_build_balance_sheet_html_with_financial_report() -> None:
     assert "負債・純資産の部 合計" in html_output
     assert "¥1,800,000" in html_output
     assert "tabular-nums" in html_output
-    assert "border-bottom: 3px double #333333" in html_output
+    assert "border-bottom: 3px double #1f2937" in html_output
     assert "margin-top: auto" in html_output  # Flush horizontal alignment requirement
     # Zero balance filtering verification
     assert "前払費用" not in html_output

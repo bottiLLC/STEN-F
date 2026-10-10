@@ -61,7 +61,7 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
             or (c == 400 and "API KEY" in m)
         ),
         lambda msg: (
-            f"⚠️ **Gemini API キーが無効または未設定です**\n\nGoogle AI Studio で取得した有効な API キーが登録されているかご確認ください。\n「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n(詳細エラー: `{msg}`)"
+            f"**Gemini API キーが無効または未設定です**\n\nGoogle AI Studio で取得した有効な API キーが登録されているかご確認ください。\n「マスタ・システム管理」画面の「AI・システム設定」タブ、または `.env` ファイルから再設定できます。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
@@ -492,7 +492,7 @@ class GeminiOCRService:
         if not api_key:
             raise ValueError(
                 "AI連携用のAPIキー（Gemini）が設定されていません。\n"
-                "「マスタ・システム管理」画面の「⚙️ AI・システム設定」タブ、または .env ファイルに GEMINI_API_KEY を登録してください。"
+                "「マスタ・システム管理」画面の「AI・システム設定」タブ、または .env ファイルに GEMINI_API_KEY を登録してください。"
             )
         if not file_bytes:
             raise ValueError("アップロードされたファイルが空です。")

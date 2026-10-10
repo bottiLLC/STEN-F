@@ -24,7 +24,7 @@ import streamlit as st
 from app.core_foundation import DI, call_journal, call_master, run_async
 from app.domain_contracts import Transaction, TransactionLine
 
-st.header("仕訳・記帳", divider="blue")
+st.header("仕訳・記帳", divider="gray")
 st.caption(
     "AI OCR（領収書・請求書自動読取）起点での振替伝票作成、および仕訳帳の一覧・検索・CSV出力を一元的に行います。"
 )
@@ -40,9 +40,7 @@ account_code_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
 account_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
 abstract_options = [""] + sorted(list(set(a.text for a in abstracts if a.text)))
 
-tab_entry, tab_history = st.tabs(
-    ["📝 振替伝票・AI仕訳入力", "📖 仕訳帳 (General Journal)"]
-)
+tab_entry, tab_history = st.tabs(["振替伝票・AI仕訳入力", "仕訳帳 (General Journal)"])
 
 # 1. 振替伝票入力
 with tab_entry:
@@ -60,7 +58,7 @@ with tab_entry:
 
         if is_pdf:
             st.info(
-                f"📄 PDF形式の証憑がセットされました: **{file_name}** ({len(file_bytes) / 1024:.1f} KB)"
+                f"PDF形式の証憑がセットされました: **{file_name}** ({len(file_bytes) / 1024:.1f} KB)"
             )
         else:
             st.image(
@@ -72,13 +70,13 @@ with tab_entry:
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             run_fast = st.button(
-                "⚡ 通常読取（高速）",
+                "通常読取（高速）",
                 key="btn_run_ocr_fast",
                 use_container_width=True,
             )
         with col_btn2:
             run_boost = st.button(
-                "🎯 高精度読取（ブースト）",
+                "高精度読取（ブースト）",
                 type="primary",
                 key="btn_run_ocr_boost",
                 use_container_width=True,
@@ -117,9 +115,9 @@ with tab_entry:
     if ocr and ocr.needs_manual_review:
         st.markdown(
             """
-            <div style="border: 2px solid #ef4444; border-radius: 8px; padding: 12px; margin-bottom: 16px; background-color: rgba(239, 68, 68, 0.08);">
+            <div style="border: 2px solid #ef4444; border-radius: 4px; padding: 12px; margin-bottom: 16px; background-color: rgba(239, 68, 68, 0.08);">
                 <div style="color: #b91c1c; font-weight: bold; font-size: 1.05rem; margin-bottom: 4px;">
-                    ⚠️ 新規・要確認（未確定）
+                    新規・要確認（未確定）
                 </div>
                 <div style="color: #374151; font-size: 0.9rem;">
                     取引先マスター照合スコアが75点未満のため、未確定として表示しています。AIが読み取った日付・金額・店名等の生データは自動入力されています。内容を確認し、必要に応じて修正してください。
@@ -246,7 +244,7 @@ with tab_entry:
     is_balanced = total_debit == total_credit > 0
     col_m3.metric(
         "貸借バランス(差額)",
-        "✅ 一致" if is_balanced else f"¥{total_debit - total_credit:,}",
+        "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
     )
 
     # Active evidence attachment indicator
@@ -258,11 +256,11 @@ with tab_entry:
     )
     if active_evidence_name:
         st.caption(
-            f"🔒 添付証憑: **{active_evidence_name}**（登録時に電帳法準拠ストレージへ自動保存されます）"
+            f"添付証憑: **{active_evidence_name}**（登録時に電帳法準拠ストレージへ自動保存されます）"
         )
 
     if st.button(
-        "💾 この内容で仕訳帳に登録する",
+        "仕訳帳に登録する",
         type="primary",
         disabled=not is_balanced,
         width="stretch",
@@ -341,9 +339,7 @@ with tab_history:
                         "記録日時(UTC)": tx.recorded_at.strftime("%Y-%m-%d %H:%M:%S")
                         if tx.recorded_at
                         else "-",
-                        "証憑": ("📄 あり" if tx.evidence_path else "-")
-                        if i == 0
-                        else "",
+                        "証憑": ("あり" if tx.evidence_path else "-") if i == 0 else "",
                         "借方科目": account_id_to_label.get(d.account_id, "")
                         if d
                         else "",
@@ -362,7 +358,7 @@ with tab_history:
         csv_buf = io.StringIO()
         pd.DataFrame(rows).to_csv(csv_buf, index=False)
         st.download_button(
-            "📥 仕訳帳 CSV をエクスポート",
+            "仕訳帳 CSV をエクスポート",
             data=csv_buf.getvalue().encode("utf_8_sig"),
             file_name=f"journal_{s_date}_{e_date}.csv",
             mime="text/csv",
@@ -370,9 +366,9 @@ with tab_history:
         )
 
         st.divider()
-        st.markdown("##### 🔍 選択仕訳の詳細・証憑確認 (PDF/画像)")
+        st.markdown("##### 選択仕訳の詳細・証憑確認 (PDF/画像)")
         tx_options = {
-            f"ID {tx.id} | 発生日: {tx.occurred_at} | {tx.description or '振替仕訳'} (¥{sum(line.debit for line in tx.lines):,}) [{'📄 証憑あり' if tx.evidence_path else '証憑なし'}]": tx
+            f"ID {tx.id} | 発生日: {tx.occurred_at} | {tx.description or '振替仕訳'} (¥{sum(line.debit for line in tx.lines):,}) [{'証憑あり' if tx.evidence_path else '証憑なし'}]": tx
             for tx in entries
         }
         selected_label = st.selectbox(
@@ -400,10 +396,10 @@ with tab_history:
                         evidence_filename = resolved.name
                         is_evidence_pdf = evidence_filename.lower().endswith(".pdf")
                         st.success(
-                            f"📎 添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)"
+                            f"添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)"
                         )
                         st.download_button(
-                            label=f"📥 証憑ファイル ({evidence_filename}) をダウンロード",
+                            label=f"証憑ファイル ({evidence_filename}) をダウンロード",
                             data=evidence_bytes,
                             file_name=evidence_filename,
                             mime="application/pdf"
@@ -417,7 +413,7 @@ with tab_history:
                             key=f"dl_evidence_{selected_tx.id}",
                         )
                         if is_evidence_pdf:
-                            with st.expander("📄 PDFプレビューを表示", expanded=True):
+                            with st.expander("PDFプレビューを表示", expanded=True):
                                 b64_pdf = base64.b64encode(evidence_bytes).decode(
                                     "utf-8"
                                 )
@@ -433,7 +429,7 @@ with tab_history:
                             )
                     else:
                         st.warning(
-                            f"⚠️ 証憑ファイルがストレージ上に見つかりません: {selected_tx.evidence_path}"
+                            f"証憑ファイルがストレージ上に見つかりません: {selected_tx.evidence_path}"
                         )
                 else:
                     st.caption("※ この仕訳に添付された証憑はありません。")
@@ -441,7 +437,7 @@ with tab_history:
             with col_d_right:
                 if selected_tx.id is not None:
                     target_id: int = selected_tx.id
-                    st.markdown("##### 🔄 赤伝起票（反対仕訳による訂正）")
+                    st.markdown("##### 赤伝起票（反対仕訳による訂正）")
                     st.caption(
                         "※ 会計不変制約（Rule 1）に基づき、過去仕訳の上書き更新・削除は禁止されています。貸借を反転させた赤伝（反対仕訳）を発行して残高を相殺します。"
                     )
@@ -451,7 +447,7 @@ with tab_history:
                         key=f"rev_reason_{target_id}",
                     )
                     if st.button(
-                        "🔄 赤伝（反対仕訳）を発行して取消",
+                        "赤伝（反対仕訳）を発行して取消",
                         type="secondary",
                         icon=":material/swap_horiz:",
                         key=f"rev_btn_{target_id}",
@@ -465,7 +461,7 @@ with tab_history:
                             )
                             st.toast(
                                 f"赤伝を発行しました (新仕訳ID: {rev_id})",
-                                icon="🔄",
+                                icon=":material/check:",
                             )
                             st.rerun()
                         except Exception as ex:

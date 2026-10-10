@@ -41,20 +41,20 @@ from app.ui.editor import (
     render_accounting_editor,
 )
 
-st.header("マスタ・システム設定", divider="blue")
+st.header("マスタ・システム設定", divider="gray")
 st.caption(
     "事業者情報、会計年度・決算締め処理、期首残高、勘定科目・取引先・摘要マスタ、AI設定を一括管理します。"
 )
 
 tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_sys = st.tabs(
     [
-        "🏢 自社情報",
-        "📅 会計年度・年度締め",
-        "⚖️ 期首残高設定",
-        "📑 勘定科目",
-        "🤝 取引先",
-        "💬 よく使う摘要",
-        "⚙️ AI・システム設定",
+        "自社情報",
+        "会計年度・年度締め",
+        "期首残高設定",
+        "勘定科目",
+        "取引先",
+        "よく使う摘要",
+        "AI・システム設定",
     ]
 )
 
@@ -80,9 +80,7 @@ with tab_corp:
             value=corp.representative_name if corp and corp.representative_name else "",
         )
 
-        if st.form_submit_button(
-            "💾 自社情報を保存する", type="primary", width="stretch"
-        ):
+        if st.form_submit_button("自社情報を保存する", type="primary", width="stretch"):
             if not corp_name.strip():
                 st.error("法人名・屋号を入力してください。")
             else:
@@ -125,14 +123,14 @@ with tab_fy:
         open_fy = next((f for f in fys if f.status == "OPEN"), None)
         if open_fy:
             st.divider()
-            st.markdown(f"#### 🔒 会計年度の締め処理 (現在進行中: `{open_fy.name}`)")
+            st.markdown(f"#### 会計年度の締め処理 (現在進行中: `{open_fy.name}`)")
             with st.form("fy_close_form"):
                 next_fy_name = st.text_input(
                     "次期年度名称", value=f"第{(open_fy.period_number or 0) + 1}期"
                 )
                 if st.form_submit_button(
-                    "⚠️ この会計年度を締め切る (CLOSED)",
-                    type="primary",
+                    "この会計年度を締め切る (CLOSED)",
+                    type="secondary",
                     width="stretch",
                 ):
                     try:
@@ -148,7 +146,7 @@ with tab_fy:
                         st.error(f"年度締めエラー: {e}")
 
     with col_fy_new:
-        st.markdown("#### ➕ 新規会計年度の登録")
+        st.markdown("#### 新規会計年度の登録")
         with st.form("new_fy_form"):
             new_name = st.text_input("年度名称 (例: 第1期)")
             new_period = st.number_input("期数", min_value=1, value=1)
@@ -243,7 +241,7 @@ with tab_op:
             diff = total_d - total_c
             m3.metric(
                 "貸借バランス(差額)",
-                "✅ 一致" if diff == 0 and total_d > 0 else f"¥{diff:,}",
+                "一致" if diff == 0 and total_d > 0 else f"¥{diff:,}",
             )
 
             assert open_fy is not None
@@ -257,12 +255,12 @@ with tab_op:
 
             if has_opening_entry:
                 st.info(
-                    "ℹ️ 当該会計年度の期首残高は既に登録済みです（不変原則に基づきロック中）。"
+                    "当該会計年度の期首残高は既に登録済みです（不変原則に基づきロック中）。"
                     "訂正が必要な場合は、振替仕訳画面より赤伝（反対仕訳）を起票してください。"
                 )
 
             if st.form_submit_button(
-                "💾 期首残高を登録する",
+                "期首残高を登録する",
                 type="primary",
                 width="stretch",
                 disabled=has_opening_entry,
@@ -366,7 +364,7 @@ with tab_acc:
         commit_errors = run_async(do_commit())
         if commit_errors:
             for err_msg in commit_errors:
-                st.error(f"❌ {err_msg}")
+                st.error(f"{err_msg}")
             return False
         return True
 
@@ -405,11 +403,11 @@ with tab_acc:
     if not selected_targets.empty:
         col_del_info, col_del_btn = st.columns([4, 2])
         with col_del_info:
-            st.warning(f"⚠️ {len(selected_targets)} 件の勘定科目が選択されています。")
+            st.warning(f"{len(selected_targets)} 件の勘定科目が選択されています。")
         with col_del_btn:
             if st.button(
-                f"🗑️ 勘定科目を削除 ({len(selected_targets)}件)",
-                type="primary",
+                f"勘定科目を削除 ({len(selected_targets)}件)",
+                type="secondary",
                 key="btn_delete_selected_accounts",
                 width="stretch",
             ):
@@ -437,7 +435,7 @@ with tab_acc:
 
                         if blocked_names:
                             st.error(
-                                "❌ 以下の勘定科目は仕訳データで使用されているため削除できません:\n"
+                                "以下の勘定科目は仕訳データで使用されているため削除できません:\n"
                                 + "、".join(blocked_names)
                             )
                             return
@@ -450,7 +448,7 @@ with tab_acc:
                         )
                         st.toast(
                             f"{len(valid_delete_ids)} 件の勘定科目を正常に削除しました",
-                            icon="🗑️",
+                            icon=":material/delete:",
                         )
                         st.rerun()
 
@@ -599,7 +597,7 @@ with tab_cp:
         commit_errors = run_async(do_commit())
         if commit_errors:
             for err_msg in commit_errors:
-                st.error(f"❌ {err_msg}")
+                st.error(f"{err_msg}")
             return False
         return True
 
@@ -667,11 +665,11 @@ with tab_cp:
     if not selected_cp_targets.empty:
         col_del_info, col_del_btn = st.columns([4, 2])
         with col_del_info:
-            st.warning(f"⚠️ {len(selected_cp_targets)} 件の取引先が選択されています。")
+            st.warning(f"{len(selected_cp_targets)} 件の取引先が選択されています。")
         with col_del_btn:
             if st.button(
-                f"🗑️ 取引先を削除 ({len(selected_cp_targets)}件)",
-                type="primary",
+                f"取引先を削除 ({len(selected_cp_targets)}件)",
+                type="secondary",
                 key="btn_delete_selected_counterparties",
                 width="stretch",
             ):
@@ -693,7 +691,7 @@ with tab_cp:
                         )
                         st.toast(
                             f"{len(valid_delete_ids)} 件の取引先を正常に削除しました",
-                            icon="🗑️",
+                            icon=":material/delete:",
                         )
                         st.rerun()
 
@@ -779,7 +777,7 @@ with tab_abs:
         commit_errors = run_async(do_commit())
         if commit_errors:
             for err_msg in commit_errors:
-                st.error(f"❌ {err_msg}")
+                st.error(f"{err_msg}")
             return False
         return True
 
@@ -821,11 +819,11 @@ with tab_abs:
     if not selected_abs_targets.empty:
         col_del_info, col_del_btn = st.columns([4, 2])
         with col_del_info:
-            st.warning(f"⚠️ {len(selected_abs_targets)} 件の摘要が選択されています。")
+            st.warning(f"{len(selected_abs_targets)} 件の摘要が選択されています。")
         with col_del_btn:
             if st.button(
-                f"🗑️ 摘要を削除 ({len(selected_abs_targets)}件)",
-                type="primary",
+                f"摘要を削除 ({len(selected_abs_targets)}件)",
+                type="secondary",
                 key="btn_delete_selected_abstracts",
                 width="stretch",
             ):
@@ -847,7 +845,7 @@ with tab_abs:
                         )
                         st.toast(
                             f"{len(valid_delete_ids)} 件の摘要を正常に削除しました",
-                            icon="🗑️",
+                            icon=":material/delete:",
                         )
                         st.rerun()
 
@@ -855,7 +853,7 @@ with tab_abs:
 
 # 7. AI・システム設定
 with tab_sys:
-    st.subheader("⚙️ AI（Google Gemini）＆ システム設定")
+    st.subheader("AI（Google Gemini）＆ システム設定")
     sys_conf = call_master(lambda s: s.get_system_settings())
     with st.form("sys_form"):
         api_key_input = st.text_input(

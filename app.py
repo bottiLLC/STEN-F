@@ -19,6 +19,7 @@ from backup_manager import get_backup_dir, run_backup, set_backup_dir
 from app.core_foundation import DI, log, run_async, run_scoped
 from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
 from app.storage_repository import seed_accounts
+from app.ui.design_system import inject_global_design_system
 
 
 # --- 1. Pure Transformation Helpers ---
@@ -91,21 +92,21 @@ def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) ->
         st.caption("Simple Tough Effective Next-generation Finance")
         st.divider()
         if corp_info and corp_info.name:
-            st.markdown(f"🏢 **{corp_info.name}**")
+            st.markdown(f"**{corp_info.name}**")
             if corp_info.representative_name:
                 st.caption(
                     f"代表者: {corp_info.representative_title or ''} {corp_info.representative_name}"
                 )
         else:
-            st.caption("🏢 ※ 自社情報未設定 (マスタ管理で登録)")
+            st.caption("※ 自社情報未設定 (マスタ管理で登録)")
 
         st.divider()
         if open_fy:
             st.info(
-                f"📅 **進行中の会計年度**\n\n**{open_fy.name}**\n\n`{open_fy.start_date}` 〜 `{open_fy.end_date}`"
+                f"**進行中の会計年度**\n\n**{open_fy.name}**\n\n`{open_fy.start_date}` 〜 `{open_fy.end_date}`"
             )
         else:
-            st.warning("⚠️ 進行中の会計年度がありません。")
+            st.warning("進行中の会計年度がありません。")
 
         _render_sidebar_backup()
 
@@ -117,10 +118,11 @@ def main() -> None:
     """Streamlit application root coordinator."""
     st.set_page_config(
         page_title="STEN-F 会計システム",
-        page_icon="📑",
+        page_icon=":material/account_balance:",
         layout="wide",
         initial_sidebar_state="expanded",
     )
+    inject_global_design_system()
 
     if "initialized" not in st.session_state:
         try:

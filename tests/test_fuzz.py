@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 import re
+import unicodedata
 from hypothesis import given, strategies as st
 from pydantic import ValidationError
 import pytest
@@ -75,8 +76,17 @@ def test_fuzz_invoice_number_cleansing_and_validation(inv_num: str) -> None:
         TransactionLine(account_id=1, debit=1000, credit=0),
         TransactionLine(account_id=2, debit=0, credit=1000),
     ]
-    is_valid_format = re.match(r"^T[0-9]{13}$", inv_num.strip()) is not None
-    is_empty_or_whitespace = inv_num.strip() == ""
+    cleaned = (
+        unicodedata.normalize("NFKC", inv_num)
+        .strip()
+        .replace("-", "")
+        .replace(" ", "")
+        .upper()
+    )
+    is_valid_format = bool(
+        re.match(r"^T[0-9]{13}$", cleaned) or re.match(r"^[0-9]{13}$", cleaned)
+    )
+    is_empty_or_whitespace = not cleaned
 
     # Act & Assert
     if is_valid_format:
@@ -86,7 +96,8 @@ def test_fuzz_invoice_number_cleansing_and_validation(inv_num: str) -> None:
             lines=lines,
             invoice_number=inv_num,
         )
-        assert tx.invoice_number == inv_num.strip()
+        expected = cleaned if cleaned.startswith("T") else f"T{cleaned}"
+        assert tx.invoice_number == expected
     elif is_empty_or_whitespace:
         tx = Transaction(
             date=date.today(),
