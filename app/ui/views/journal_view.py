@@ -245,8 +245,8 @@ with tab_entry:
     col_m2.metric("貸方合計", f"¥{total_credit:,}")
     is_balanced = total_debit == total_credit > 0
     col_m3.metric(
-        "貸借バランス",
-        "✅ 一致" if is_balanced else f"差額: ¥{total_debit - total_credit:,}",
+        "貸借バランス(差額)",
+        "✅ 一致" if is_balanced else f"¥{total_debit - total_credit:,}",
     )
 
     # Active evidence attachment indicator
