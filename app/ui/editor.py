@@ -115,7 +115,7 @@ def render_accounting_editor(
         )
     with col_cancel:
         if st.button(
-            "編集を取り消す",
+            "取消",
             key=f"btn_cancel_{current_key}",
             help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
         ):
@@ -125,7 +125,7 @@ def render_accounting_editor(
             st.rerun()
     with col_save:
         if st.button(
-            "変更を保存",
+            "保存",
             type="primary",
             key=f"btn_commit_{current_key}",
         ):

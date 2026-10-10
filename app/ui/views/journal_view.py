@@ -75,19 +75,19 @@ with tab_entry:
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             run_fast = st.button(
-                "通常読取（高速）",
+                "通常読取",
                 key="btn_run_ocr_fast",
             )
         with col_btn2:
             run_boost = st.button(
-                "高精度読取（ブースト）",
+                "高精度読取",
                 type="primary",
                 key="btn_run_ocr_boost",
             )
 
         if run_fast or run_boost:
             target_model = "gemini-3.5-flash-lite" if run_fast else "gemini-3.8-flash"
-            model_label = "通常読取（高速）" if run_fast else "高精度読取（ブースト）"
+            model_label = "通常読取" if run_fast else "高精度読取"
             mime = uploaded_file.type or ("application/pdf" if is_pdf else "image/png")
             with st.spinner(f"Gemini AI ({model_label}) が証憑を解析中..."):
                 try:
@@ -265,7 +265,7 @@ with tab_entry:
     col_submit_sp, col_submit_btn = st.columns([4, 1])
     with col_submit_btn:
         do_submit_tx = st.button(
-            "仕訳帳に登録する",
+            "仕訳登録",
             type="primary",
             disabled=not is_balanced,
         )
@@ -369,7 +369,7 @@ with tab_history:
             st.caption(f"抽出件数: {len(entries)} 件")
         with col_tbl_action:
             st.download_button(
-                "仕訳帳 CSV 出力",
+                "CSV出力",
                 data=csv_buf.getvalue().encode("utf_8_sig"),
                 file_name=f"journal_{s_date}_{e_date}.csv",
                 mime="text/csv",
@@ -412,7 +412,7 @@ with tab_history:
                             f"添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)"
                         )
                         st.download_button(
-                            label=f"証憑ファイル ({evidence_filename}) をダウンロード",
+                            label="証憑出力",
                             data=evidence_bytes,
                             file_name=evidence_filename,
                             mime="application/pdf"
@@ -463,7 +463,7 @@ with tab_history:
                         '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
                     )
                     do_rev = st.button(
-                        "赤伝（反対仕訳）を発行して取消",
+                        "赤伝発行",
                         type="secondary",
                         icon=":material/swap_horiz:",
                         key=f"rev_btn_{target_id}",

@@ -53,6 +53,21 @@ Never invent arbitrary hex colors. Stick strictly to these tokens:
   - **Secondary / Ghost:** White background, subtle border (`#E5E7EB`), text (`#1F2937`). For auxiliary operations.
   - **Destructive:** White background, muted red border/text (`#DC2626`). Turn solid red ONLY upon critical confirmation modals.
 
+- **Labeling & Microcopy (Strictly Concise):**
+  - Buttons must be treated like industrial hardware switches, NOT conversational prompts.
+  - **Single verb or concise noun phrase only:** Maximum 2 to 6 Japanese characters (or 1 to 2 English words).
+  - **STRICT PROHIBITION of conversational fluff:** Never use prefixes like "今すぐ..." (Now/Immediately) or redundant suffixes like "...を実行" (...Execute) / "...を行う" (...Perform).
+    - ❌ BAD: `今すぐバックアップを実行` (Run backup right now)
+    - ⭕️ GOOD: `バックアップ` (Backup) or `バックアップ作成` (Create Backup)
+    - ❌ BAD: `自社情報を保存する` (Save company info)
+    - ⭕️ GOOD: `保存` (Save)
+    - ❌ BAD: `CSVデータを出力する`
+    - ⭕️ GOOD: `CSV出力` (Export CSV)
+
+- **Layout & Wrapping Constraints:**
+  - **No Text Wrapping:** Enforce `white-space: nowrap;` across all buttons. Button labels must NEVER wrap into multiple lines under any viewport size.
+  - **Icon & Text Alignment:** If an icon is included, keep a fixed `gap: 6px;` and ensure strict vertical centering (`display: inline-flex; align-items: center; justify-content: center;`). Icons must never float or wrap separately from the text.
+
 ### Tables & Accounting Grids (B/S & P/L)
 - **Typography:** Always apply `font-variant-numeric: tabular-nums;` to financial amounts. Right-align all numeric values.
 - **Alignment:** Balance Sheet (B/S) must maintain bottom alignment (equal visual height) between Assets and Liabilities/Equity.

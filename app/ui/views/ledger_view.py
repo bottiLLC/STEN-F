@@ -127,7 +127,7 @@ with tab_fs:
 
     with col_btn:
         if st.button(
-            "決算書 PDF を生成",
+            "PDF生成",
             type="primary",
             icon=":material/picture_as_pdf:",
         ):
@@ -145,7 +145,7 @@ with tab_fs:
             try:
                 pdf_bytes = run_async(generate_pdf(selected_fy))
                 st.download_button(
-                    "決算書 PDF を保存",
+                    "PDF出力",
                     data=pdf_bytes,
                     file_name=f"report_{selected_fy.name}.pdf",
                     mime="application/pdf",

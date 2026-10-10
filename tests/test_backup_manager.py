@@ -374,7 +374,7 @@ def test_run_backup_success_large_file_mb(
 
 
 def test_render_sidebar_backup_update_destination_success() -> None:
-    """[UI検証] 保存先フォルダ変更時に「保存先パスを更新」ボタン押下で set_backup_dir と st.rerun が実行されることを検証"""
+    """[UI検証] 保存先フォルダ変更時に「パス更新」ボタン押下で set_backup_dir と st.rerun が実行されることを検証"""
     with (
         patch("streamlit.sidebar"),
         patch("streamlit.divider"),
@@ -430,7 +430,7 @@ def test_render_sidebar_backup_update_destination_failure() -> None:
 
 
 def test_render_sidebar_backup_run_backup_success() -> None:
-    """[UI検証] 「今すぐバックアップを実行」押下時にスピナー表示および完了情報（日時・保存先）が表示されることを検証"""
+    """[UI検証] 「バックアップ」押下時にスピナー表示および完了情報（日時・保存先）が表示されることを検証"""
     target_path = Path("/app/backups").resolve()
     with (
         patch("streamlit.sidebar"),

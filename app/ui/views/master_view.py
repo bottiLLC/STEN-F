@@ -82,7 +82,7 @@ with tab_corp:
 
         col_btn_spacer, col_btn_sub = st.columns([4, 1])
         with col_btn_sub:
-            corp_submitted = st.form_submit_button("自社情報を保存する", type="primary")
+            corp_submitted = st.form_submit_button("保存", type="primary")
         if corp_submitted:
             if not corp_name.strip():
                 st.error("法人名・屋号を入力してください。")
@@ -134,7 +134,7 @@ with tab_fy:
                 col_close_sp, col_close_btn = st.columns([3, 1])
                 with col_close_btn:
                     close_submitted = st.form_submit_button(
-                        "この会計年度を締め切る (CLOSED)",
+                        "年度締切",
                         type="secondary",
                     )
                 if close_submitted:
@@ -161,7 +161,7 @@ with tab_fy:
 
             col_fy_sp, col_fy_btn = st.columns([3, 1])
             with col_fy_btn:
-                fy_submitted = st.form_submit_button("登録する", type="primary")
+                fy_submitted = st.form_submit_button("登録", type="primary")
             if fy_submitted:
                 if new_start >= new_end:
                     st.error("終了日は開始日より後の日付を指定してください。")
@@ -270,7 +270,7 @@ with tab_op:
             col_op_sp, col_op_btn = st.columns([4, 1])
             with col_op_btn:
                 op_submitted = st.form_submit_button(
-                    "期首残高を登録する",
+                    "登録",
                     type="primary",
                     disabled=has_opening_entry,
                 )
@@ -419,7 +419,7 @@ with tab_acc:
                 '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
             )
             do_delete = st.button(
-                f"勘定科目を削除 ({len(selected_targets)}件)",
+                "削除",
                 type="secondary",
                 key="btn_delete_selected_accounts",
             )
@@ -685,7 +685,7 @@ with tab_cp:
                 '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
             )
             do_delete_cp = st.button(
-                f"取引先を削除 ({len(selected_cp_targets)}件)",
+                "削除",
                 type="secondary",
                 key="btn_delete_selected_counterparties",
             )
@@ -843,7 +843,7 @@ with tab_abs:
                 '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
             )
             do_delete_abs = st.button(
-                f"摘要を削除 ({len(selected_abs_targets)}件)",
+                "削除",
                 type="secondary",
                 key="btn_delete_selected_abstracts",
             )
@@ -886,7 +886,7 @@ with tab_sys:
         )
         col_sys_sp, col_sys_btn = st.columns([4, 1])
         with col_sys_btn:
-            sys_submitted = st.form_submit_button("設定を保存する", type="primary")
+            sys_submitted = st.form_submit_button("保存", type="primary")
         if sys_submitted:
             call_master(
                 lambda s: s.save_system_settings(

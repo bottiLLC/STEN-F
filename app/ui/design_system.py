@@ -68,38 +68,73 @@ button[kind="secondary"]:hover {{
     color: {COLOR_TEXT_PRIMARY} !important;
 }}
 
-/* Standard Button Ergonomics: Industrial Dimensions */
+/* Standard Button Ergonomics: Industrial Dimensions & Layout Constraints */
 div[data-testid="stButton"] > button,
-div[data-testid="stDownloadButton"] > button {{
+div[data-testid="stDownloadButton"] > button,
+div[data-testid="stFormSubmitButton"] > button {{
     width: auto !important;
     min-width: 140px !important;
     max-width: 220px !important;
     height: 38px !important;
     padding: 0.5rem 1.25rem !important;
     box-sizing: border-box !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+}}
+
+/* Enforce No Text Wrapping across all button elements */
+div[data-testid="stButton"] > button *,
+div[data-testid="stDownloadButton"] > button *,
+div[data-testid="stFormSubmitButton"] > button * {{
+    white-space: nowrap !important;
+}}
+
+/* Icon & Text Alignment: Fixed gap 6px and vertical centering */
+div[data-testid="stButton"] > button [data-testid="stIconMaterial"],
+div[data-testid="stDownloadButton"] > button [data-testid="stIconMaterial"],
+div[data-testid="stFormSubmitButton"] > button [data-testid="stIconMaterial"] {{
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 1.15rem !important;
+    line-height: 1 !important;
+    margin: 0 !important;
 }}
 
 /* Ultra-Compact Table-Row Action Buttons */
 div.sten-table-btn div[data-testid="stButton"] > button,
+div.sten-table-btn div[data-testid="stDownloadButton"] > button,
+div.sten-table-btn div[data-testid="stFormSubmitButton"] > button,
 button.sten-btn-compact {{
     min-width: unset !important;
     max-width: 160px !important;
     height: 28px !important;
     padding: 0.25rem 0.75rem !important;
     font-size: 0.85rem !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
 }}
 
 /* Destructive Button: Ghost Outline with Danger Accent */
 button.sten-btn-destructive,
-div.sten-destructive-wrapper div[data-testid="stButton"] > button {{
+div.sten-destructive-wrapper div[data-testid="stButton"] > button,
+div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button {{
     background-color: {COLOR_BASE_BG} !important;
     border: 1px solid {COLOR_DANGER} !important;
     color: {COLOR_DANGER} !important;
     border-radius: {BORDER_RADIUS} !important;
     font-weight: 500 !important;
+    white-space: nowrap !important;
 }}
 button.sten-btn-destructive:hover,
-div.sten-destructive-wrapper div[data-testid="stButton"] > button:hover {{
+div.sten-destructive-wrapper div[data-testid="stButton"] > button:hover,
+div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button:hover {{
     background-color: {COLOR_SURFACE_BG} !important;
     color: {COLOR_DANGER} !important;
     border-color: {COLOR_DANGER} !important;
