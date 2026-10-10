@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
 import io
 from pathlib import Path
 import aiofiles
@@ -92,17 +93,17 @@ class LocalFileService:
     async def save_evidence_for_transaction(
         self,
         file_bytes: bytes,
-        transaction_id: int,
-        date_obj: date,
-        amount: int,
-        corp_name: str,
+        transaction_id: int | None = None,
+        date_obj: date = date.today(),
+        amount: int = 0,
+        corp_name: str = "Unknown",
         extension: str = ".pdf",
     ) -> str:
-        """Persist evidence file bound to transaction id under legal standard naming.
+        """Persist evidence file bound to transaction id or content hash under legal standard naming.
 
         Args:
             file_bytes: Raw binary file payload.
-            transaction_id: Associated transaction ID.
+            transaction_id: Optional associated transaction ID. If None, content hash is used.
             date_obj: Transaction date.
             amount: Transaction absolute amount.
             corp_name: Vendor or counterparty name.
@@ -115,9 +116,14 @@ class LocalFileService:
         for prefix in ("株式会社", "合同会社", "有限会社"):
             clean_name = clean_name.replace(prefix, "")
         ext = extension if extension.startswith(".") else f".{extension}"
+        suffix_id = (
+            str(transaction_id)
+            if transaction_id is not None
+            else hashlib.sha256(file_bytes).hexdigest()[:8]
+        )
         save_path = (
             self.storage_dir
-            / f"{date_obj.strftime('%Y%m%d')}_{amount}_{_sanitize_file_name(clean_name)}_{transaction_id}{ext}"
+            / f"{date_obj.strftime('%Y%m%d')}_{amount}_{_sanitize_file_name(clean_name)}_{suffix_id}{ext}"
         )
         async with aiofiles.open(save_path, "wb") as f:
             await f.write(file_bytes)

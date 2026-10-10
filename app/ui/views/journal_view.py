@@ -268,7 +268,7 @@ with tab_entry:
         width="stretch",
     ):
         new_tx = Transaction(
-            date=tx_date,
+            occurred_at=tx_date,
             description=tx_desc.strip() if tx_desc else "振替仕訳",
             counterparty=tx_cp.strip() if tx_cp else None,
             invoice_number=tx_inv.strip() if tx_inv else None,

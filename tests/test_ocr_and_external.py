@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
 import io
 from pathlib import Path
 from PIL import Image
@@ -857,4 +858,28 @@ async def test_local_file_service_save_evidence_for_transaction_preserves_extens
     saved_path = Path(saved_path_str)
     assert saved_path.exists()
     assert saved_path.name == "20260415_5000_テスト商店_102.png"
+    assert saved_path.read_bytes() == file_payload
+
+
+@pytest.mark.asyncio
+async def test_local_file_service_save_evidence_without_transaction_id_uses_content_hash(
+    tmp_path: Path,
+) -> None:
+    """Verify save_evidence_for_transaction uses sha256 prefix when transaction_id is None per Rule 1."""
+    file_service = LocalFileService(base_dir=tmp_path)
+    file_payload = b"dummy electronic receipt for content hash"
+    tx_date = date(2026, 4, 15)
+    expected_hash = hashlib.sha256(file_payload).hexdigest()[:8]
+
+    saved_path_str = await file_service.save_evidence_for_transaction(
+        file_bytes=file_payload,
+        transaction_id=None,
+        date_obj=tx_date,
+        amount=8000,
+        corp_name="テスト商事",
+    )
+
+    saved_path = Path(saved_path_str)
+    assert saved_path.exists()
+    assert saved_path.name == f"20260415_8000_テスト商事_{expected_hash}.pdf"
     assert saved_path.read_bytes() == file_payload

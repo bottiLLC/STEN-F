@@ -210,6 +210,38 @@ async def test_journal_entry_register_opening_balance_unbalanced_raises_validati
 
 
 @pytest.mark.asyncio
+async def test_journal_entry_register_opening_balance_duplicate_raises_value_error(
+    container: Container,
+) -> None:
+    """Verify duplicate opening balance registration for the same date raises ValueError per Rule 4 and Rule 1."""
+    async with container.master_service_scope() as ms:
+        accounts = await ms.get_accounts()
+        acc1, acc2 = accounts[0], accounts[1]
+        assert acc1.id is not None and acc2.id is not None
+        fys = await ms.get_fiscal_years()
+        open_fy = next(f for f in fys if f.status == "OPEN")
+
+    async with container.journal_service_scope() as js:
+        # First registration succeeds
+        tx_id = await js.register_opening_balance(
+            opening_date=open_fy.start_date,
+            debit_balances={str(acc1.id): "10000"},
+            credit_balances={str(acc2.id): "10000"},
+        )
+        assert tx_id > 0
+
+        # Duplicate registration raises ValueError
+        with pytest.raises(
+            ValueError, match="指定日の会計年度には既に「期首残高」が登録されています"
+        ):
+            await js.register_opening_balance(
+                opening_date=open_fy.start_date,
+                debit_balances={str(acc1.id): "20000"},
+                credit_balances={str(acc2.id): "20000"},
+            )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "out_of_range_offset",
     [

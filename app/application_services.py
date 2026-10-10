@@ -641,6 +641,16 @@ class JournalService:
         Raises:
             ValueError: If no non-zero amounts provided.
         """
+        # Rule 4 & 1 Invariant: 既存期首残高の重複起票抑止
+        existing_entries = await self.get_entries(
+            start_date=opening_date, end_date=opening_date
+        )
+        if any(tx.description == "期首残高" for tx in existing_entries):
+            raise ValueError(
+                "指定日の会計年度には既に「期首残高」が登録されています。"
+                "訂正が必要な場合は、過去仕訳に対し赤伝（反対仕訳）を起票してください。"
+            )
+
         lines = [
             TransactionLine(
                 account_id=int(acc_id), debit=normalize_amount(val), credit=0
@@ -657,7 +667,7 @@ class JournalService:
         if not lines:
             raise ValueError("入力された金額がありません。")
         return await self.add_journal_entry(
-            Transaction(date=opening_date, description="期首残高", lines=lines)
+            Transaction(occurred_at=opening_date, description="期首残高", lines=lines)
         )
 
     async def reverse_journal_entry(
@@ -729,7 +739,6 @@ class JournalService:
         Returns:
             Created Transaction ID.
         """
-        tx_id = await self.repository.add_transaction(transaction)
         total_amt = sum(line.debit for line in transaction.lines)
         corp = transaction.counterparty or "Unknown"
 
@@ -738,15 +747,14 @@ class JournalService:
             raise ValueError("Transaction requires occurred_at or date")
         path = await file_service.save_evidence_for_transaction(
             file_bytes=file_bytes,
-            transaction_id=tx_id,
+            transaction_id=None,
             date_obj=tx_date,
             amount=total_amt,
             corp_name=corp,
             extension=extension,
         )
-        await self.repository.update_evidence_path(tx_id, path)
-        await self.repository.commit()
-        return tx_id
+        transaction.evidence_path = path
+        return await self.add_journal_entry(transaction)
 
     async def delete_entry(self, transaction_id: int) -> None:
         """Prohibited by Rule 1 (Absolute Immutability). Use reverse_journal_entry."""
