@@ -64,20 +64,45 @@ button[kind="secondary"] {{
 }}
 button[kind="secondary"]:hover {{
     background-color: {COLOR_SURFACE_BG} !important;
-    border-color: #D1D5DB !important;
+    border-color: {COLOR_BORDER} !important;
     color: {COLOR_TEXT_PRIMARY} !important;
 }}
 
-/* Destructive Button Class */
-button.sten-btn-destructive, div.sten-destructive-wrapper button {{
-    background-color: transparent !important;
+/* Standard Button Ergonomics: Industrial Dimensions */
+div[data-testid="stButton"] > button,
+div[data-testid="stDownloadButton"] > button {{
+    width: auto !important;
+    min-width: 140px !important;
+    max-width: 220px !important;
+    height: 38px !important;
+    padding: 0.5rem 1.25rem !important;
+    box-sizing: border-box !important;
+}}
+
+/* Ultra-Compact Table-Row Action Buttons */
+div.sten-table-btn div[data-testid="stButton"] > button,
+button.sten-btn-compact {{
+    min-width: unset !important;
+    max-width: 160px !important;
+    height: 28px !important;
+    padding: 0.25rem 0.75rem !important;
+    font-size: 0.85rem !important;
+}}
+
+/* Destructive Button: Ghost Outline with Danger Accent */
+button.sten-btn-destructive,
+div.sten-destructive-wrapper div[data-testid="stButton"] > button {{
+    background-color: {COLOR_BASE_BG} !important;
     border: 1px solid {COLOR_DANGER} !important;
     color: {COLOR_DANGER} !important;
     border-radius: {BORDER_RADIUS} !important;
+    font-weight: 500 !important;
 }}
-button.sten-btn-destructive:hover, div.sten-destructive-wrapper button:hover {{
-    background-color: rgba(220, 38, 38, 0.05) !important;
+button.sten-btn-destructive:hover,
+div.sten-destructive-wrapper div[data-testid="stButton"] > button:hover {{
+    background-color: {COLOR_SURFACE_BG} !important;
     color: {COLOR_DANGER} !important;
+    border-color: {COLOR_DANGER} !important;
 }}
 
 /* Tabs: Minimal Industrial Navigation */

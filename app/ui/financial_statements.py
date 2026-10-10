@@ -13,6 +13,14 @@ from typing import Any
 import streamlit as st
 
 from app.domain_contracts import FinancialReport, FinancialSection
+from app.ui.design_system import (
+    BORDER_RADIUS,
+    COLOR_BASE_BG,
+    COLOR_BORDER,
+    COLOR_SURFACE_ALT_BG,
+    COLOR_SURFACE_BG,
+    COLOR_TEXT_PRIMARY,
+)
 
 
 @dataclass(frozen=True)
@@ -193,155 +201,155 @@ def _normalize_report_data(
     )
 
 
-_COMMON_CSS = """
+_COMMON_CSS = f"""
 <style>
-.fs-scope {
+.fs-scope {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    color: #1f2937;
+    color: {COLOR_TEXT_PRIMARY};
     margin: 16px 0 24px 0;
     width: 100%;
-}
-.fs-card {
-    background-color: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
+}}
+.fs-card {{
+    background-color: {COLOR_BASE_BG};
+    border: 1px solid {COLOR_BORDER};
+    border-radius: {BORDER_RADIUS};
     padding: 20px 24px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-.fs-heading {
+}}
+.fs-heading {{
     font-size: 1.15rem;
     font-weight: 700;
-    color: #111827;
+    color: {COLOR_TEXT_PRIMARY};
     margin-bottom: 16px;
     padding-bottom: 8px;
-    border-bottom: 2px solid #374151;
+    border-bottom: 2px solid {COLOR_BORDER};
     letter-spacing: 0.02em;
-}
-.fs-row {
+}}
+.fs-row {{
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 5px 8px;
     font-size: 0.90rem;
     line-height: 1.5;
-}
-.fs-name {
+}}
+.fs-name {{
     text-align: left;
-    color: #374151;
+    color: {COLOR_TEXT_PRIMARY};
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-.fs-amount {
+}}
+.fs-amount {{
     text-align: right;
     font-variant-numeric: tabular-nums;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    color: #111827;
+    color: {COLOR_TEXT_PRIMARY};
     white-space: nowrap;
     margin-left: 12px;
-}
-.fs-subtotal {
-    border-top: 1px solid #e5e7eb;
+}}
+.fs-subtotal {{
+    border-top: 1px solid {COLOR_BORDER};
     font-weight: 600;
-    background-color: #fafafa;
+    background-color: transparent;
     margin-top: 2px;
     margin-bottom: 6px;
-}
-.fs-part-total {
-    border-top: 1px solid #9ca3af;
-    border-bottom: 1px solid #9ca3af;
+}}
+.fs-part-total {{
+    border-top: 1px solid {COLOR_BORDER};
+    border-bottom: 1px solid {COLOR_BORDER};
     font-weight: 700;
-    background-color: #f3f4f6;
+    background-color: {COLOR_SURFACE_ALT_BG};
     margin-top: 8px;
     margin-bottom: 12px;
     padding: 7px 8px;
-}
-.fs-grand-total {
+}}
+.fs-grand-total {{
     margin-top: auto;
-    background-color: #f8f9fa;
-    border-top: 1px solid #374151;
+    background-color: {COLOR_SURFACE_BG};
+    border-top: 1px solid {COLOR_BORDER};
     border-bottom: 3px double #1f2937;
     font-weight: 700;
     font-size: 0.98rem;
     padding: 10px 12px;
     min-height: 46px;
     box-sizing: border-box;
-}
+}}
 
 /* B/S Specific Layout */
-.fs-bs-grid {
+.fs-bs-grid {{
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 24px;
     align-items: stretch;
-}
-@media (max-width: 768px) {
-    .fs-bs-grid {
+}}
+@media (max-width: 768px) {{
+    .fs-bs-grid {{
         grid-template-columns: 1fr;
-    }
-}
-.fs-bs-col {
+    }}
+}}
+.fs-bs-col {{
     display: flex;
     flex-direction: column;
     height: 100%;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
-    background-color: #ffffff;
-}
-.fs-bs-body {
+    border: 1px solid {COLOR_BORDER};
+    border-radius: {BORDER_RADIUS};
+    background-color: {COLOR_BASE_BG};
+}}
+.fs-bs-body {{
     flex: 1 1 auto;
     padding: 14px 16px;
-}
-.fs-bs-part-title {
+}}
+.fs-bs-part-title {{
     font-size: 1.05rem;
     font-weight: 700;
-    color: #1f2937;
+    color: {COLOR_TEXT_PRIMARY};
     padding: 4px 0 8px 0;
-    border-bottom: 2px solid #4b5563;
+    border-bottom: 2px solid {COLOR_BORDER};
     margin-bottom: 8px;
-}
-.fs-bs-sec-title {
+}}
+.fs-bs-sec-title {{
     font-size: 0.93rem;
     font-weight: 700;
-    color: #374151;
+    color: {COLOR_TEXT_PRIMARY};
     padding: 8px 4px 4px 4px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid {COLOR_BORDER};
     margin-top: 6px;
-}
-.fs-bs-item:hover {
-    background-color: #f9fafb;
-}
+}}
+.fs-bs-item:hover {{
+    background-color: {COLOR_SURFACE_BG};
+}}
 
 /* P/L Specific Layout */
-.fs-pl-sec-title {
+.fs-pl-sec-title {{
     font-size: 0.95rem;
     font-weight: 700;
-    color: #1f2937;
+    color: {COLOR_TEXT_PRIMARY};
     padding: 10px 8px 4px 8px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid {COLOR_BORDER};
     margin-top: 8px;
-}
-.fs-pl-item {
+}}
+.fs-pl-item {{
     padding-left: 28px;
-}
-.fs-pl-item:hover {
-    background-color: #f9fafb;
-}
-.fs-pl-subtotal {
+}}
+.fs-pl-item:hover {{
+    background-color: {COLOR_SURFACE_BG};
+}}
+.fs-pl-subtotal {{
     padding-left: 16px;
-}
-.fs-pl-stage {
-    background-color: #f1f5f9;
+}}
+.fs-pl-stage {{
+    background-color: {COLOR_SURFACE_ALT_BG};
     font-weight: 700;
     font-size: 0.95rem;
-    border-top: 1px solid #cbd5e1;
-    border-bottom: 1px solid #cbd5e1;
+    border-top: 1px solid {COLOR_BORDER};
+    border-bottom: 1px solid {COLOR_BORDER};
     margin: 8px 0;
     padding: 8px 12px;
-}
-.fs-pl-net-income {
-    background-color: #f8f9fa;
-    border-top: 1px solid #374151;
+}}
+.fs-pl-net-income {{
+    background-color: {COLOR_SURFACE_BG};
+    border-top: 1px solid {COLOR_BORDER};
     border-bottom: 3px double #1f2937;
     font-weight: 700;
     font-size: 1.02rem;
@@ -349,7 +357,7 @@ _COMMON_CSS = """
     padding: 10px 12px;
     min-height: 46px;
     box-sizing: border-box;
-}
+}}
 </style>
 """
 

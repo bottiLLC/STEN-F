@@ -107,7 +107,7 @@ def render_accounting_editor(
     if not (on_commit and has_changes):
         return edited_df
 
-    col_info, col_cancel, col_save = st.columns([3, 1, 2])
+    col_info, col_cancel, col_save = st.columns([5, 2, 2])
     with col_info:
         st.info(
             f"変更が検出されました（追加: {len(added_list)}件, "
@@ -117,7 +117,6 @@ def render_accounting_editor(
         if st.button(
             "編集を取り消す",
             key=f"btn_cancel_{current_key}",
-            width="stretch",
             help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
         ):
             st.session_state.pop(pending_key, None)
@@ -129,7 +128,6 @@ def render_accounting_editor(
             "変更を保存",
             type="primary",
             key=f"btn_commit_{current_key}",
-            width="stretch",
         ):
             try:
                 commit_ok = on_commit(added_list, pk_edited_map, pk_deleted_list)

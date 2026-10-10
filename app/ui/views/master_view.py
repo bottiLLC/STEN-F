@@ -80,7 +80,10 @@ with tab_corp:
             value=corp.representative_name if corp and corp.representative_name else "",
         )
 
-        if st.form_submit_button("自社情報を保存する", type="primary", width="stretch"):
+        col_btn_spacer, col_btn_sub = st.columns([4, 1])
+        with col_btn_sub:
+            corp_submitted = st.form_submit_button("自社情報を保存する", type="primary")
+        if corp_submitted:
             if not corp_name.strip():
                 st.error("法人名・屋号を入力してください。")
             else:
@@ -128,11 +131,13 @@ with tab_fy:
                 next_fy_name = st.text_input(
                     "次期年度名称", value=f"第{(open_fy.period_number or 0) + 1}期"
                 )
-                if st.form_submit_button(
-                    "この会計年度を締め切る (CLOSED)",
-                    type="secondary",
-                    width="stretch",
-                ):
+                col_close_sp, col_close_btn = st.columns([3, 1])
+                with col_close_btn:
+                    close_submitted = st.form_submit_button(
+                        "この会計年度を締め切る (CLOSED)",
+                        type="secondary",
+                    )
+                if close_submitted:
                     try:
                         curr_fy_id = open_fy.id or 0
                         call_fiscal_year(
@@ -154,7 +159,10 @@ with tab_fy:
             new_start = c_d1.date_input("開始日", value=date(date.today().year, 1, 1))
             new_end = c_d2.date_input("終了日", value=date(date.today().year, 12, 31))
 
-            if st.form_submit_button("登録する", type="primary", width="stretch"):
+            col_fy_sp, col_fy_btn = st.columns([3, 1])
+            with col_fy_btn:
+                fy_submitted = st.form_submit_button("登録する", type="primary")
+            if fy_submitted:
                 if new_start >= new_end:
                     st.error("終了日は開始日より後の日付を指定してください。")
                 elif not new_name.strip():
@@ -259,12 +267,14 @@ with tab_op:
                     "訂正が必要な場合は、振替仕訳画面より赤伝（反対仕訳）を起票してください。"
                 )
 
-            if st.form_submit_button(
-                "期首残高を登録する",
-                type="primary",
-                width="stretch",
-                disabled=has_opening_entry,
-            ):
+            col_op_sp, col_op_btn = st.columns([4, 1])
+            with col_op_btn:
+                op_submitted = st.form_submit_button(
+                    "期首残高を登録する",
+                    type="primary",
+                    disabled=has_opening_entry,
+                )
+            if op_submitted:
                 if diff != 0 or total_d == 0:
                     st.error("貸借合計を一致させ、0より大きい金額を入力してください。")
                 else:
@@ -401,58 +411,62 @@ with tab_acc:
     )
 
     if not selected_targets.empty:
-        col_del_info, col_del_btn = st.columns([4, 2])
+        col_del_info, col_del_btn = st.columns([4, 1])
         with col_del_info:
             st.warning(f"{len(selected_targets)} 件の勘定科目が選択されています。")
         with col_del_btn:
-            if st.button(
+            st.markdown(
+                '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
+            )
+            do_delete = st.button(
                 f"勘定科目を削除 ({len(selected_targets)}件)",
                 type="secondary",
                 key="btn_delete_selected_accounts",
-                width="stretch",
-            ):
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        if do_delete:
 
-                async def execute_batch_delete() -> None:
-                    async with DI.get_master_service() as ms:
-                        blocked_names: list[str] = []
-                        valid_delete_ids: list[int] = []
+            async def execute_batch_delete() -> None:
+                async with DI.get_master_service() as ms:
+                    blocked_names: list[str] = []
+                    valid_delete_ids: list[int] = []
 
-                        for _, row in selected_targets.iterrows():
-                            raw_id = row.get("id")
-                            if pd.isna(raw_id) or raw_id is None:
-                                continue
-                            acc_id = int(raw_id)
-                            acc_name = str(row["name"])
-                            if (
-                                ms.ledger_repository
-                                and await ms.ledger_repository.has_transactions_for_account(
-                                    acc_id
-                                )
-                            ):
-                                blocked_names.append(acc_name)
-                            else:
-                                valid_delete_ids.append(acc_id)
-
-                        if blocked_names:
-                            st.error(
-                                "以下の勘定科目は仕訳データで使用されているため削除できません:\n"
-                                + "、".join(blocked_names)
+                    for _, row in selected_targets.iterrows():
+                        raw_id = row.get("id")
+                        if pd.isna(raw_id) or raw_id is None:
+                            continue
+                        acc_id = int(raw_id)
+                        acc_name = str(row["name"])
+                        if (
+                            ms.ledger_repository
+                            and await ms.ledger_repository.has_transactions_for_account(
+                                acc_id
                             )
-                            return
+                        ):
+                            blocked_names.append(acc_name)
+                        else:
+                            valid_delete_ids.append(acc_id)
 
-                        for target_id in valid_delete_ids:
-                            await ms.delete_account(target_id)
-
-                        st.session_state["editor_accounts_version"] = (
-                            st.session_state.get("editor_accounts_version", 0) + 1
+                    if blocked_names:
+                        st.error(
+                            "以下の勘定科目は仕訳データで使用されているため削除できません:\n"
+                            + "、".join(blocked_names)
                         )
-                        st.toast(
-                            f"{len(valid_delete_ids)} 件の勘定科目を正常に削除しました",
-                            icon=":material/delete:",
-                        )
-                        st.rerun()
+                        return
 
-                run_async(execute_batch_delete())
+                    for target_id in valid_delete_ids:
+                        await ms.delete_account(target_id)
+
+                    st.session_state["editor_accounts_version"] = (
+                        st.session_state.get("editor_accounts_version", 0) + 1
+                    )
+                    st.toast(
+                        f"{len(valid_delete_ids)} 件の勘定科目を正常に削除しました",
+                        icon=":material/delete:",
+                    )
+                    st.rerun()
+
+            run_async(execute_batch_delete())
 
 
 _format_counterparty_validation_error = format_counterparty_validation_error
@@ -663,39 +677,43 @@ with tab_cp:
     )
 
     if not selected_cp_targets.empty:
-        col_del_info, col_del_btn = st.columns([4, 2])
+        col_del_info, col_del_btn = st.columns([4, 1])
         with col_del_info:
             st.warning(f"{len(selected_cp_targets)} 件の取引先が選択されています。")
         with col_del_btn:
-            if st.button(
+            st.markdown(
+                '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
+            )
+            do_delete_cp = st.button(
                 f"取引先を削除 ({len(selected_cp_targets)}件)",
                 type="secondary",
                 key="btn_delete_selected_counterparties",
-                width="stretch",
-            ):
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        if do_delete_cp:
 
-                async def execute_batch_delete_cp() -> None:
-                    async with DI.get_master_service() as ms:
-                        valid_delete_ids: list[int] = []
-                        for _, row in selected_cp_targets.iterrows():
-                            raw_id = row.get("id")
-                            if pd.isna(raw_id) or raw_id is None:
-                                continue
-                            valid_delete_ids.append(int(raw_id))
+            async def execute_batch_delete_cp() -> None:
+                async with DI.get_master_service() as ms:
+                    valid_delete_ids: list[int] = []
+                    for _, row in selected_cp_targets.iterrows():
+                        raw_id = row.get("id")
+                        if pd.isna(raw_id) or raw_id is None:
+                            continue
+                        valid_delete_ids.append(int(raw_id))
 
-                        for target_id in valid_delete_ids:
-                            await ms.delete_counterparty(target_id)
+                    for target_id in valid_delete_ids:
+                        await ms.delete_counterparty(target_id)
 
-                        st.session_state["editor_counterparties_version"] = (
-                            st.session_state.get("editor_counterparties_version", 0) + 1
-                        )
-                        st.toast(
-                            f"{len(valid_delete_ids)} 件の取引先を正常に削除しました",
-                            icon=":material/delete:",
-                        )
-                        st.rerun()
+                    st.session_state["editor_counterparties_version"] = (
+                        st.session_state.get("editor_counterparties_version", 0) + 1
+                    )
+                    st.toast(
+                        f"{len(valid_delete_ids)} 件の取引先を正常に削除しました",
+                        icon=":material/delete:",
+                    )
+                    st.rerun()
 
-                run_async(execute_batch_delete_cp())
+            run_async(execute_batch_delete_cp())
 
 # 6. よく使う摘要マスタ
 with tab_abs:
@@ -817,39 +835,43 @@ with tab_abs:
     )
 
     if not selected_abs_targets.empty:
-        col_del_info, col_del_btn = st.columns([4, 2])
+        col_del_info, col_del_btn = st.columns([4, 1])
         with col_del_info:
             st.warning(f"{len(selected_abs_targets)} 件の摘要が選択されています。")
         with col_del_btn:
-            if st.button(
+            st.markdown(
+                '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
+            )
+            do_delete_abs = st.button(
                 f"摘要を削除 ({len(selected_abs_targets)}件)",
                 type="secondary",
                 key="btn_delete_selected_abstracts",
-                width="stretch",
-            ):
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        if do_delete_abs:
 
-                async def execute_batch_delete_abs() -> None:
-                    async with DI.get_master_service() as ms:
-                        valid_delete_ids: list[int] = []
-                        for _, row in selected_abs_targets.iterrows():
-                            raw_id = row.get("id")
-                            if pd.isna(raw_id) or raw_id is None:
-                                continue
-                            valid_delete_ids.append(int(raw_id))
+            async def execute_batch_delete_abs() -> None:
+                async with DI.get_master_service() as ms:
+                    valid_delete_ids: list[int] = []
+                    for _, row in selected_abs_targets.iterrows():
+                        raw_id = row.get("id")
+                        if pd.isna(raw_id) or raw_id is None:
+                            continue
+                        valid_delete_ids.append(int(raw_id))
 
-                        for target_id in valid_delete_ids:
-                            await ms.delete_abstract(target_id)
+                    for target_id in valid_delete_ids:
+                        await ms.delete_abstract(target_id)
 
-                        st.session_state["editor_abstracts_version"] = (
-                            st.session_state.get("editor_abstracts_version", 0) + 1
-                        )
-                        st.toast(
-                            f"{len(valid_delete_ids)} 件の摘要を正常に削除しました",
-                            icon=":material/delete:",
-                        )
-                        st.rerun()
+                    st.session_state["editor_abstracts_version"] = (
+                        st.session_state.get("editor_abstracts_version", 0) + 1
+                    )
+                    st.toast(
+                        f"{len(valid_delete_ids)} 件の摘要を正常に削除しました",
+                        icon=":material/delete:",
+                    )
+                    st.rerun()
 
-                run_async(execute_batch_delete_abs())
+            run_async(execute_batch_delete_abs())
 
 # 7. AI・システム設定
 with tab_sys:
@@ -862,7 +884,10 @@ with tab_sys:
             type="password",
             help="Google AI Studio で発行された API キー",
         )
-        if st.form_submit_button("設定を保存する", type="primary", width="stretch"):
+        col_sys_sp, col_sys_btn = st.columns([4, 1])
+        with col_sys_btn:
+            sys_submitted = st.form_submit_button("設定を保存する", type="primary")
+        if sys_submitted:
             call_master(
                 lambda s: s.save_system_settings(
                     SystemSettings(ai_api_key=api_key_input.strip() or None)

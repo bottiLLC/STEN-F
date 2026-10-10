@@ -37,10 +37,21 @@ Never invent arbitrary hex colors. Stick strictly to these tokens:
 
 ## 2. Component Guidelines
 
-### Buttons & Controls
-- **Max 1 Primary Button per view:** Styled with Deep Navy background (`#1E3A8A`) and white text. Represents state-changing actions (e.g., Save, Execute).
-- **Secondary Buttons:** Ghost style (White background, `#E5E7EB` border, `#1F2937` text).
-- **Destructive Buttons:** Only use muted red outline/text, never bright filled red unless confirmation is requested.
+### Buttons & Action Controls (Standardized Ergonomics)
+- **Sizing Constraints:**
+  - NEVER use full-width buttons (`width: 100%`) across desktop screens. Buttons must maintain compact industrial dimensions.
+  - Standard sizing: `width: auto; min-width: 140px; max-width: 220px; height: 38px;` with compact internal padding (`padding: 0.5rem 1.25rem;`).
+  - Table-row action buttons (e.g., Edit, Delete, View) must be ultra-compact (`height: 28px; padding: 0.25rem 0.75rem; font-size: 0.85rem;`).
+
+- **Placement & Alignment:**
+  - **Form Submissions:** Always align the primary submission action to the **BOTTOM-RIGHT** of the form card or input block, following standard Z-pattern gaze exit points.
+  - **Secondary Actions (Cancel, Reset):** Place to the LEFT of the primary button with a consistent `8px` or `12px` gap. Never stack them vertically unless screen width is strictly constrained.
+  - **Toolbars & Header Actions:** Align to the top-right or right edge of the card/section header.
+
+- **Button Hierarchy (Per View):**
+  - **Primary (Max 1 per section):** Solid Deep Navy (`#1E3A8A`), white text, bold font-weight (500). Reserved for final commits (Save, Apply, Register).
+  - **Secondary / Ghost:** White background, subtle border (`#E5E7EB`), text (`#1F2937`). For auxiliary operations.
+  - **Destructive:** White background, muted red border/text (`#DC2626`). Turn solid red ONLY upon critical confirmation modals.
 
 ### Tables & Accounting Grids (B/S & P/L)
 - **Typography:** Always apply `font-variant-numeric: tabular-nums;` to financial amounts. Right-align all numeric values.
@@ -57,4 +68,4 @@ Never invent arbitrary hex colors. Stick strictly to these tokens:
 ## 3. Implementation Guardrails (Streamlit Specific)
 - Custom CSS must be scoped and injected cleanly.
 - Prefer CSS Grid/Flexbox in raw HTML containers (`st.markdown(..., unsafe_allow_html=True)`) over nested native `st.columns` when strict dimensional alignment (like B/S sheets) is required.
-
+- When rendering native `st.button` inside forms, do NOT set `use_container_width=True` on full-width columns. Instead, wrap in narrow columns (e.g., `st.columns([4, 1])`) to naturally constrain horizontal span.

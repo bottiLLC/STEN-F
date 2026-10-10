@@ -63,17 +63,21 @@ with tab_tb:
                 {
                     "コード": r.account_code,
                     "勘定科目名": r.account_name,
-                    "借方残高": f"¥{r.debit_balance:,}" if r.debit_balance > 0 else "-",
-                    "借方合計": f"¥{r.debit_total:,}" if r.debit_total > 0 else "-",
-                    "貸方合計": f"¥{r.credit_total:,}" if r.credit_total > 0 else "-",
-                    "貸方残高": f"¥{r.credit_balance:,}"
-                    if r.credit_balance > 0
-                    else "-",
+                    "借方残高": r.debit_balance if r.debit_balance > 0 else None,
+                    "借方合計": r.debit_total if r.debit_total > 0 else None,
+                    "貸方合計": r.credit_total if r.credit_total > 0 else None,
+                    "貸方残高": r.credit_balance if r.credit_balance > 0 else None,
                 }
                 for r in tb_rows
             ]
         )
-        st.dataframe(df_tb, width="stretch", hide_index=True)
+        tb_col_cfg = {
+            "借方残高": st.column_config.NumberColumn("借方残高", format="¥%d"),
+            "借方合計": st.column_config.NumberColumn("借方合計", format="¥%d"),
+            "貸方合計": st.column_config.NumberColumn("貸方合計", format="¥%d"),
+            "貸方残高": st.column_config.NumberColumn("貸方残高", format="¥%d"),
+        }
+        st.dataframe(df_tb, column_config=tb_col_cfg, width="stretch", hide_index=True)
 
         tot_db = sum(r.debit_balance for r in tb_rows)
         tot_cb = sum(r.credit_balance for r in tb_rows)
@@ -117,15 +121,15 @@ with tab_gl:
 # 3. 決算書 (B/S・P/L)
 with tab_fs:
     st.subheader(f"決算書: 貸借対照表 (B/S) ＆ 損益計算書 (P/L) - {selected_fy.name}")
-    col_btn, col_chk = st.columns([2, 3])
+    col_chk, col_btn = st.columns([3, 1])
     with col_chk:
         hide_zero = st.checkbox("残高が 0 円の科目を非表示にする", value=True)
 
     with col_btn:
         if st.button(
-            "決算書 PDF を生成・ダウンロード",
+            "決算書 PDF を生成",
             type="primary",
-            width="stretch",
+            icon=":material/picture_as_pdf:",
         ):
 
             async def generate_pdf(fy: FiscalYear) -> bytes:
@@ -141,11 +145,11 @@ with tab_fs:
             try:
                 pdf_bytes = run_async(generate_pdf(selected_fy))
                 st.download_button(
-                    "生成された決算書 PDF を保存",
+                    "決算書 PDF を保存",
                     data=pdf_bytes,
                     file_name=f"report_{selected_fy.name}.pdf",
                     mime="application/pdf",
-                    width="stretch",
+                    icon=":material/download:",
                 )
             except Exception as e:
                 st.error(f"PDF 生成エラー: {e}")

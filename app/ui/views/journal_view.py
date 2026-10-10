@@ -23,6 +23,11 @@ import streamlit as st
 
 from app.core_foundation import DI, call_journal, call_master, run_async
 from app.domain_contracts import Transaction, TransactionLine
+from app.ui.design_system import (
+    COLOR_DANGER,
+    COLOR_SURFACE_BG,
+    COLOR_TEXT_PRIMARY,
+)
 
 st.header("仕訳・記帳", divider="gray")
 st.caption(
@@ -72,14 +77,12 @@ with tab_entry:
             run_fast = st.button(
                 "通常読取（高速）",
                 key="btn_run_ocr_fast",
-                use_container_width=True,
             )
         with col_btn2:
             run_boost = st.button(
                 "高精度読取（ブースト）",
                 type="primary",
                 key="btn_run_ocr_boost",
-                use_container_width=True,
             )
 
         if run_fast or run_boost:
@@ -114,12 +117,12 @@ with tab_entry:
 
     if ocr and ocr.needs_manual_review:
         st.markdown(
-            """
-            <div style="border: 2px solid #ef4444; border-radius: 4px; padding: 12px; margin-bottom: 16px; background-color: rgba(239, 68, 68, 0.08);">
-                <div style="color: #b91c1c; font-weight: bold; font-size: 1.05rem; margin-bottom: 4px;">
+            f"""
+            <div style="border: 1px solid {COLOR_DANGER}; border-radius: 4px; padding: 12px; margin-bottom: 16px; background-color: {COLOR_SURFACE_BG};">
+                <div style="color: {COLOR_DANGER}; font-weight: bold; font-size: 1.05rem; margin-bottom: 4px;">
                     新規・要確認（未確定）
                 </div>
-                <div style="color: #374151; font-size: 0.9rem;">
+                <div style="color: {COLOR_TEXT_PRIMARY}; font-size: 0.9rem;">
                     取引先マスター照合スコアが75点未満のため、未確定として表示しています。AIが読み取った日付・金額・店名等の生データは自動入力されています。内容を確認し、必要に応じて修正してください。
                 </div>
             </div>
@@ -259,12 +262,14 @@ with tab_entry:
             f"添付証憑: **{active_evidence_name}**（登録時に電帳法準拠ストレージへ自動保存されます）"
         )
 
-    if st.button(
-        "仕訳帳に登録する",
-        type="primary",
-        disabled=not is_balanced,
-        width="stretch",
-    ):
+    col_submit_sp, col_submit_btn = st.columns([4, 1])
+    with col_submit_btn:
+        do_submit_tx = st.button(
+            "仕訳帳に登録する",
+            type="primary",
+            disabled=not is_balanced,
+        )
+    if do_submit_tx:
         new_tx = Transaction(
             occurred_at=tx_date,
             description=tx_desc.strip() if tx_desc else "振替仕訳",
@@ -298,17 +303,19 @@ with tab_entry:
 # 2. 仕訳帳一覧
 with tab_history:
     st.subheader("仕訳帳 (General Journal) 一覧・検索・CSV出力")
-    _, _, col_f3 = st.columns([2, 2, 2])
-    s_date = st.date_input(
-        "開始日",
-        value=open_fy.start_date if open_fy else date(date.today().year, 1, 1),
-        key="hist_s_date",
-    )
-    e_date = st.date_input(
-        "終了日",
-        value=open_fy.end_date if open_fy else date(date.today().year, 12, 31),
-        key="hist_e_date",
-    )
+    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
+    with col_f1:
+        s_date = st.date_input(
+            "開始日",
+            value=open_fy.start_date if open_fy else date(date.today().year, 1, 1),
+            key="hist_s_date",
+        )
+    with col_f2:
+        e_date = st.date_input(
+            "終了日",
+            value=open_fy.end_date if open_fy else date(date.today().year, 12, 31),
+            key="hist_e_date",
+        )
     with col_f3:
         st.write("")
         st.write("")
@@ -354,16 +361,22 @@ with tab_history:
                     }
                 )
 
-        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
         csv_buf = io.StringIO()
         pd.DataFrame(rows).to_csv(csv_buf, index=False)
-        st.download_button(
-            "仕訳帳 CSV をエクスポート",
-            data=csv_buf.getvalue().encode("utf_8_sig"),
-            file_name=f"journal_{s_date}_{e_date}.csv",
-            mime="text/csv",
-            width="stretch",
-        )
+
+        col_tbl_info, col_tbl_action = st.columns([4, 1])
+        with col_tbl_info:
+            st.caption(f"抽出件数: {len(entries)} 件")
+        with col_tbl_action:
+            st.download_button(
+                "仕訳帳 CSV 出力",
+                data=csv_buf.getvalue().encode("utf_8_sig"),
+                file_name=f"journal_{s_date}_{e_date}.csv",
+                mime="text/csv",
+                icon=":material/download:",
+            )
+
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
         st.divider()
         st.markdown("##### 選択仕訳の詳細・証憑確認 (PDF/画像)")
@@ -446,13 +459,17 @@ with tab_history:
                         value="入力誤謬による取消",
                         key=f"rev_reason_{target_id}",
                     )
-                    if st.button(
+                    st.markdown(
+                        '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
+                    )
+                    do_rev = st.button(
                         "赤伝（反対仕訳）を発行して取消",
                         type="secondary",
                         icon=":material/swap_horiz:",
                         key=f"rev_btn_{target_id}",
-                        use_container_width=True,
-                    ):
+                    )
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    if do_rev:
                         try:
                             rev_id = call_journal(
                                 lambda s: s.reverse_journal_entry(
