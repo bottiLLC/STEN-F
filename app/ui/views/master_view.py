@@ -242,8 +242,8 @@ with tab_op:
             m2.metric("負債・純資産合計 (貸方)", f"¥{total_c:,}")
             diff = total_d - total_c
             m3.metric(
-                "貸借バランス",
-                "✅ 一致" if diff == 0 and total_d > 0 else f"差額: ¥{diff:,}",
+                "貸借バランス(差額)",
+                "✅ 一致" if diff == 0 and total_d > 0 else f"¥{diff:,}",
             )
 
             assert open_fy is not None
