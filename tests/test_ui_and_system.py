@@ -358,3 +358,28 @@ async def test_load_sidebar_metadata_with_structured_concurrency_returns_corp_an
     assert corp.name == "サイドバー検証会社"
     assert isinstance(fys, list)
     assert len(fys) > 0
+
+
+def test_compute_next_fiscal_year_dates_boundaries() -> None:
+    """Verify compute_next_fiscal_year_dates calculates accurate roll-over boundaries across edge cases."""
+    from app.ui.views.master_view import compute_next_fiscal_year_dates
+
+    # 1. Standard calendar year (Dec 31)
+    s1, e1 = compute_next_fiscal_year_dates(date(2026, 12, 31))
+    assert s1 == date(2027, 1, 1)
+    assert e1 == date(2027, 12, 31)
+
+    # 2. Japanese standard fiscal year (Mar 31)
+    s2, e2 = compute_next_fiscal_year_dates(date(2026, 3, 31))
+    assert s2 == date(2026, 4, 1)
+    assert e2 == date(2027, 3, 31)
+
+    # 3. Leap year rollover (Ending on Feb 29)
+    s3, e3 = compute_next_fiscal_year_dates(date(2028, 2, 29))
+    assert s3 == date(2028, 3, 1)
+    assert e3 == date(2029, 2, 28)
+
+    # 4. Year preceding leap year (Ending on Feb 28, following year is leap year)
+    s4, e4 = compute_next_fiscal_year_dates(date(2027, 2, 28))
+    assert s4 == date(2027, 3, 1)
+    assert e4 == date(2028, 2, 29)

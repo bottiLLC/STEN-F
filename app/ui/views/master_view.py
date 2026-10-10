@@ -14,11 +14,29 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 import pandas as pd
 from pydantic import ValidationError
 import streamlit as st
+
+
+def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
+    """Calculate start and end boundary dates for succeeding fiscal period.
+
+    Args:
+        current_end: Ending date of closing fiscal period.
+
+    Returns:
+        Tuple containing next start date and next end date.
+    """
+    next_start = current_end + timedelta(days=1)
+    try:
+        target = next_start.replace(year=next_start.year + 1)
+    except ValueError:
+        target = next_start.replace(year=next_start.year + 1, month=2, day=28)
+    return next_start, target - timedelta(days=1)
+
 
 from app.core_foundation import (
     DI,
@@ -98,73 +116,32 @@ with tab_corp:
                 st.success("自社情報を保存しました！")
                 st.rerun()
 
-# 2. 会計年度・年度締め
+# 2. 会計年度・年度締め (ステートマシン遷移制御)
 with tab_fy:
-    st.subheader("会計年度一覧 ＆ 年度締め処理")
     fys = call_master(lambda s: s.get_fiscal_years())
 
-    col_fy_list, col_fy_new = st.columns([3, 2])
-    with col_fy_list:
-        if fys:
-            fy_rows = [
-                {
-                    "ID": f.id,
-                    "年度名称": f.name,
-                    "期数": f"第{f.period_number}期" if f.period_number else "-",
-                    "開始日": str(f.start_date),
-                    "終了日": str(f.end_date),
-                    "状態": "進行中 (OPEN)"
-                    if f.status == "OPEN"
-                    else "締切済 (CLOSED)",
-                }
-                for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
-            ]
-            st.dataframe(pd.DataFrame(fy_rows), hide_index=True, width="stretch")
-        else:
-            st.info("登録済みの会計年度がありません。")
-
-        open_fy = next((f for f in fys if f.status == "OPEN"), None)
-        if open_fy:
-            st.divider()
-            st.markdown(f"#### 会計年度の締め処理 (現在進行中: `{open_fy.name}`)")
-            with st.form("fy_close_form"):
-                next_fy_name = st.text_input(
-                    "次期年度名称", value=f"第{(open_fy.period_number or 0) + 1}期"
-                )
-                col_close_sp, col_close_btn = st.columns([3, 1])
-                with col_close_btn:
-                    close_submitted = st.form_submit_button(
-                        "年度締切",
-                        type="secondary",
-                    )
-                if close_submitted:
-                    try:
-                        curr_fy_id = open_fy.id or 0
-                        call_fiscal_year(
-                            lambda s: s.close_fiscal_year(
-                                curr_fy_id, next_fy_name.strip() or None
-                            )
-                        )
-                        st.success("年度締め処理が完了し、次期が作成されました！")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"年度締めエラー: {e}")
-
-    with col_fy_new:
-        st.markdown("#### 新規会計年度の登録")
-        with st.form("new_fy_form"):
-            new_name = st.text_input("年度名称 (例: 第1期)")
-            new_period = st.number_input("期数", min_value=1, value=1)
+    if not fys:
+        # 【State 0: 未初期化状態】
+        st.subheader("第1期 初期セットアップ")
+        st.info("会計年度が未登録です。第1期の初期セットアップを行ってください。")
+        with st.form("initial_fy_setup_form"):
+            c_p, c_n = st.columns([1, 2])
+            new_period = c_p.number_input("期数", min_value=1, value=1)
+            new_name = c_n.text_input(
+                "年度名称",
+                value=f"FY{date.today().year}",
+                help="西暦ベースの年度名称（例: FY2026）",
+            )
             c_d1, c_d2 = st.columns(2)
-            new_start = c_d1.date_input("開始日", value=date(date.today().year, 1, 1))
-            new_end = c_d2.date_input("終了日", value=date(date.today().year, 12, 31))
+            new_start = c_d1.date_input("期首日", value=date(date.today().year, 1, 1))
+            new_end = c_d2.date_input("期末日", value=date(date.today().year, 12, 31))
 
             col_fy_sp, col_fy_btn = st.columns([3, 1])
             with col_fy_btn:
-                fy_submitted = st.form_submit_button("登録", type="primary")
+                fy_submitted = st.form_submit_button("第1期を作成", type="primary")
             if fy_submitted:
                 if new_start >= new_end:
-                    st.error("終了日は開始日より後の日付を指定してください。")
+                    st.error("期末日は期首日より後の日付を指定してください。")
                 elif not new_name.strip():
                     st.error("年度名称を入力してください。")
                 else:
@@ -176,8 +153,88 @@ with tab_fy:
                         status="OPEN",
                     )
                     call_master(lambda s: s.save_fiscal_year(new_fy))
-                    st.success("会計年度を登録しました！")
+                    st.success("第1期会計年度を作成しました。")
                     st.rerun()
+    else:
+        # 【State 1: 通常運用（期中）状態】＆【State 2: 締め＆次期繰越処理】
+        st.subheader("会計年度一覧")
+        open_fy = next((f for f in fys if f.status == "OPEN"), None)
+        if open_fy:
+            st.caption(
+                f"現在のアクティブ期: **{open_fy.name}** "
+                f"(第{open_fy.period_number}期: {open_fy.start_date} 〜 {open_fy.end_date})"
+            )
+
+        fy_rows = [
+            {
+                "ID": f.id,
+                "年度名称": f.name,
+                "期数": f"第{f.period_number}期" if f.period_number else "-",
+                "開始日": str(f.start_date),
+                "終了日": str(f.end_date),
+                "状態": "進行中 (OPEN)" if f.status == "OPEN" else "締切済 (CLOSED)",
+            }
+            for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
+        ]
+        st.dataframe(pd.DataFrame(fy_rows), hide_index=True, width="stretch")
+
+        if open_fy:
+            st.divider()
+            # 締め処理用アコーディオン（デフォルトは折りたたみで誤操作防止）
+            with st.expander("年度締め・次期繰越処理", expanded=False):
+                # 【State 2: 締め＆次期繰越処理確認パネル】
+                next_period = (open_fy.period_number or 0) + 1
+                next_start, next_end = compute_next_fiscal_year_dates(open_fy.end_date)
+                default_next_name = f"FY{next_start.year}"
+
+                st.warning(
+                    f"締め処理を実行すると、現行期（`{open_fy.name}`）の仕訳データはロックされ、"
+                    "直接の変更・削除はできなくなります。"
+                )
+
+                c_cur, c_next = st.columns(2)
+                with c_cur:
+                    st.markdown("**クローズ対象 (現行期)**")
+                    st.text(f"年度名称: {open_fy.name}")
+                    st.text(f"期数: 第{open_fy.period_number}期")
+                    st.text(f"期間: {open_fy.start_date} 〜 {open_fy.end_date}")
+
+                with c_next:
+                    st.markdown("**次期パラメーター (自動算出)**")
+                    st.text(f"期数: 第{next_period}期")
+                    st.text(f"期間: {next_start} 〜 {next_end}")
+
+                with st.form("fy_rollover_form"):
+                    next_fy_name = st.text_input(
+                        "次期年度名称",
+                        value=default_next_name,
+                        help="西暦ベースの年度名称（例: FY2026）",
+                    )
+                    col_close_sp, col_close_btn = st.columns([3, 1])
+                    with col_close_btn:
+                        close_submitted = st.form_submit_button(
+                            "確定して次期へ繰越",
+                            type="primary",
+                        )
+                    if close_submitted:
+                        if not next_fy_name.strip():
+                            st.error("次期年度名称を入力してください。")
+                        else:
+                            try:
+                                curr_fy_id = open_fy.id or 0
+                                call_fiscal_year(
+                                    lambda s: s.close_fiscal_year(
+                                        curr_fy_id, next_fy_name.strip()
+                                    )
+                                )
+                                st.success(
+                                    "年度締め処理が完了し、次期へ繰り越されました。"
+                                )
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"年度締めエラー: {e}")
+        else:
+            st.warning("進行中 (OPEN) の会計年度がありません。")
 
 
 # 3. 期首残高設定
