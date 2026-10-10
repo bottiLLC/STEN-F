@@ -246,19 +246,39 @@ with tab_op:
                 "✅ 一致" if diff == 0 and total_d > 0 else f"差額: ¥{diff:,}",
             )
 
+            assert open_fy is not None
+            fy_start = open_fy.start_date
+            existing_open = call_journal(
+                lambda s: s.get_entries(start_date=fy_start, end_date=fy_start)
+            )
+            has_opening_entry = any(
+                tx.description == "期首残高" for tx in existing_open
+            )
+
+            if has_opening_entry:
+                st.info(
+                    "ℹ️ 当該会計年度の期首残高は既に登録済みです（不変原則に基づきロック中）。"
+                    "訂正が必要な場合は、振替仕訳画面より赤伝（反対仕訳）を起票してください。"
+                )
+
             if st.form_submit_button(
-                "💾 期首残高を登録・更新する", type="primary", width="stretch"
+                "💾 期首残高を登録する",
+                type="primary",
+                width="stretch",
+                disabled=has_opening_entry,
             ):
                 if diff != 0 or total_d == 0:
                     st.error("貸借合計を一致させ、0より大きい金額を入力してください。")
                 else:
-                    assert open_fy is not None
-                    s_date = open_fy.start_date
-                    call_journal(
-                        lambda s: s.register_opening_balance(s_date, op_d, op_c)
-                    )
-                    st.success("期首残高を登録しました！")
-                    st.rerun()
+                    s_date = fy_start
+                    try:
+                        call_journal(
+                            lambda s: s.register_opening_balance(s_date, op_d, op_c)
+                        )
+                        st.success("期首残高を登録しました！")
+                        st.rerun()
+                    except ValueError as err:
+                        st.error(f"登録エラー: {err}")
 
 # 4. 勘定科目マスタ
 with tab_acc:

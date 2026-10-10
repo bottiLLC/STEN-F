@@ -702,7 +702,7 @@ class ILedgerRepository(ABC):
 
     @abstractmethod
     async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
-        """Update storage file path of attached receipt evidence."""
+        """Prohibited by Rule 1 (Absolute Immutability). Use add_journal_entry_with_evidence."""
         ...
 
     @abstractmethod

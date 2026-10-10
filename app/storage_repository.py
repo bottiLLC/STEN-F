@@ -772,16 +772,17 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         if not tx_ids:
             return []
 
+        tx_date_col = func.coalesce(TransactionTable.occurred_at, TransactionTable.date)
         stmt = (
             select(TransactionTable)
             .where(TransactionTable.id.in_(tx_ids))
             .options(selectinload(TransactionTable.lines))
-            .order_by(TransactionTable.date, TransactionTable.id)
+            .order_by(tx_date_col, TransactionTable.id)
         )
         if start_date:
-            stmt = stmt.where(TransactionTable.date >= start_date)
+            stmt = stmt.where(tx_date_col >= start_date)
         if end_date:
-            stmt = stmt.where(TransactionTable.date <= end_date)
+            stmt = stmt.where(tx_date_col <= end_date)
 
         res = await self.session.execute(stmt)
         return [_to_domain_transaction(r) for r in res.scalars().all()]
@@ -795,6 +796,14 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         Returns:
             Database primary key ID of created transaction.
         """
+        # Rule 2 Defense-in-depth: Verify debit/credit balance at persistence barrier
+        total_debit = sum(line.debit for line in transaction.lines)
+        total_credit = sum(line.credit for line in transaction.lines)
+        if total_debit != total_credit or not transaction.lines:
+            raise ValueError(
+                f"Zero-Tolerance Balance Violation (Rule 2): Debit({total_debit}) != Credit({total_credit})"
+            )
+
         occ_date = transaction.occurred_at or transaction.date
         rec_dt = transaction.recorded_at or datetime.datetime.now(datetime.timezone.utc)
         db_tx = TransactionTable(
@@ -966,23 +975,22 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         await self.session.commit()
 
     async def update_evidence_path(self, transaction_id: int, path: str) -> bool:
-        """Update linked evidence document path on transaction record.
+        """Prohibited by Rule 1 (Absolute Immutability). Use add_journal_entry_with_evidence.
 
         Args:
             transaction_id: Primary key of target transaction.
             path: Storage file system path.
 
         Returns:
-            True if updated, False if transaction not found.
+            None.
+
+        Raises:
+            NotImplementedError: Always, per Rule 1 immutability mandate.
         """
-        res = await self.session.execute(
-            select(TransactionTable).where(TransactionTable.id == transaction_id)
+        raise NotImplementedError(
+            "UPDATE operations on Journal Entries are strictly prohibited by Rule 1 (Absolute Immutability). "
+            "Evidence paths must be bound at initial append via add_journal_entry_with_evidence."
         )
-        db_tx = res.scalar_one_or_none()
-        if db_tx:
-            db_tx.evidence_path = path
-            return True
-        return False
 
 
 async def seed_accounts_with_service(

@@ -371,16 +371,10 @@ async def test_ledger_repository_operations(container: Container) -> None:
         saved = next((t for t in txs if t.id == tx_id), None)
         has_tx = await ledger_repo.has_transactions_for_account(acc1.id)
 
-        update_ev_success = await ledger_repo.update_evidence_path(
-            tx_id, "/storage/receipt.pdf"
-        )
-        update_ev_fail = await ledger_repo.update_evidence_path(
-            999999, "/storage/receipt.pdf"
-        )
-        await ledger_repo.commit()
-
-        # Rule 1 checks: Direct UPDATE and DELETE are prohibited
+        # Rule 1 checks: Direct UPDATE, DELETE, and post-update of evidence are strictly prohibited
         assert saved is not None
+        with pytest.raises(NotImplementedError):
+            await ledger_repo.update_evidence_path(tx_id, "/storage/receipt.pdf")
         with pytest.raises(NotImplementedError):
             await ledger_repo.update_transaction(saved)
         with pytest.raises(NotImplementedError):
@@ -399,12 +393,11 @@ async def test_ledger_repository_operations(container: Container) -> None:
         assert isinstance(saved, Transaction)
         assert saved.id == tx_id
         assert saved.description == "Golden Transaction"
+        assert updated.description == saved.description
+        assert len(updated.lines) == len(saved.lines)
         assert saved.counterparty == "ゴールデン顧客"
         assert len(saved.lines) == 2
         assert has_tx is True
-        assert update_ev_success is True
-        assert update_ev_fail is False
-        assert updated.evidence_path == "/storage/receipt.pdf"
         assert rev_saved is not None
         assert "[取消: 誤入力取消]" in rev_saved.description
         assert any(
@@ -575,3 +568,71 @@ async def test_master_repository_save_counterparty_merges_on_matching_invoice_or
         # Assert 2: Same ID retained, invoice_number updated
         assert cp_updated_by_name.id == cp_initial.id
         assert cp_updated_by_name.invoice_number == "T2222222222222"
+
+
+@pytest.mark.asyncio
+async def test_ledger_repository_get_transactions_by_account_respects_occurred_at(
+    container: Container,
+) -> None:
+    """Verify get_transactions_by_account filters and orders correctly using occurred_at per Rule 3."""
+    async with container.session_scope() as session:
+        master_repo = SQLAlchemyMasterRepository(session)
+        ledger_repo = SQLAlchemyLedgerRepository(session)
+        accounts = await master_repo.get_accounts()
+        acc1, acc2 = accounts[0], accounts[1]
+        assert acc1.id is not None and acc2.id is not None
+
+        tx = Transaction(
+            occurred_at=date(2026, 5, 20),
+            description="Account Specific Dual-Timestamp Tx",
+            lines=[
+                TransactionLine(account_id=acc1.id, debit=12000, credit=0),
+                TransactionLine(account_id=acc2.id, debit=0, credit=12000),
+            ],
+        )
+        tx_id = await ledger_repo.add_transaction(tx)
+        await ledger_repo.commit()
+
+        # Query matching range by occurred_at
+        txs = await ledger_repo.get_transactions_by_account(
+            account_id=acc1.id,
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 5, 31),
+        )
+        assert any(t.id == tx_id for t in txs)
+
+        # Query outside range by occurred_at
+        txs_outside = await ledger_repo.get_transactions_by_account(
+            account_id=acc1.id,
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 30),
+        )
+        assert not any(t.id == tx_id for t in txs_outside)
+
+
+@pytest.mark.asyncio
+async def test_ledger_repository_add_transaction_unbalanced_raises_value_error(
+    container: Container,
+) -> None:
+    """Verify add_transaction enforces Zero-Tolerance Balance (Rule 2) defense-in-depth at persistence barrier."""
+    async with container.session_scope() as session:
+        master_repo = SQLAlchemyMasterRepository(session)
+        ledger_repo = SQLAlchemyLedgerRepository(session)
+        accounts = await master_repo.get_accounts()
+        acc1, acc2 = accounts[0], accounts[1]
+        assert acc1.id is not None and acc2.id is not None
+
+        # Bypass pydantic validation directly by modifying lines post-creation or construct invalid lines
+        tx = Transaction(
+            occurred_at=date(2026, 5, 20),
+            description="Balanced Initially",
+            lines=[
+                TransactionLine(account_id=acc1.id, debit=1000, credit=0),
+                TransactionLine(account_id=acc2.id, debit=0, credit=1000),
+            ],
+        )
+        # Corrupt balance
+        tx.lines[0].debit = 9999
+
+        with pytest.raises(ValueError, match="Zero-Tolerance Balance Violation"):
+            await ledger_repo.add_transaction(tx)
