@@ -337,7 +337,10 @@ with tab_history:
                 rows.append(
                     {
                         "id": tx.id,
-                        "取引日": str(tx.date),
+                        "発生日": str(tx.occurred_at),
+                        "記録日時(UTC)": tx.recorded_at.strftime("%Y-%m-%d %H:%M:%S")
+                        if tx.recorded_at
+                        else "-",
                         "証憑": ("📄 あり" if tx.evidence_path else "-")
                         if i == 0
                         else "",
@@ -369,7 +372,7 @@ with tab_history:
         st.divider()
         st.markdown("##### 🔍 選択仕訳の詳細・証憑確認 (PDF/画像)")
         tx_options = {
-            f"ID {tx.id} | {tx.date} | {tx.description or '振替仕訳'} (¥{sum(line.debit for line in tx.lines):,}) [{'📄 証憑あり' if tx.evidence_path else '証憑なし'}]": tx
+            f"ID {tx.id} | 発生日: {tx.occurred_at} | {tx.description or '振替仕訳'} (¥{sum(line.debit for line in tx.lines):,}) [{'📄 証憑あり' if tx.evidence_path else '証憑なし'}]": tx
             for tx in entries
         }
         selected_label = st.selectbox(
@@ -381,10 +384,10 @@ with tab_history:
             col_d_left, col_d_right = st.columns([3, 2])
             with col_d_left:
                 st.markdown(
-                    f"**取引日:** `{selected_tx.date}` | **摘要:** `{selected_tx.description or '-'}`"
+                    f"**発生日:** `{selected_tx.occurred_at}` | **記録日時:** `{selected_tx.recorded_at.strftime('%Y-%m-%d %H:%M:%S UTC') if selected_tx.recorded_at else '-'}`"
                 )
                 st.markdown(
-                    f"**取引先:** `{selected_tx.counterparty or '-'}` | **インボイス番号:** `{selected_tx.invoice_number or '-'}`"
+                    f"**摘要:** `{selected_tx.description or '-'}` | **取引先:** `{selected_tx.counterparty or '-'}` | **インボイス番号:** `{selected_tx.invoice_number or '-'}`"
                 )
 
                 if selected_tx.evidence_path:
@@ -436,17 +439,34 @@ with tab_history:
                     st.caption("※ この仕訳に添付された証憑はありません。")
 
             with col_d_right:
-                if not selected_tx.is_deleted and selected_tx.id is not None:
+                if selected_tx.id is not None:
                     target_id: int = selected_tx.id
+                    st.markdown("##### 🔄 赤伝起票（反対仕訳による訂正）")
+                    st.caption(
+                        "※ 会計不変制約（Rule 1）に基づき、過去仕訳の上書き更新・削除は禁止されています。貸借を反転させた赤伝（反対仕訳）を発行して残高を相殺します。"
+                    )
+                    rev_reason = st.text_input(
+                        "取消理由",
+                        value="入力誤謬による取消",
+                        key=f"rev_reason_{target_id}",
+                    )
                     if st.button(
-                        "🗑️ この仕訳を削除する",
+                        "🔄 赤伝（反対仕訳）を発行して取消",
                         type="secondary",
-                        icon=":material/delete:",
-                        key=f"del_tx_{target_id}",
+                        icon=":material/swap_horiz:",
+                        key=f"rev_btn_{target_id}",
+                        use_container_width=True,
                     ):
                         try:
-                            call_journal(lambda s: s.delete_entry(target_id))
-                            st.toast("仕訳を論理削除しました", icon="🗑️")
+                            rev_id = call_journal(
+                                lambda s: s.reverse_journal_entry(
+                                    target_id, reason=rev_reason
+                                )
+                            )
+                            st.toast(
+                                f"赤伝を発行しました (新仕訳ID: {rev_id})",
+                                icon="🔄",
+                            )
                             st.rerun()
                         except Exception as ex:
-                            st.error(f"削除エラー: {ex}")
+                            st.error(f"赤伝起票エラー: {ex}")

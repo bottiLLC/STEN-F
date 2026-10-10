@@ -128,6 +128,8 @@ class TransactionTable(Base):
 
     __tablename__ = "transactions"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    occurred_at: Mapped[datetime.date | None] = mapped_column(index=True, nullable=True)
+    recorded_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
     date: Mapped[datetime.date] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(nullable=True)
     is_deleted: Mapped[bool] = mapped_column(default=False)
@@ -184,9 +186,12 @@ def _to_domain_transaction(row: TransactionTable) -> Transaction:
         )
         for line in row.lines
     ]
+    occ_date = row.occurred_at or row.date
+    rec_dt = row.recorded_at or datetime.datetime.now(datetime.timezone.utc)
     return Transaction(
         id=row.id,
-        date=row.date,
+        occurred_at=occ_date,
+        recorded_at=rec_dt,
         description=row.description or "",
         lines=lines,
         is_deleted=row.is_deleted,
@@ -323,6 +328,34 @@ async def init_db(target_engine: AsyncEngine | None = None) -> None:
                 )
             except Exception as e:
                 log.warning("db_migration_skip", column="tax_rate", error=str(e))
+        try:
+            await conn.execute(text("SELECT occurred_at FROM transactions LIMIT 1"))
+        except Exception:
+            try:
+                await conn.execute(
+                    text("ALTER TABLE transactions ADD COLUMN occurred_at DATE")
+                )
+                await conn.execute(
+                    text(
+                        "UPDATE transactions SET occurred_at = date WHERE occurred_at IS NULL"
+                    )
+                )
+            except Exception as e:
+                log.warning("db_migration_skip", column="occurred_at", error=str(e))
+        try:
+            await conn.execute(text("SELECT recorded_at FROM transactions LIMIT 1"))
+        except Exception:
+            try:
+                await conn.execute(
+                    text("ALTER TABLE transactions ADD COLUMN recorded_at TIMESTAMP")
+                )
+                await conn.execute(
+                    text(
+                        "UPDATE transactions SET recorded_at = CURRENT_TIMESTAMP WHERE recorded_at IS NULL"
+                    )
+                )
+            except Exception as e:
+                log.warning("db_migration_skip", column="recorded_at", error=str(e))
 
 
 class SQLAlchemyMasterRepository(IMasterRepository):
@@ -697,14 +730,15 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         else:
             stmt = stmt.options(selectinload(TransactionTable.lines))
 
+        tx_date_col = func.coalesce(TransactionTable.occurred_at, TransactionTable.date)
         if not include_deleted:
             stmt = stmt.where(TransactionTable.is_deleted.is_(False))
         if start_date:
-            stmt = stmt.where(TransactionTable.date >= start_date)
+            stmt = stmt.where(tx_date_col >= start_date)
         if end_date:
-            stmt = stmt.where(TransactionTable.date <= end_date)
+            stmt = stmt.where(tx_date_col <= end_date)
 
-        stmt = stmt.order_by(TransactionTable.date.desc(), TransactionTable.id.desc())
+        stmt = stmt.order_by(tx_date_col.desc(), TransactionTable.id.desc())
         res = await self.session.execute(stmt)
         return [_to_domain_transaction(r) for r in res.scalars().all()]
 
@@ -753,7 +787,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         return [_to_domain_transaction(r) for r in res.scalars().all()]
 
     async def add_transaction(self, transaction: Transaction) -> int:
-        """Persist newly composed balanced journal transaction.
+        """Persist newly composed balanced journal transaction under Dual-Timestamp invariant.
 
         Args:
             transaction: Validated Transaction domain model.
@@ -761,8 +795,12 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         Returns:
             Database primary key ID of created transaction.
         """
+        occ_date = transaction.occurred_at or transaction.date
+        rec_dt = transaction.recorded_at or datetime.datetime.now(datetime.timezone.utc)
         db_tx = TransactionTable(
-            date=transaction.date,
+            occurred_at=occ_date,
+            recorded_at=rec_dt,
+            date=occ_date,
             description=transaction.description,
             is_deleted=False,
             counterparty=transaction.counterparty,
@@ -783,42 +821,61 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             )
         return db_tx.id
 
-    async def update_transaction(self, transaction: Transaction) -> bool:
-        """Update existing journal entry header and replace transaction lines.
+    async def reverse_transaction(
+        self,
+        original_tx_id: int,
+        reason: str = "誤謬取消",
+        occurred_at: datetime.date | None = None,
+    ) -> int:
+        """Rectify error solely by creating a new reversing entry (red slip) under Rule 1.
 
         Args:
-            transaction: Transaction domain model with updated fields.
+            original_tx_id: Primary key of transaction to reverse.
+            reason: Cancellation reason string.
+            occurred_at: Optional reversing occurrence date (defaults to original occurrence date).
 
         Returns:
-            True if transaction was updated, False if not found.
+            Created reversing transaction ID.
+
+        Raises:
+            ValueError: If original transaction not found.
         """
         res = await self.session.execute(
             select(TransactionTable)
-            .where(TransactionTable.id == transaction.id)
+            .where(TransactionTable.id == original_tx_id)
             .options(selectinload(TransactionTable.lines))
         )
-        db_tx = res.scalar_one_or_none()
-        if not db_tx:
-            return False
+        orig = res.scalar_one_or_none()
+        if not orig:
+            raise ValueError(f"仕訳ID {original_tx_id} が見つかりません。")
 
-        db_tx.date, db_tx.description = transaction.date, transaction.description
-        db_tx.counterparty, db_tx.invoice_number = (
-            transaction.counterparty,
-            transaction.invoice_number,
-        )
-        if transaction.evidence_path:
-            db_tx.evidence_path = transaction.evidence_path
+        reversing_date = occurred_at or orig.occurred_at or orig.date
+        rev_desc = f"[取消: {reason}] {orig.description or ''}".strip()
 
-        db_tx.lines = [
-            TransactionLineTable(
-                transaction_id=db_tx.id,
+        # Swap debit and credit legs to create true reversing entry
+        rev_lines = [
+            TransactionLine(
                 account_id=line.account_id,
-                debit=line.debit,
-                credit=line.credit,
+                debit=line.credit,
+                credit=line.debit,
             )
-            for line in transaction.lines
+            for line in orig.lines
         ]
-        return True
+        rev_tx = Transaction(
+            occurred_at=reversing_date,
+            description=rev_desc,
+            lines=rev_lines,
+            counterparty=orig.counterparty,
+            invoice_number=orig.invoice_number,
+        )
+        return await self.add_transaction(rev_tx)
+
+    async def update_transaction(self, transaction: Transaction) -> bool:
+        """Prohibited by Rule 1 (Absolute Immutability)."""
+        raise NotImplementedError(
+            "UPDATE operations on Journal Entries are strictly prohibited by Rule 1 (Absolute Immutability). "
+            "Rectify transactions solely by inserting reversing entries via reverse_transaction."
+        )
 
     async def has_transactions_for_account(self, account_id: int) -> bool:
         """Check if any transaction line references account id.
@@ -837,26 +894,11 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         return res.scalar_one_or_none() is not None
 
     async def delete_transaction(self, transaction_id: int) -> bool:
-        """Soft delete journal transaction record.
-
-        Args:
-            transaction_id: Primary key of transaction to mark deleted.
-
-        Returns:
-            True if transaction was marked deleted, False if not found.
-        """
-        res = await self.session.execute(
-            select(TransactionTable)
-            .where(TransactionTable.id == transaction_id)
-            .options(selectinload(TransactionTable.lines))
+        """Prohibited by Rule 1 (Absolute Immutability)."""
+        raise NotImplementedError(
+            "DELETE operations on Journal Entries are strictly prohibited by Rule 1 (Absolute Immutability). "
+            "Rectify transactions solely by inserting reversing entries via reverse_transaction."
         )
-        db_tx = res.scalar_one_or_none()
-        if db_tx:
-            db_tx.is_deleted = True
-            db_tx.deleted_at = datetime.datetime.now()
-            await self.session.commit()
-            return True
-        return False
 
     async def get_trial_balance_data(
         self, fiscal_year_id: int
@@ -876,6 +918,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
         if not fy:
             return []
 
+        tx_date_col = func.coalesce(TransactionTable.occurred_at, TransactionTable.date)
         agg_stmt = (
             select(
                 TransactionLineTable.account_id,
@@ -887,8 +930,8 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
                 TransactionTable.id == TransactionLineTable.transaction_id,
             )
             .where(
-                TransactionTable.date >= fy.start_date,
-                TransactionTable.date <= fy.end_date,
+                tx_date_col >= fy.start_date,
+                tx_date_col <= fy.end_date,
                 TransactionTable.is_deleted.is_(False),
             )
             .group_by(TransactionLineTable.account_id)

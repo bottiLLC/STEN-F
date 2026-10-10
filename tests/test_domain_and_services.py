@@ -148,21 +148,10 @@ async def test_journal_entry_lifecycle_and_updates(container: Container) -> None
             assert isinstance(learned_cp, Counterparty)
             assert learned_cp.name == "新規自動学習取引先"
 
-        # Act 2: Update journal entry
+        # Act 2: Verify direct UPDATE is prohibited under Rule 1
         tx_saved = next(t for t in await js.get_entries() if t.id == tx_id)
-        tx_saved.description = "更新後の摘要"
-        tx_saved.lines = [
-            TransactionLine(account_id=acc1.id, debit=15000, credit=0),
-            TransactionLine(account_id=acc2.id, debit=0, credit=15000),
-        ]
-        update_result = await js.update_journal_entry(tx_saved)
-
-        # Assert 2: Entry updated
-        assert update_result is True
-        updated_entries = await js.get_entries()
-        u = next(e for e in updated_entries if e.id == tx_saved.id)
-        assert u.description == "更新後の摘要"
-        assert sum(line.debit for line in u.lines) == 15000
+        with pytest.raises(NotImplementedError):
+            await js.update_journal_entry(tx_saved)
 
         # Act 3: Opening Balance
         op_id = await js.register_opening_balance(
@@ -172,12 +161,23 @@ async def test_journal_entry_lifecycle_and_updates(container: Container) -> None
         )
         assert op_id > 0
 
-        # Act 4: Delete entry via repository
-        delete_res = await js.repository.delete_transaction(tx_id)
-        await js.repository.commit()
-        delete_fail = await js.repository.delete_transaction(999999)
-        assert delete_res is True
-        assert delete_fail is False
+        # Act 4: Verify direct DELETE is prohibited under Rule 1
+        with pytest.raises(NotImplementedError):
+            await js.repository.delete_transaction(tx_id)
+
+        # Act 5: Verify Reversing Entry (赤伝) creation
+        rev_id = await js.reverse_journal_entry(tx_id, reason="誤登録取消")
+        assert rev_id > 0
+        all_entries = await js.get_entries()
+        rev_entry = next(e for e in all_entries if e.id == rev_id)
+        assert "[取消" in rev_entry.description
+        # Line debit/credit swapped
+        assert any(
+            ln.account_id == acc1.id and ln.credit == 12000 for ln in rev_entry.lines
+        )
+        assert any(
+            ln.account_id == acc2.id and ln.debit == 12000 for ln in rev_entry.lines
+        )
 
 
 @pytest.mark.asyncio
@@ -736,10 +736,10 @@ async def test_journal_service_add_journal_entry_with_evidence_persists_path(
 
 
 @pytest.mark.asyncio
-async def test_journal_service_delete_entry_soft_deletes_transaction(
+async def test_journal_service_reversing_entry_workflow_rectifies_transaction(
     container: Container,
 ) -> None:
-    """Verify delete_entry removes transaction from active entries while retaining in soft-deleted query."""
+    """Verify reverse_journal_entry creates reversing entry that nets balance to zero without deleting historical record."""
     # Arrange
     async with container.master_service_scope() as ms:
         fys = await ms.get_fiscal_years()
@@ -751,8 +751,8 @@ async def test_journal_service_delete_entry_soft_deletes_transaction(
     async with container.journal_service_scope() as js:
         tx_id = await js.add_journal_entry(
             Transaction(
-                date=open_fy.start_date,
-                description="削除テスト仕訳",
+                occurred_at=open_fy.start_date,
+                description="訂正対象仕訳",
                 lines=[
                     TransactionLine(account_id=acc1.id, debit=4000, credit=0),
                     TransactionLine(account_id=acc2.id, debit=0, credit=4000),
@@ -760,16 +760,27 @@ async def test_journal_service_delete_entry_soft_deletes_transaction(
             )
         )
 
-        # Act
-        await js.delete_entry(tx_id)
-        active_entries = await js.get_entries(include_deleted=False)
-        all_entries = await js.get_entries(include_deleted=True)
+        # Direct deletion should be prohibited by Rule 1
+        with pytest.raises(NotImplementedError):
+            await js.delete_entry(tx_id)
 
-        # Assert
-        assert not any(t.id == tx_id for t in active_entries)
-        deleted_tx = next((t for t in all_entries if t.id == tx_id), None)
-        assert isinstance(deleted_tx, Transaction)
-        assert deleted_tx.is_deleted is True
+        # Act: Reverse journal entry
+        rev_id = await js.reverse_journal_entry(tx_id, reason="金額誤認")
+        assert rev_id > 0
+
+        # Assert: Historical record retained and reversing entry added
+        all_entries = await js.get_entries()
+        orig_tx = next(t for t in all_entries if t.id == tx_id)
+        rev_tx = next(t for t in all_entries if t.id == rev_id)
+
+        assert orig_tx is not None
+        assert rev_tx is not None
+        assert "[取消: 金額誤認]" in rev_tx.description
+        assert rev_tx.occurred_at == orig_tx.occurred_at
+        assert rev_tx.recorded_at is not None
+        # Verify dual timestamps are set
+        assert orig_tx.occurred_at == open_fy.start_date
+        assert orig_tx.recorded_at is not None
 
 
 @pytest.mark.asyncio

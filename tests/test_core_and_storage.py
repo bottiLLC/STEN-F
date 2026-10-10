@@ -379,15 +379,23 @@ async def test_ledger_repository_operations(container: Container) -> None:
         )
         await ledger_repo.commit()
 
-        txs_updated = await ledger_repo.get_transactions()
-        updated = next(t for t in txs_updated if t.id == tx_id)
+        # Rule 1 checks: Direct UPDATE and DELETE are prohibited
+        assert saved is not None
+        with pytest.raises(NotImplementedError):
+            await ledger_repo.update_transaction(saved)
+        with pytest.raises(NotImplementedError):
+            await ledger_repo.delete_transaction(tx_id)
 
-        delete_success = await ledger_repo.delete_transaction(tx_id)
-        delete_fail = await ledger_repo.delete_transaction(999999)
+        # Reversing entry creation
+        rev_id = await ledger_repo.reverse_transaction(tx_id, reason="誤入力取消")
         await ledger_repo.commit()
+        txs_after = await ledger_repo.get_transactions()
+        rev_saved = next((t for t in txs_after if t.id == rev_id), None)
+        updated = next(t for t in txs_after if t.id == tx_id)
 
         # Assert
         assert tx_id > 0
+        assert rev_id > 0
         assert isinstance(saved, Transaction)
         assert saved.id == tx_id
         assert saved.description == "Golden Transaction"
@@ -397,8 +405,11 @@ async def test_ledger_repository_operations(container: Container) -> None:
         assert update_ev_success is True
         assert update_ev_fail is False
         assert updated.evidence_path == "/storage/receipt.pdf"
-        assert delete_success is True
-        assert delete_fail is False
+        assert rev_saved is not None
+        assert "[取消: 誤入力取消]" in rev_saved.description
+        assert any(
+            ln.account_id == acc1.id and ln.credit == 5000 for ln in rev_saved.lines
+        )
 
 
 @pytest.mark.asyncio
@@ -440,11 +451,6 @@ async def test_ledger_repository_get_transactions_filtered_by_date_range(
         filtered_txs = await ledger_repo.get_transactions(
             start_date=target_date, end_date=target_date
         )
-
-        # Clean up
-        await ledger_repo.delete_transaction(id_today)
-        await ledger_repo.delete_transaction(id_past)
-        await ledger_repo.commit()
 
         # Assert
         filtered_ids = [t.id for t in filtered_txs]

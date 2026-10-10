@@ -426,7 +426,7 @@ class LedgerService:
         is_debit_positive = target_acc.type in _DEBIT_POSITIVE_TYPES
         gl_lines: list[GeneralLedgerLine] = []
         running_balance = 0
-        transactions.sort(key=lambda x: x.date)
+        transactions.sort(key=lambda x: (x.occurred_at, x.recorded_at, x.id or 0))
 
         for tx in transactions:
             line = next((ln for ln in tx.lines if ln.account_id == account_id), None)
@@ -436,9 +436,10 @@ class LedgerService:
             running_balance += (
                 (debit - credit) if is_debit_positive else (credit - debit)
             )
+            tx_date = tx.occurred_at or tx.date or target_fy.start_date
             gl_lines.append(
                 {
-                    "日付": tx.date,
+                    "日付": tx_date,
                     "摘要": tx.description,
                     "借方": debit if debit > 0 else 0,
                     "貸方": credit if credit > 0 else 0,
@@ -586,7 +587,10 @@ class JournalService:
         Returns:
             Database primary key ID of created transaction.
         """
-        await self._validate_transaction_date(transaction.date)
+        tx_date = transaction.occurred_at or transaction.date
+        if not tx_date:
+            raise ValueError("Transaction requires occurred_at or date")
+        await self._validate_transaction_date(tx_date)
         tx_id = await self.repository.add_transaction(transaction)
         await self.repository.commit()
 
@@ -656,21 +660,36 @@ class JournalService:
             Transaction(date=opening_date, description="期首残高", lines=lines)
         )
 
-    async def update_journal_entry(self, transaction: Transaction) -> bool:
-        """Update existing journal entry within open fiscal boundary.
+    async def reverse_journal_entry(
+        self,
+        transaction_id: int,
+        reason: str = "誤謬取消",
+        cancel_date: date | None = None,
+    ) -> int:
+        """Rectify journal entry solely by inserting a reversing entry under Rule 1.
 
         Args:
-            transaction: Transaction domain model with updated details.
+            transaction_id: Target transaction ID to reverse.
+            reason: Cancellation explanation or memo.
+            cancel_date: Reversing entry occurrence date (defaults to original occurrence date).
 
         Returns:
-            True if updated, False if transaction not found.
+            Newly created reversing transaction ID.
         """
-        await self._validate_transaction_date(transaction.date)
-        success = await self.repository.update_transaction(transaction)
-        if success:
-            await self.repository.commit()
-            return True
-        return False
+        rev_id = await self.repository.reverse_transaction(
+            original_tx_id=transaction_id,
+            reason=reason,
+            occurred_at=cancel_date,
+        )
+        await self.repository.commit()
+        return rev_id
+
+    async def update_journal_entry(self, transaction: Transaction) -> bool:
+        """Prohibited by Rule 1 (Absolute Immutability). Use reverse_journal_entry."""
+        raise NotImplementedError(
+            "UPDATE operations on Journal Entries are strictly prohibited by Rule 1 (Absolute Immutability). "
+            "Rectify transactions solely by inserting reversing entries via reverse_journal_entry."
+        )
 
     async def get_entries(
         self,
@@ -714,10 +733,13 @@ class JournalService:
         total_amt = sum(line.debit for line in transaction.lines)
         corp = transaction.counterparty or "Unknown"
 
+        tx_date = transaction.occurred_at or transaction.date
+        if not tx_date:
+            raise ValueError("Transaction requires occurred_at or date")
         path = await file_service.save_evidence_for_transaction(
             file_bytes=file_bytes,
             transaction_id=tx_id,
-            date_obj=transaction.date,
+            date_obj=tx_date,
             amount=total_amt,
             corp_name=corp,
             extension=extension,
@@ -727,12 +749,11 @@ class JournalService:
         return tx_id
 
     async def delete_entry(self, transaction_id: int) -> None:
-        """Soft delete journal entry.
-
-        Args:
-            transaction_id: Primary key of transaction to delete.
-        """
-        await self.repository.delete_transaction(transaction_id)
+        """Prohibited by Rule 1 (Absolute Immutability). Use reverse_journal_entry."""
+        raise NotImplementedError(
+            "DELETE operations on Journal Entries are strictly prohibited by Rule 1 (Absolute Immutability). "
+            "Rectify transactions solely by inserting reversing entries via reverse_journal_entry."
+        )
 
 
 class FiscalYearService:
@@ -855,9 +876,14 @@ class FiscalYearService:
                 f"Opening Balance unbalanced: Dr {total_d} != Cr {total_c}"
             )
 
-        await self.journal_service.add_journal_entry(
-            Transaction(date=next_fy.start_date, description="前期繰越", lines=lines)
-        )
+        if lines:
+            await self.journal_service.add_journal_entry(
+                Transaction(
+                    occurred_at=next_fy.start_date,
+                    description="前期繰越",
+                    lines=lines,
+                )
+            )
         current_fy.status = "CLOSED"
         await self.master_service.save_fiscal_year(current_fy)
         return next_fy

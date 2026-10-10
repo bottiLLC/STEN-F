@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import date, datetime
+import datetime as _dt
+from datetime import date, datetime, timezone
 from enum import Enum
 import re
 from typing import Final, TypedDict
@@ -293,10 +294,19 @@ class TransactionLine(BaseModel):
 
 
 class Transaction(BaseModel):
-    """Double-entry balanced accounting journal transaction entry."""
+    """Double-entry balanced accounting journal transaction entry adhering to Dual-Timestamp and Immutability invariants."""
 
     id: int | None = None
-    date: date
+    occurred_at: _dt.date | None = Field(
+        default=None, description="Business transaction occurrence date"
+    )
+    date: _dt.date | None = Field(
+        default=None, description="Backward-compatible alias for occurred_at"
+    )
+    recorded_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Immutable system recording UTC timestamp",
+    )
     description: str
     lines: list[TransactionLine] = Field(default_factory=list)
     is_deleted: bool = False
@@ -307,16 +317,38 @@ class Transaction(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _remap_occurred_date(cls, data: object) -> object:
+        """Map legacy 'date' field to 'occurred_at' if occurred_at is missing."""
+        if isinstance(data, dict):
+            mapped = dict(data)
+            if mapped.get("occurred_at") is None and mapped.get("date") is not None:
+                mapped["occurred_at"] = mapped["date"]
+            return mapped
+        return data
+
     @model_validator(mode="after")
     def check_balance(self) -> Transaction:
-        """Verify strict debit and credit balance conservation.
+        """Verify date synchronization and strict debit and credit balance conservation under Zero-Tolerance Balance (Rule 2).
 
         Returns:
             Validated Transaction instance.
 
         Raises:
-            ValueError: If debit total does not strictly equal credit total.
+            ValueError: If line items are insufficient, dates missing, or debit total does not strictly equal credit total.
         """
+        if self.occurred_at is None and self.date is not None:
+            self.occurred_at = self.date
+        elif self.occurred_at is not None and self.date is None:
+            self.date = self.occurred_at
+        if self.occurred_at is None:
+            raise ValueError("Transaction requires occurred_at or date")
+
+        if len(self.lines) < 2:
+            raise ValueError(
+                f"Invalid Transaction: At least 2 lines (debit and credit legs) required, got {len(self.lines)}"
+            )
         total_debit = sum(line.debit for line in self.lines)
         total_credit = sum(line.credit for line in self.lines)
         if total_debit != total_credit:
@@ -632,13 +664,23 @@ class ILedgerRepository(ABC):
         ...
 
     @abstractmethod
+    async def reverse_transaction(
+        self,
+        original_tx_id: int,
+        reason: str = "誤謬取消",
+        occurred_at: date | None = None,
+    ) -> int:
+        """Rectify error solely by creating a new reversing entry (red slip) under Rule 1."""
+        ...
+
+    @abstractmethod
     async def has_transactions_for_account(self, account_id: int) -> bool:
         """Check whether any transaction references given account ID."""
         ...
 
     @abstractmethod
     async def delete_transaction(self, transaction_id: int) -> bool:
-        """Logically mark transaction as deleted."""
+        """Deprecated: Direct deletion prohibited by Rule 1. Use reverse_transaction."""
         ...
 
     @abstractmethod
@@ -655,7 +697,7 @@ class ILedgerRepository(ABC):
 
     @abstractmethod
     async def update_transaction(self, transaction: Transaction) -> bool:
-        """Update existing transaction header and lines."""
+        """Deprecated: Direct update prohibited by Rule 1. Use reverse_transaction."""
         ...
 
     @abstractmethod
