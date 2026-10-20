@@ -383,3 +383,69 @@ def test_compute_next_fiscal_year_dates_boundaries() -> None:
     s4, e4 = compute_next_fiscal_year_dates(date(2027, 2, 28))
     assert s4 == date(2027, 3, 1)
     assert e4 == date(2028, 2, 29)
+
+
+def test_design_system_inject_global_css_invokes_st_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify inject_global_design_system invokes st.html with design system CSS."""
+    # Arrange
+    import streamlit as st
+    from app.ui.design_system import (
+        GLOBAL_DESIGN_SYSTEM_CSS,
+        inject_global_design_system,
+    )
+
+    captured_html: list[str] = []
+    monkeypatch.setattr(st, "html", lambda content: captured_html.append(content))
+
+    # Act
+    inject_global_design_system()
+
+    # Assert
+    assert len(captured_html) == 1
+    assert captured_html[0] == GLOBAL_DESIGN_SYSTEM_CSS
+
+
+def test_financial_statements_render_functions_invoke_st_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify render_balance_sheet and render_profit_and_loss invoke st.html."""
+    # Arrange
+    import streamlit as st
+    from app.domain_contracts import FinancialReport, FinancialSection, FiscalYear
+    from app.ui.financial_statements import (
+        render_balance_sheet,
+        render_profit_and_loss,
+    )
+
+    captured_html: list[str] = []
+    monkeypatch.setattr(st, "html", lambda content: captured_html.append(content))
+    fy = FiscalYear(
+        name="第1期", start_date=date(2026, 1, 1), end_date=date(2026, 12, 31)
+    )
+    dummy_report = FinancialReport(
+        fiscal_year=fy,
+        current_assets=FinancialSection(title="流動資産"),
+        fixed_assets=FinancialSection(title="固定資産"),
+        deferred_assets=FinancialSection(title="繰延資産"),
+        current_liabilities=FinancialSection(title="流動負債"),
+        fixed_liabilities=FinancialSection(title="固定負債"),
+        equity=FinancialSection(title="純資産"),
+        revenue=FinancialSection(title="売上高"),
+        cost_of_sales=FinancialSection(title="売上原価"),
+        sga=FinancialSection(title="販管費"),
+        non_op_income=FinancialSection(title="営業外収益"),
+        non_op_expense=FinancialSection(title="営業外費用"),
+        extra_income=FinancialSection(title="特別利益"),
+        extra_loss=FinancialSection(title="特別損失"),
+    )
+
+    # Act
+    render_balance_sheet(dummy_report, hide_zero=True)
+    render_profit_and_loss(dummy_report, hide_zero=True)
+
+    # Assert
+    assert len(captured_html) == 2
+    assert "貸借対照表" in captured_html[0]
+    assert "損益計算書" in captured_html[1]

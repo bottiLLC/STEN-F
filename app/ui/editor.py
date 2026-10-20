@@ -139,7 +139,7 @@ def render_accounting_editor(
 
             st.session_state.pop(pending_key, None)
             st.session_state[version_key] += 1
-            st.toast("変更が正常に保存されました！", icon=":material/check:")
+            st.toast("変更を保存しました", icon=":material/check:")
             st.rerun()
 
     return edited_df

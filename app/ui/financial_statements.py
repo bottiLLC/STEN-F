@@ -561,7 +561,7 @@ def render_balance_sheet(
 ) -> None:
     """Render Balance Sheet (B/S) component directly in Streamlit."""
     html_content = build_balance_sheet_html(report, hide_zero=hide_zero)
-    st.markdown(html_content, unsafe_allow_html=True)
+    st.html(html_content)
 
 
 def render_profit_and_loss(
@@ -570,4 +570,4 @@ def render_profit_and_loss(
 ) -> None:
     """Render Profit and Loss (P/L) component in vertical waterfall format directly in Streamlit."""
     html_content = build_profit_and_loss_html(report, hide_zero=hide_zero)
-    st.markdown(html_content, unsafe_allow_html=True)
+    st.html(html_content)

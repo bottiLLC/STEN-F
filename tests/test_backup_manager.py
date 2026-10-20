@@ -491,3 +491,54 @@ def test_render_sidebar_backup_run_backup_failure() -> None:
         mock_error.assert_called_once_with(
             "バックアップ対象が存在しないか空欄です: ./data"
         )
+
+
+def test_default_backup_dir_is_anchored_in_data_directory() -> None:
+    """Verify that default backup directory is isolated inside ./data/backups."""
+    # Arrange & Act
+    default_dir = backup_manager._DEFAULT_BACKUP_DIR
+    resolved_root = backup_manager._ROOT
+
+    # Assert
+    assert default_dir == resolved_root / "data" / "backups"
+
+
+def test_run_backup_excludes_nested_backup_dir_and_prevents_recursive_bloat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that run_backup excludes files inside the backup directory itself."""
+    # Arrange
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    db_file = data_dir / "sten_f.db"
+    db_file.write_bytes(b"dummy_database_content")
+
+    # Create nested backup directory inside data_dir
+    nested_backups = data_dir / "backups"
+    nested_backups.mkdir(parents=True, exist_ok=True)
+    existing_old_backup = nested_backups / "old_backup.zip"
+    existing_old_backup.write_bytes(b"old_backup_data")
+
+    # Config file inside data_dir
+    cfg_file = data_dir / "backup_config.json"
+    cfg_file.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(backup_manager, "_CONFIG_FILE", cfg_file)
+    monkeypatch.setattr(backup_manager, "get_backup_dir", lambda: nested_backups)
+
+    # Act
+    res = run_backup(app_name="testapp", source_dir=str(data_dir))
+
+    # Assert
+    assert res["success"] is True
+    dest_path = Path(str(res["destination"]))
+    assert dest_path.exists()
+
+    with zipfile.ZipFile(dest_path, "r") as zf:
+        archived_files = zf.namelist()
+        # Verify db_file is archived
+        assert "sten_f.db" in archived_files
+        # Verify existing old backup inside backup_dir is EXCLUDED
+        assert not any("old_backup.zip" in name for name in archived_files)
+        # Verify backup_config.json is EXCLUDED
+        assert "backup_config.json" not in archived_files

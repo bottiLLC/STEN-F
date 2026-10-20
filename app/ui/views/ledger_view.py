@@ -51,46 +51,59 @@ tab_tb, tab_gl, tab_fs = st.tabs(
     ]
 )
 
-# 1. 試算表 (T/B)
-with tab_tb:
+
+@st.fragment
+def render_trial_balance_section(selected_fy: FiscalYear) -> None:
+    """Render trial balance table and debit/credit balance verification metrics.
+
+    Args:
+        selected_fy: Target FiscalYear domain model instance.
+    """
     st.subheader(f"合計残高試算表 (対象: {selected_fy.name})")
     tb_rows = call_ledger(lambda s: s.get_trial_balance(selected_fy.id or 0))
     if not tb_rows:
         st.info("集計対象の仕訳データがありません。")
+        return
+
+    df_tb = pd.DataFrame(
+        [
+            {
+                "コード": r.account_code,
+                "勘定科目名": r.account_name,
+                "借方残高": r.debit_balance if r.debit_balance > 0 else None,
+                "借方合計": r.debit_total if r.debit_total > 0 else None,
+                "貸方合計": r.credit_total if r.credit_total > 0 else None,
+                "貸方残高": r.credit_balance if r.credit_balance > 0 else None,
+            }
+            for r in tb_rows
+        ]
+    )
+    tb_col_cfg = {
+        "借方残高": st.column_config.NumberColumn("借方残高", format="¥%d"),
+        "借方合計": st.column_config.NumberColumn("借方合計", format="¥%d"),
+        "貸方合計": st.column_config.NumberColumn("貸方合計", format="¥%d"),
+        "貸方残高": st.column_config.NumberColumn("貸方残高", format="¥%d"),
+    }
+    st.dataframe(df_tb, column_config=tb_col_cfg, width="stretch", hide_index=True)
+
+    tot_db = sum(r.debit_balance for r in tb_rows)
+    tot_cb = sum(r.credit_balance for r in tb_rows)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("借方残高合計", f"¥{tot_db:,}")
+    c2.metric("貸方残高合計", f"¥{tot_cb:,}")
+    if tot_db == tot_cb:
+        c3.success("貸借一致 (バランス検証 OK)")
     else:
-        df_tb = pd.DataFrame(
-            [
-                {
-                    "コード": r.account_code,
-                    "勘定科目名": r.account_name,
-                    "借方残高": r.debit_balance if r.debit_balance > 0 else None,
-                    "借方合計": r.debit_total if r.debit_total > 0 else None,
-                    "貸方合計": r.credit_total if r.credit_total > 0 else None,
-                    "貸方残高": r.credit_balance if r.credit_balance > 0 else None,
-                }
-                for r in tb_rows
-            ]
-        )
-        tb_col_cfg = {
-            "借方残高": st.column_config.NumberColumn("借方残高", format="¥%d"),
-            "借方合計": st.column_config.NumberColumn("借方合計", format="¥%d"),
-            "貸方合計": st.column_config.NumberColumn("貸方合計", format="¥%d"),
-            "貸方残高": st.column_config.NumberColumn("貸方残高", format="¥%d"),
-        }
-        st.dataframe(df_tb, column_config=tb_col_cfg, width="stretch", hide_index=True)
+        c3.error(f"貸借不一致 (差額: ¥{abs(tot_db - tot_cb):,})")
 
-        tot_db = sum(r.debit_balance for r in tb_rows)
-        tot_cb = sum(r.credit_balance for r in tb_rows)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("借方残高合計", f"¥{tot_db:,}")
-        c2.metric("貸方残高合計", f"¥{tot_cb:,}")
-        if tot_db == tot_cb:
-            c3.success("貸借一致 (バランス検証 OK)")
-        else:
-            c3.error(f"貸借不一致 (差額: ¥{abs(tot_db - tot_cb):,})")
 
-# 2. 総勘定元帳 (General Ledger)
-with tab_gl:
+@st.fragment
+def render_general_ledger_section(selected_fy: FiscalYear) -> None:
+    """Render account-specific general ledger journal history.
+
+    Args:
+        selected_fy: Target FiscalYear domain model instance.
+    """
     st.subheader(f"総勘定元帳 (対象: {selected_fy.name})")
     accounts = call_master(lambda s: s.get_accounts())
     acc_map = {f"{a.code}: {a.name}": a for a in accounts}
@@ -118,8 +131,14 @@ with tab_gl:
                 hide_index=True,
             )
 
-# 3. 決算書 (B/S・P/L)
-with tab_fs:
+
+@st.fragment
+def render_financial_statements_section(selected_fy: FiscalYear) -> None:
+    """Render balance sheet, profit and loss report, and PDF export trigger.
+
+    Args:
+        selected_fy: Target FiscalYear domain model instance.
+    """
     st.subheader(f"決算書: 貸借対照表 (B/S) ＆ 損益計算書 (P/L) - {selected_fy.name}")
     col_chk, col_btn = st.columns([3, 1])
     with col_chk:
@@ -160,3 +179,16 @@ with tab_fs:
     render_balance_sheet(report, hide_zero=hide_zero)
     st.divider()
     render_profit_and_loss(report, hide_zero=hide_zero)
+
+
+# 1. 試算表 (T/B)
+with tab_tb:
+    render_trial_balance_section(selected_fy)
+
+# 2. 総勘定元帳 (General Ledger)
+with tab_gl:
+    render_general_ledger_section(selected_fy)
+
+# 3. 決算書 (B/S・P/L)
+with tab_fs:
+    render_financial_statements_section(selected_fy)

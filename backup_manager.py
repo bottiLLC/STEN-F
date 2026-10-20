@@ -6,14 +6,20 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from typing import Final
 import zipfile
 
-_CONFIG_FILE = Path("./data/backup_config.json")
-_DEFAULT_BACKUP_DIR = Path("./backups")
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+_CONFIG_FILE: Final[Path] = _ROOT / "data" / "backup_config.json"
+_DEFAULT_BACKUP_DIR: Final[Path] = _ROOT / "data" / "backups"
 
 
 def get_backup_dir() -> Path:
-    """Retrieve resolved destination directory path for data backups."""
+    """Retrieve resolved destination directory path for data backups.
+
+    Returns:
+        Resolved Path object pointing to the configured or default backup directory.
+    """
     if _CONFIG_FILE.exists():
         try:
             with open(_CONFIG_FILE, encoding="utf-8") as f:
@@ -32,7 +38,14 @@ def get_backup_dir() -> Path:
 
 
 def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
-    """Configure and persist destination directory path for data backups."""
+    """Configure and persist destination directory path for data backups.
+
+    Args:
+        target_dir: Filesystem path string for the target backup directory.
+
+    Returns:
+        Dictionary containing success flag and user-facing status message.
+    """
     path = Path(target_dir).resolve()
     try:
         path.mkdir(parents=True, exist_ok=True)
@@ -48,16 +61,26 @@ def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
 
 
 def run_backup(
-    app_name: str = "app", source_dir: str = "./data"
+    app_name: str = "app", source_dir: str | None = None
 ) -> dict[str, str | bool]:
-    """Execute atomic data backup with testzip integrity verification."""
-    source_path = Path(source_dir).resolve()
+    """Execute atomic data backup with testzip integrity verification.
+
+    Args:
+        app_name: Application prefix used for output archive naming.
+        source_dir: Target directory to back up. Defaults to project-anchored data directory.
+
+    Returns:
+        Dictionary containing success status, archive metadata, and feedback message.
+    """
+    source_path = (
+        Path(source_dir).resolve() if source_dir else (_ROOT / "data").resolve()
+    )
 
     # 1. Interlock: Source presence
     if not source_path.exists() or not any(source_path.iterdir()):
         return {
             "success": False,
-            "message": f"バックアップ対象が存在しないか空欄です: {source_dir}",
+            "message": f"バックアップ対象が存在しないか空欄です: {source_path}",
             "timestamp": datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
@@ -78,17 +101,24 @@ def run_backup(
     final_destination = backup_dir / zip_filename
 
     # 3. Atomic processing in temp directory
+    resolved_backup_dir = backup_dir.resolve()
+    resolved_config_file = _CONFIG_FILE.resolve()
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_zip = Path(tmp_dir) / zip_filename
 
         with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_DEFLATED) as zipf:
             for file_path in source_path.rglob("*"):
-                # Exclude backup configuration file itself from archive
-                if (
-                    file_path.is_file()
-                    and file_path.resolve() != _CONFIG_FILE.resolve()
-                ):
-                    zipf.write(file_path, file_path.relative_to(source_path))
+                # Exclude directories, backup config file, and backup destination folder
+                if not file_path.is_file():
+                    continue
+                resolved_file = file_path.resolve()
+                if resolved_file == resolved_config_file:
+                    continue
+                if resolved_file.is_relative_to(resolved_backup_dir):
+                    continue
+
+                zipf.write(file_path, file_path.relative_to(source_path))
 
         # 4. Integrity check (testzip)
         with zipfile.ZipFile(tmp_zip, "r") as zipf:

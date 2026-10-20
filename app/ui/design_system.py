@@ -178,4 +178,4 @@ h1, h2, h3, h4, h5, h6 {{
 
 def inject_global_design_system() -> None:
     """Inject global STEN-F industrial minimalism CSS into current Streamlit view."""
-    st.markdown(GLOBAL_DESIGN_SYSTEM_CSS, unsafe_allow_html=True)
+    st.html(GLOBAL_DESIGN_SYSTEM_CSS)

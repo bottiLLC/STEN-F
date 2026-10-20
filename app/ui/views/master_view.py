@@ -472,15 +472,13 @@ with tab_acc:
         with col_del_info:
             st.warning(f"{len(selected_targets)} 件の勘定科目が選択されています。")
         with col_del_btn:
-            st.markdown(
-                '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
-            )
+            st.html('<div class="sten-destructive-wrapper">')
             do_delete = st.button(
                 "削除",
                 type="secondary",
                 key="btn_delete_selected_accounts",
             )
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.html("</div>")
         if do_delete:
 
             async def execute_batch_delete() -> None:
@@ -738,15 +736,13 @@ with tab_cp:
         with col_del_info:
             st.warning(f"{len(selected_cp_targets)} 件の取引先が選択されています。")
         with col_del_btn:
-            st.markdown(
-                '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
-            )
+            st.html('<div class="sten-destructive-wrapper">')
             do_delete_cp = st.button(
                 "削除",
                 type="secondary",
                 key="btn_delete_selected_counterparties",
             )
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.html("</div>")
         if do_delete_cp:
 
             async def execute_batch_delete_cp() -> None:
@@ -896,15 +892,13 @@ with tab_abs:
         with col_del_info:
             st.warning(f"{len(selected_abs_targets)} 件の摘要が選択されています。")
         with col_del_btn:
-            st.markdown(
-                '<div class="sten-destructive-wrapper">', unsafe_allow_html=True
-            )
+            st.html('<div class="sten-destructive-wrapper">')
             do_delete_abs = st.button(
                 "削除",
                 type="secondary",
                 key="btn_delete_selected_abstracts",
             )
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.html("</div>")
         if do_delete_abs:
 
             async def execute_batch_delete_abs() -> None:

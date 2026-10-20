@@ -67,13 +67,13 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
     (
         lambda c, m: "PERMISSION_DENIED" in m or c == 403,
         lambda msg: (
-            f"⚠️ **Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n(詳細エラー: `{msg}`)"
+            f"**Gemini API へのアクセス権限が拒否されました (403 Forbidden)**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: any(k in m for k in ("NOT_FOUND", "MODEL_NOT_FOUND")) or c == 404,
         lambda msg: (
-            f"⚠️ **指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n(詳細エラー: `{msg}`)"
+            f"**指定されたAIモデル（`{settings.GEMINI_DEFAULT_MODEL}`）が見つかりません (404 Not Found)**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
@@ -90,31 +90,31 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
             or c == 429
         ),
         lambda msg: (
-            f"⚠️ **Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\nしばらく時間をおいてから再試行してください。\n(詳細エラー: `{msg}`)"
+            f"**Gemini API の利用上限（クォータ／レート制限）に達しました (429 Too Many Requests)**\n\nしばらく時間をおいてから再試行してください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: "FAILED_PRECONDITION" in m,
         lambda msg: (
-            f"⚠️ **API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n(詳細エラー: `{msg}`)"
+            f"**API リクエストの前提条件が満たされていません (400 Failed Precondition)**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: "OUT_OF_RANGE" in m or c == 416,
         lambda msg: (
-            f"⚠️ **リクエストパラメータが許容範囲外です (416 Out of Range)**\n\n(詳細エラー: `{msg}`)"
+            f"**リクエストパラメータが許容範囲外です (416 Out of Range)**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: "SAFETY" in m or "IMAGE_SAFETY" in m,
         lambda msg: (
-            f"⚠️ **コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。\n(詳細エラー: `{msg}`)"
+            f"**コンテンツ安全フィルターによりリクエストがブロックされました (Safety Blocked)**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: "RECITATION" in m or "IMAGE_RECITATION" in m,
         lambda msg: (
-            f"⚠️ **著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n(詳細エラー: `{msg}`)"
+            f"**著作権・引用制限（Recitation）によりリクエストがブロックされました**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
@@ -123,13 +123,13 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
             or (c == 400 and "INVALID_ARGUMENT" in m)
         ),
         lambda msg: (
-            f"⚠️ **API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n(詳細エラー: `{msg}`)"
+            f"**API リクエストの形式またはパラメータが不正です (400 Bad Request)**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: "DEADLINE_EXCEEDED" in m or c == 504,
         lambda msg: (
-            f"⚠️ **Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\nネットワーク接続をご確認の上、再試行してください。\n(詳細エラー: `{msg}`)"
+            f"**Gemini API 通信がタイムアウトしました (504 Gateway Timeout)**\n\nネットワーク接続をご確認の上、再試行してください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
@@ -145,13 +145,13 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
             )
         ),
         lambda msg: (
-            f"⚠️ **Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n時間をおいて再試行してください。\n(詳細エラー: `{msg}`)"
+            f"**Google Gemini サーバー側で一時的な障害が発生しています (500/503 Service Unavailable)**\n\n時間をおいて再試行してください。\n(詳細エラー: `{msg}`)"
         ),
     ),
     (
         lambda c, m: "CANCELLED" in m or c == 499,
         lambda msg: (
-            f"⚠️ **リクエストがクライアント側で中断されました (499 Cancelled)**\n\n(詳細エラー: `{msg}`)"
+            f"**リクエストがクライアント側で中断されました (499 Cancelled)**\n\n(詳細エラー: `{msg}`)"
         ),
     ),
 )
@@ -636,16 +636,14 @@ class GeminiOCRService:
                 fr_str = str(fr).upper() if fr else ""
                 if "SAFETY" in fr_str:
                     raise ValueError(
-                        "⚠️ **コンテンツ安全フィルターにより生成がブロックされました**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。"
+                        "**コンテンツ安全フィルターにより生成がブロックされました**\n\n画像内容をご確認の上、鮮明な別の画像でお試しください。"
                     )
                 if "RECITATION" in fr_str:
                     raise ValueError(
-                        "⚠️ **著作権・引用制限（Recitation）により生成がブロックされました**"
+                        "**著作権・引用制限（Recitation）により生成がブロックされました**"
                     )
                 if fr:
-                    raise ValueError(
-                        f"⚠️ **AIモデルの出力が中断されました (理由: {fr})**"
-                    )
+                    raise ValueError(f"**AIモデルの出力が中断されました (理由: {fr})**")
             raise ValueError("Gemini APIから空の応答が返されました。")
         return result
 
@@ -664,6 +662,6 @@ class GeminiOCRService:
         for matcher, formatter in _API_ERROR_RULES:
             if matcher(code, msg_u):
                 return formatter(raw_msg)
-        return f"⚠️ **Gemini API エラー (Code: {code or '不明'})**\n\n{raw_msg}"
+        return f"**Gemini API エラー (Code: {code or '不明'})**\n\n{raw_msg}"
 
     _validate_receipt = staticmethod(validate_receipt_structure)

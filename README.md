@@ -1,324 +1,40 @@
 # STEN-F (Simple Tough Effective Next-generation Finance)
 
-[![CI](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml/badge.svg)](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml)
-![Compliance](https://img.shields.io/badge/Compliance-Dencho_Act_%26_Invoice_System-blue)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Checked with mypy](https://img.shields.io/badge/mypy-strict-blue)](https://mypy-lang.org/)
-[![Coverage](https://img.shields.io/badge/coverage-pytest--cov-green)](https://pytest.org/)
-[![Python](https://img.shields.io/badge/Python-3.14+-yellow.svg)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.64.0-FF4B4B.svg)](https://streamlit.io/)
+[![CI](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml/badge.svg)](https://github.com/bottiLLC/STEN-F/actions/workflows/ci.yml) [![Python](https://img.shields.io/badge/Python-3.14-yellow.svg)](https://www.python.org/) [![Streamlit](https://img.shields.io/badge/Streamlit-1.64.0-FF4B4B.svg)](https://streamlit.io/) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE) [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff) [![Checked with mypy](https://img.shields.io/badge/mypy-strict-blue)](https://mypy-lang.org/) [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-green)](https://pytest.org/)
 
-**STEN-F** は、既存のクラウド会計ソフト（SaaS）によるデータの囲い込みや高額なサブスクリプションから開発者・中小企業・個人事業主を解放するために生まれた、**100% Pure Python 製のオープンソース経理・会計アプリケーション**です。
+## Overview
+日本の複式簿記（振替伝票・仕訳帳・総勘定元帳・試算表・B/S・P/L）および電子帳簿保存法・インボイス制度に完全準拠し、Gemini AI OCR による証憑自動読取から振替伝票自動展開までをローカル完結で提供する、100% Pure Python 製のオープンソース経理・会計システム。
 
-日本の複式簿記の標準的な帳票様式（振替伝票・仕訳帳・総勘定元帳・合計残高試算表・左右対照 B/S・段階利益 P/L）に完全準拠し、**「PDF/画像の領収書・請求書をアップロードするだけで、AI が自動仕訳を行い振替伝票へ自動展開する」** というシームレスな実務ワークフローを最前面に備えています。
-
-軽量かつ堅牢な **Streamlit** を GUI フレームワークに採用し、**Clean Architecture（クリーンアーキテクチャ）** に基づいて設計されています。すべてのデータはローカルの SQLite（非同期 SQLAlchemy 2.0 / aiosqlite）に保存され、財務データの完全な主権を手元に保持できます。
-
----
-
-## 🏴 開発・運用哲学 (Philosophy)
-
-1. **This is your Stengun (これはステンガンだ):** シンプルで、タフで、実戦で勝つための武器（[ステン短機関銃](https://ja.wikipedia.org/wiki/%E3%82%B9%E3%83%86%E3%83%B3%E7%9F%AD%E6%A9%9F%E9%96%A2%E9%8A%83)）のように、過剰な装飾を削ぎ落とした強靭で壊れにくいシステムを目指します。
-2. **Of course it's free (当然無料だ):** 基礎的な経理・会計ソフトウェアは、自らの手でホストでき、完全に無償であるべきです。
-3. **No Vendor Lock-in (ベンダーロックインの排除):** あなたの財務データは人質ではありません。生の SQL や Python スクリプトからいつでも瞬時にアクセス・抽出可能であるべきです。
-4. **Local First (ローカルファースト):** 外部のネットワーク障害や SaaS のサービス終了に怯える必要はありません。データもアプリケーションも手元のマシンで動き続けます。
-5. **Don't pay for apps, pay for AI (アプリではなくAIに払う):** 毎月の固定利用料を支払うのではなく、業務を真に自動化・高速化する「AI推論（レシートOCRによる仕訳候補抽出）」の従量制 API 利用料に直接支払うべきです。
-
----
-
-## ⚡ 主な機能一覧 (Features)
-
-### 1. 📄 日常の記帳 (AI OCR起点 ＆ 複式簿記の標準表示)
-* **AI OCR 証憑自動読取起点ワークフロー:** PDF や画像（PNG/JPG）の領収書・請求書をドラッグ＆ドロップするだけで、Google Gemini AI が取引日・金額・取引先・インボイス登録番号・勘定科目を瞬時に自動抽出。
-* **取引先・摘要マスタ連携による自動仮入力:** AI 解析結果と登録済みの取引先マスタ（T番号/名称）およびよく使う摘要マスタを自動照合し、振替伝票へ候補を自動仮入力。
-* **一般的な振替伝票 UI:** 左右対照（左: 借方 / 右: 貸方）の複式簿記形式で内容を確認・微修正。複数行の複合仕訳にも柔軟に対応。
-* **リアルタイム貸借一致検証（ポカヨケ）:** 借方合計と貸方合計のバランスをリアルタイムに計算し、不一致時の差額警告および誤登録防止を徹底。
-* **仕訳帳 (General Journal) ＆ 赤伝起票:** すべての取引を日付順に一覧表示。会計不変制約（Rule 1）に基づき過去仕訳の直接改変・削除を遮断し、入力誤謬は赤伝（反対仕訳）の発行により安全に取消・訂正。CSVエクスポートにも対応。
-* **総勘定元帳 (General Ledger):** 勘定科目ごとにドリルダウンし、前期繰越から取引ごとの借方・貸方・差引残高推移を 3 欄式で時系列に把握。
-
-### 2. 📊 帳簿・決算 (試算表 ＆ 財務諸表)
-* **合計残高試算表 (Trial Balance / T-B):** すべての科目の借方合計/残高および貸方合計/残高を標準 7 列で対照集計し、貸借一致バランスを瞬時に検証。
-* **貸借対照表 (Balance Sheet / B-S):** 左右各区分の高さが完全に一致する左右対照レイアウト。残高 0 円の科目を非表示にする切替スイッチや、小計金額の太字強調表示を搭載。
-* **損益計算書 (Profit & Loss / P-L):** 日本の会計基準・税務申告基準に準拠した段階利益（売上総利益・営業利益・経常利益・税引前当期純利益・当期純利益）の階層表示。
-* **決算書 PDF のワンクリック出力:** バックグラウンド処理により UI をブロックせず、ReportLab による美しい日本語帳票 PDF を生成・ダウンロード。
-
-### 3. ⚖️ 期首設定 ＆ 電帳法・インボイス対応
-* **期首残高設定 (B/S):** 事業年度開始時の資産・負債・純資産（元入金等）の残高を、左右対照・貸借一致チェック付きで設定。
-* **適格請求書（インボイス制度）T番号管理:** 取引先ごとに T+13 桁の事業者登録番号をマスタ管理し、仕訳登録時に自動連携・バリデーション。
-* **電子帳簿保存法対応の監査証跡:** 会計データのイミュータブル（追記専用・更新削除禁止）管理と赤伝訂正による完全な監査証跡保持、証憑ファイル（PDF・画像）のローカル安全保管。
-
-### 4. ⚙️ システム管理 ＆ バックアップ
-* **年度締め・次期繰越 (Fiscal Year Closing):** 期末の利益剰余金振替および次期開始残高の自動繰越、締め済み年度の編集ロック保護。
-* **マスタデータ管理:** 自社情報、会計年度、勘定科目、取引先（標準科目設定付き）、よく使う摘要の一括管理。
-* **ワンクリック・バックアップ:** `backup_manager.py`（Python-backup-script準拠）による `testzip()` 整合性検証付きアトミックZIPバックアップ。Google Drive等の外部同期先フォルダもGUIから設定可能。
-
----
-
-## 🚀 セットアップと起動方法 (Getting Started)
-
-### 1. 必要環境
-* **Python 3.14 以上**
-* **uv (Astral)** がインストールされていること（推奨）
-
-### 2. インストール
-リポジトリをクローンし、依存関係をインストールします。
-
+## Quick Start (TL;DR)
 ```bash
-git clone https://github.com/bottiLLC/STEN-F.git
-cd STEN-F
-uv sync
-```
+# 1. 依存関係の同期
+uv sync --all-groups
 
-### 3. 環境設定 (.env)
-プロジェクトルート直下に `.env` ファイルを作成します（`.env.sample` を複製して作成できます）。
+# 2. テストスイートの実行
+uv run pytest -m "not fuzz"
 
-```bash
-# Windows (PowerShell)
-Copy-Item .env.sample .env
-
-# macOS / Linux
-cp .env.sample .env
-```
-
-`.env` の主要な設定項目：
-
-```ini
-# データベース接続文字列（SQLite + aiosqlite）
-DATABASE_URL=sqlite+aiosqlite:///data/sten_f.db
-
-# Gemini API Key（AI OCR / 自動仕訳推論機能を利用する場合に設定）
-# ※ Google AI Studio (https://aistudio.google.com/) で取得
-# ※ 画面の「マスタ・システム管理」→「⚙️ AI・システム設定」から登録することも可能です。
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# 使用する Gemini AI モデルコード（Google公式モデル）
-GEMINI_DEFAULT_MODEL=gemini-3.5-flash-lite
-```
-
-### 4. アプリケーションの起動
-
-#### Windows の場合
-プロジェクトルートの `run.bat` をダブルクリックするだけで起動できます。
-（自動的に仮想環境の構築と依存パッケージの同期が行われ、ブラウザでアプリが開きます）
-
-#### macOS / Linux の場合
-```bash
-chmod +x start.command
-./start.command
-```
-
-#### コマンドラインから直接起動する場合
-```bash
+# 3. アプリケーションの起動（または run.bat をダブルクリック）
 uv run streamlit run app.py
 ```
 
-起動後、ブラウザで `http://localhost:8501` にアクセスしてください。
+## Architecture & Features
+- **Monocoque Clean Architecture & 不変性制約**: UI層（Streamlit）、ドメイン契約層（Pydantic V2）、永続化層（SQLAlchemy 2.0 Async / aiosqlite）を厳格に分離し、仕訳の改変・削除を完全遮断して赤伝（反対仕訳）による完全な監査証跡を保持。
+- **マルチモーダル AI OCR 証憑自動読取ワークフロー**: PDFおよび画像（PNG/JPG）の領収書・請求書から Google Gemini API を介して取引日・金額・取引先（T番号照合）・勘定科目を高精度に自動抽出し、振替伝票へ即時仮入力。
+- **財務諸表自動生成 & 日本語 PDF 帳票出力**: 左右対照バランスシート（B/S）、段階損益計算書（P/L）、合計残高試算表（T/B）、総勘定元帳を即時集計し、ReportLab による決算書日本語 PDF をワンクリック出力。
+- **永続化データ絶対隔離 (`./data`) & アトミック ZIP 検証バックアップ**: すべての DB・証憑ファイル・設定を `./data` ディレクトリに完全集約し、`backup_manager.py` による `testzip()` 破損検証付きアトミック ZIP バックアップと外部同期フォルダ連携を提供。
+
+## Environment Variables
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | *(None / Required)* | Google Gemini API キー（AI OCR 証憑読取機能に必須） |
+| `GEMINI_DEFAULT_MODEL` | `gemini-2.0-flash` | OCR推論に使用するデフォルト Gemini モデル識別子 |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./data/sten_f.db` | 非同期 SQLAlchemy データベース接続文字列 |
+| `BACKUP_DIR` | `data/backups` | 自動バックアップアーカイブ（ZIP）の保存先ディレクトリパス |
+
+## Limits & Known Trade-offs
+- **単一テナント排他制御**: SQLite を利用したローカルファースト運用の単一事業体向けシステムであり、複数ユーザーによる同時書き込みトランザクションは想定外。
+- **実務申告の利用者自己責任**: 本システムは複式簿記および電帳法・インボイス制度の要件支援を提供しますが、帳簿の適法性および税務申告内容の妥当性は利用者が自己の責任において確認・判断するものとします。
+- **AI OCR 従量制 API 利用枠**: Gemini API の利用上限（Rate Limit / Quota）やネットワーク障害が発生した場合、手動入力による振替伝票作成へのフォールバックを推奨。
 
 ---
-
-## 📖 経理業務の基本的な使い方 (Workflow)
-
-```mermaid
-graph LR
-    A[1. 初期設定] --> B[2. 日常の仕訳入力<br/>(AI OCR & 振替伝票)]
-    B --> C[3. 帳簿・試算表の確認<br/>(仕訳帳・元帳・T/B)]
-    C --> D[4. 決算書PDF出力<br/>(B/S & P/L)]
-    D --> E[5. 年度締め・次期繰越]
-```
-
-### ステップ 1: 初期設定（マスタ管理 & 期首残高）
-1. 画面左メニューの **「設定・管理」→「マスタ・システム管理」** を開きます。
-2. **「自社情報」**: 法人名（または屋号）、住所、代表者役職・氏名を設定します。
-3. **「会計年度・年度締め」**: 現在の事業年度（例: 第1期 2026-04-01 〜 2027-03-31）を登録します。
-4. **「⚙️ AI・システム設定」**: AI OCR / 自動仕訳推論を利用する場合は、Gemini API キーを登録・保存します（`.env` に記述済みでも動作します）。
-5. **「期首残高設定 (B/S)」画面**: 前期末からの繰越残高（現金、普通預金、資本金など）を左右対照に入力し、貸借が一致した状態で「期首残高を登録する」をクリックします。
-
-### ステップ 2: 日常の仕訳入力 (AIレシート読取 ＆ 振替伝票)
-1. **「日常の記帳」→「仕訳入力 (AI/振替伝票)」** 画面を開きます。
-2. **AI OCR を利用する場合 (基本フロー)**:
-   * 画面上部の「Step 1: 証憑（PDF/画像）のアップロード」エリアに PDF またはレシート画像をドラッグ＆ドロップします。
-   * 「🤖 AIで自動読み取りを実行」ボタンを押すと、AI が取引内容を解析し、取引先マスタや摘要マスタを参照して下の「Step 2: 振替伝票」に自動仮入力します。
-   * 左右対照の「Step 2: 振替伝票」で内容を確認・微修正し、「💾 この内容で仕訳帳に登録する」をクリックすると、証憑が自動保存され仕訳帳に記録されます。
-3. **手動で直接仕訳入力する場合**:
-   * 取引日、摘要（よく使う摘要リストまたは直接入力）、取引先、インボイス登録番号（T番号）を入力します。
-   * 借方科目・金額、貸方科目・金額を入力します（「➕ 明細行を追加」で複合仕訳にも対応）。
-   * 貸借一致インジケーター（✅ 一致）を確認して「💾 この内容で仕訳帳に登録する」をクリックします。
-
-### ステップ 3: 帳簿・試算表の確認 ＆ 赤伝起票（訂正）
-* **「仕訳帳」画面**: 登録したすべての仕訳を日付順に一覧・検索可能。行をクリックすると詳細が展開され、過去仕訳の上書きを防止しつつ赤伝（反対仕訳）の即時起票が可能。CSV出力にも対応。
-* **「総勘定元帳」画面**: 勘定科目ごとにドリルダウンし、前期繰越から取引ごとの借方・貸方・残高推移を 3 欄式で時系列に確認できます。
-* **「合計残高試算表 (T/B)」画面**: 月次・年度ごとの借方合計/残高と貸方合計/残高の対照表を確認し、貸借一致バランスを検証します。
-
-### ステップ 4: 決算書 (B/S・P/L) の確認 & PDF 出力
-* **「決算書 (B/S・P/L)」** 画面で左右高さが完全に整列した「貸借対照表 (B/S)」および段階利益が表示される「損益計算書 (P/L)」を確認できます。「残高が 0 円の科目を非表示」チェックボックスにより、すっきりと見やすい帳票表示が可能です。
-* 「📑 決算書 PDF を生成・保存」ボタンをクリックすると、帳票 PDF が生成されワンクリックでダウンロードできます。
-
-### ステップ 5: 年度締め (Fiscal Year Closing)
-1. **「設定・管理」→「マスタ・システム管理」→「会計年度・年度締め」** タブを開きます。
-2. 該当年度の「この年度を締め切る (CLOSED)」ボタンをクリックします。
-3. 次期の事業年度名を入力して実行すると、当期純利益が繰越利益剰余金へ自動振替され、次期の期首残高が自動生成されます（締められた旧年度はロックされ、誤修正が防止されます）。
-
----
-
-## 🧰 データのバックアップ・バージョンアップ時の引き継ぎ手順 (Backup & Migration)
-
-STEN-F はローカルファーストで動作し、**すべてのユーザーデータ（データベース・証憑ファイル・設定・バックアップ）は「`data`」フォルダ配下に完全集約**されています。
-手動バックアップ、リストア、および新バージョンへのアップデート時のデータ移行は、**「`data`」フォルダをコピーまたは移動するだけ**で完結します。
-
-### 1. ユーザーデータフォルダ（`data/`）の内部構造
-
-```text
-STEN-F/
-└── data/                    # ★重要: すべてのユーザーデータがここに集約されています
-    ├── sten_f.db            # SQLite データベース本体（仕訳・勘定科目・取引先・年度等）
-    │                        # （※ -wal, -shm がある場合はそれらも含みます）
-    ├── storage/             # 証憑ストレージ（領収書・請求書の PDF / 画像ファイル群）
-    ├── backups/             # 画面機能で生成されたバックアップスナップショット履歴
-    └── .env                 # API キー等の環境設定ファイル（※ プロジェクト直下の .env とも相互互換）
-```
-
----
-
-### 2. バージョンアップ時のデータ引き継ぎ方法 (Version Upgrade)
-
-新バージョンの STEN-F がリリースされ、別のフォルダに新バージョンを展開した際のデータ移行手順です。
-
-#### 📥 手順（`data` フォルダを移動するだけ）:
-1. **アプリの停止**:
-   * 旧バージョン・新バージョンの両方の Streamlit アプリ（ターミナル・ブラウザ）を**完全に終了**させます。
-2. **`data` フォルダのコピー**:
-   * 旧バージョンのフォルダ内にある **`data` フォルダごと** 新バージョンのフォルダ内へコピー（または移動）します。
-3. **アプリの起動と確認**:
-   * 新しい環境で `run.bat`（または `start.command` / `uv run streamlit run app.py`）を実行して起動します。
-   * 自動的にデータベース、証憑ファイル、API設定が読み込まれ、移行作業は完了です。
-
-> [!NOTE]
-> **旧バージョン（ルート直下にファイルが分散していた環境）からの自動移行について**
-> プロジェクトルート直下に `bookkeeping.db`、`storage/` フォルダ、または `backups/` フォルダが存在していた場合、STEN-F 起動時に**自動的にすべて `data/` 配下へ安全にマイグレーション（コピー集約）**されます。データが破損・紛失することはありません。
-
----
-
-### 3. バックアップ方法
-
-#### 方法 A: 手動バックアップ（最も簡単・確実・推奨）
-アプリケーションを停止した状態で、プロジェクト内の **`data` フォルダを丸ごと外付け HDD、USB メモリ、NAS、またはクラウドストレージ（Google Drive / OneDrive / Dropbox 等）へコピー**します。
-これだけでデータベース、証憑ファイル群、設定のすべてが完全に退避されます。
-
-#### 方法 B: 画面サイドバーからのワンクリック・バックアップ
-1. STEN-F 画面左のサイドバーにある **「データ保護・バックアップ」** 領域を開きます。
-2. 「保存先フォルダ」を確認（デフォルト: `./backups`。Google Drive などの同期フォルダを指定して「保存先パスを更新」することも可能です）。
-3. **「今すぐバックアップを実行」** ボタンをクリックします。
-4. 一時ディレクトリでのアトミック圧縮と `testzip()` による破損検知（整合性チェック）が実行され、安全に検証された `app_backup_YYYYMMDD_HHMMSS.zip` 形式のアーカイブファイルが保存先へ確定配置されます。
-
----
-
-### 4. リストア（復旧・別 PC へのデータ移行）手順
-
-マシントラブルからの復旧時や、新しい PC へ環境をまるごと移行する際の手順です。
-
-1. **移行先 PC での準備**:
-   * Python 3.14+ および `uv` をインストールします。
-   * STEN-F のリポジトリをクローンまたはソースコードを展開し、`uv sync` で環境をセットアップします。
-2. **バックアップデータの配置**:
-   * バックアップしておいた **`data` フォルダ** を、移行先プロジェクト直下にそのまま配置（または上書き配置）します。
-3. **起動と動作確認**:
-   * `run.bat`（または `uv run streamlit run app.py`）で起動します。
-   * 「仕訳帳」画面で過去の仕訳が表示され、証憑ファイルが正常に確認・ダウンロードできることを確認します。
-
----
-
-## 🧪 開発・テスト手順 (Testing)
-
-STEN-F は CI/CD パイプライン（GitHub Actions）と連携した厳格な品質管理を行っています。全100テストが AAA パターン（Arrange-Act-Assert）に基づいて構成されており、ブランチカバレッジ測定および静的型チェック（mypy --strict）をパスしています。
-
-```bash
-# 全テストの実行（ユニットテスト・結合テスト・ファジング・ブランチカバレッジ自動測定）
-uv run pytest
-
-# 特定のテストモジュールを指定して実行
-uv run pytest tests/test_core_and_storage.py
-uv run pytest tests/test_domain_and_services.py
-uv run pytest tests/test_ocr_and_external.py
-uv run pytest tests/test_ui_and_system.py
-
-# ファズテスト（Hypothesis によるプロパティベーステスト）の実行
-uv run pytest tests/test_fuzz.py -m "fuzz"
-
-# 静的型チェック（mypy --strict モード）
-uv run mypy
-
-# コードフォーマット・静的解析（ruff）
-uv run ruff check .
-uv run ruff format --check .
-
-# コードフォーマットの自動適用
-uv run ruff format .
-```
-
----
-
-## 🏗 アーキテクチャ構成 (Monocoque Clean Architecture)
-
-STEN-F は、高凝集・単一責任原則（SRP）とテスタビリティを担保するため、レイヤー間の境界を明確に分離したモノコック構造を採用しています。
-
-```text
-STEN-F/
-├── app.py                      # Streamlit メインエントリポイント (st.navigation / ページ階層ルーティング)
-├── backup_manager.py           # データ保護基盤: 整合性検証付きアトミックZIPバックアップ・保存先管理 (Python-backup-script準拠)
-├── run.bat                     # Windows 自動起動・環境構築ランチャー
-├── start.command               # macOS / Linux 起動スクリプト
-├── data/                       # ★ユーザーデータ集約ディレクトリ (DB, 証憑, バックアップ設定, .env)
-│   ├── sten_f.db               # SQLite データベース本体
-│   ├── storage/                # 証憑ファイル (PDF・画像) 格納フォルダ
-│   ├── backups/                # バックアップアーカイブ格納フォルダ
-│   ├── backup_config.json      # バックアップ保存先設定ファイル
-│   └── .env                    # ユーザー環境設定 (APIキー等)
-├── app/
-│   ├── __init__.py             # アプリケーションパッケージルート
-│   ├── core_foundation.py      # 基盤層 (Settings, Logging, Resilience, 非同期ランナー, DIファサード)
-│   ├── domain_contracts.py     # ドメイン契約層 (Pydantic V2 モデル, 勘定科目定数, リポジトリ抽象契約)
-│   ├── storage_repository.py   # データ永続化層 (SQLAlchemy 2.0 Async ORM, 自動マイグレーション, リポジトリ実装)
-│   ├── application_services.py # アプリケーションサービス層 (仕訳・元帳・決算・マスタ統括, DIコンテナ)
-│   ├── external_services.py    # 外部連携サービス (ローカル証憑安全保存, 決算書PDF生成)
-│   ├── ai_ocr_service.py       # AI OCR推論サービス (Gemini 1.5/2.0 API, 画像最適化・構造化仕訳抽出)
-│   └── ui/                     # プレゼンテーション層 (Streamlit ワークスペースUI)
-│       ├── editor.py           # 会計データグリッドエディタ (Key Rotation / PK追跡)
-│       └── views/              # 3大統合画面
-│           ├── journal_view.py # 仕訳・記帳 (AI証憑読取, 振替伝票入力, 仕訳帳・赤伝起票)
-│           ├── ledger_view.py  # 元帳・決算 (総勘定元帳, 試算表, B/S, P/L, PDF出力)
-│           └── master_view.py  # マスタ・設定 (自社情報, 会計年度・締め, 勘定科目・取引先)
-├── tests/                      # AAAパターン準拠・100%パス テストスイート (全150+テスト)
-│   ├── conftest.py             # 共有テストフィクスチャ (インメモリDB, 非同期DIコンテナ)
-│   ├── test_backup_manager.py  # データバックアップ・整合性検証・サイドバーUIテスト
-│   ├── test_core_and_storage.py# 基盤・ストレージ・リポジトリ・自動マイグレーション・シード検証
-│   ├── test_domain_and_services.py # ドメインモデル・会計計算・ユースケースサービステスト
-│   ├── test_ocr_and_external.py    # AI OCR・PDF生成・証憑ファイル保存テスト
-│   ├── test_ui_and_system.py   # UIコンポーネント・Streamlit結合・システム統合テスト
-│   └── test_fuzz.py            # Hypothesis によるプロパティベース・ファズテスト
-└── pyproject.toml              # プロジェクト構成・依存関係・mypy/ruff/pytest設定
-```
-
----
-
-## 📜 ライセンス (License)
-
-Copyright (C) 2026 合同会社ぼっち (bottiLLC)
-
-本ソフトウェアは **GNU General Public License v3.0 (GPL-3.0)** の下で公開されています。
-* 改変・商用利用を含むすべての目的で、完全無償でご使用いただけます。
-* **コピーレフト義務:** 本ソフトウェア（または改変した派生物）を再配布する場合、またはネットワーク越しにサービスとして提供する場合は、**そのソースコード全体を GPL-3.0 ライセンスの下で一般公開する義務**が生じます。
-
-詳細は [LICENSE](file:///e:/Python/STEN-F/LICENSE) ファイルをご確認ください。
-
----
-
-## ⚠️ 免責事項・税務リスクに関する警告 (Disclaimer)
-
-> [!CAUTION]
-> **本システムをご利用いただく前に、必ず以下の免責事項をお読みください。本システムの利用を開始した時点で、以下の事項にすべて同意したものとみなされます。**
-> 
-> 1. **現状有姿の提供:** 本システムは「現状有姿 (AS IS)」で提供され、動作の完全性、特定の税務目的への適合性、法令への完全な準拠について、明示的・黙示的を問わず一切の保証を行いません。
-> 2. **利用者の自己責任:** 本システムは電子帳簿保存法やインボイス制度への対応を支援する機能を備えていますが、帳簿作成の適法性、入力された数値・仕訳の正確性、税務申告の妥当性については、**すべて利用者が自己の責任において確認・判断するものとします**。
-> 3. **損害の免責:** システムの不具合、データ消失・破損、税務調査における否認、追徴課税、延滞税等を含め、本システムの利用または利用不能により発生したいかなる損害・損失について、**開発者（合同会社ぼっちおよび開発貢献者）は一切の責任を負いません**。
-> 4. **バックアップと専門家相談の徹底:** 不測のデータ消失に備えて定期的なバックアップを実施し、税務上の判断に迷う場合は必ず事前に税理士等の専門家へご相談ください。
+Copyright (C) 2026 合同会社ぼっち (bottiLLC). All rights reserved.
