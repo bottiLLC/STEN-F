@@ -29,9 +29,6 @@ from app.domain_contracts import (
     VendorMasterRecord,
 )
 
-# Backwards compatibility alias
-ReceiptExtractionSchema = ReceiptRawExtractionSchema
-
 
 # --- 1. Datum Plane (Schemas & Patterns) ---
 _CORP_STATUS_PATTERN: Final[re.Pattern[str]] = re.compile(
@@ -514,8 +511,6 @@ class GeminiOCRService:
         file_bytes: bytes,
         file_type: str,
         model_id: str = "gemini-3.5-flash-lite",
-        account_list: list[str] | None = None,
-        counterparty_list: list[str] | None = None,
     ) -> ReceiptData:
         """Extract structured receipt metadata and execute Python composite master matching.
 
@@ -523,8 +518,6 @@ class GeminiOCRService:
             file_bytes: Raw binary file payload.
             file_type: File extension or format type.
             model_id: Gemini model identifier (e.g. gemini-3.5-flash-lite or gemini-3.8-flash).
-            account_list: Optional legacy parameter for backward compatibility.
-            counterparty_list: Optional legacy parameter for backward compatibility.
 
         Returns:
             Extracted, matched, and validated ReceiptData domain model.

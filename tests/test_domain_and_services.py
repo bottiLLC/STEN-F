@@ -21,6 +21,7 @@ from app.domain_contracts import (
     TransactionLine,
 )
 from app.external_services import LocalFileService
+from app.storage_repository import seed_accounts_with_service
 
 
 # --- 1. Master Logic & Account Constraints ---
@@ -32,11 +33,10 @@ async def test_master_service_account_and_counterparty_lifecycle(
     # Arrange
     async with container.master_service_scope() as ms:
         # Act: initialize default accounts
-        added_count = await ms.initialize_default_accounts()
+        await seed_accounts_with_service(ms.repository)
         accs = await ms.get_accounts()
 
         # Assert: default accounts seeded
-        assert added_count >= 0
         assert len(accs) >= len(DEFAULT_ACCOUNTS)
         acc1 = accs[0]
         assert acc1.id is not None
@@ -850,7 +850,7 @@ async def test_fiscal_year_closing_with_net_loss_records_debit_to_retained_earni
     """Verify close_fiscal_year records debit entry to 繰越利益剰余金 when fiscal year operates at net loss."""
     # Arrange
     async with container.master_service_scope() as ms:
-        await ms.initialize_default_accounts()
+        await seed_accounts_with_service(ms.repository)
         fy = await ms.save_fiscal_year(
             FiscalYear(
                 name="赤字決算テスト期",

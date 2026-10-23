@@ -99,7 +99,7 @@ with tab_corp:
             value=corp.representative_name if corp and corp.representative_name else "",
         )
 
-        col_btn_spacer, col_btn_sub = st.columns([4, 1])
+        _, col_btn_sub = st.columns([4, 1])
         with col_btn_sub:
             corp_submitted = st.form_submit_button("保存", type="primary")
         if corp_submitted:
@@ -137,7 +137,7 @@ with tab_fy:
             new_start = c_d1.date_input("期首日", value=date(date.today().year, 1, 1))
             new_end = c_d2.date_input("期末日", value=date(date.today().year, 12, 31))
 
-            col_fy_sp, col_fy_btn = st.columns([3, 1])
+            _, col_fy_btn = st.columns([3, 1])
             with col_fy_btn:
                 fy_submitted = st.form_submit_button("第1期を作成", type="primary")
             if fy_submitted:
@@ -211,7 +211,7 @@ with tab_fy:
                         value=default_next_name,
                         help="西暦ベースの年度名称（例: FY2026）",
                     )
-                    col_close_sp, col_close_btn = st.columns([3, 1])
+                    _, col_close_btn = st.columns([3, 1])
                     with col_close_btn:
                         close_submitted = st.form_submit_button(
                             "確定して次期へ繰越",
@@ -325,7 +325,7 @@ with tab_op:
                     "訂正が必要な場合は、振替仕訳画面より赤伝（反対仕訳）を起票してください。"
                 )
 
-            col_op_sp, col_op_btn = st.columns([4, 1])
+            _, col_op_btn = st.columns([4, 1])
             with col_op_btn:
                 op_submitted = st.form_submit_button(
                     "登録",
@@ -936,7 +936,7 @@ with tab_sys:
             type="password",
             help="Google AI Studio で発行された API キー",
         )
-        col_sys_sp, col_sys_btn = st.columns([4, 1])
+        _, col_sys_btn = st.columns([4, 1])
         with col_sys_btn:
             sys_submitted = st.form_submit_button("保存", type="primary")
         if sys_submitted:

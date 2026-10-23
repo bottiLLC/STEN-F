@@ -20,6 +20,7 @@ from app.domain_contracts import (
     TransactionLine,
 )
 from app.external_services import LocalFileService, PDFService
+from app.storage_repository import seed_accounts_with_service
 
 
 from typing import Final
@@ -190,7 +191,7 @@ async def test_full_system_accounting_cycle(container: Container) -> None:
     """Execute end-to-end corporate financial cycle from master setup through year-end closing."""
     # Arrange: 1. Setup Corporation & Fiscal Year
     async with container.master_service_scope() as ms:
-        await ms.initialize_default_accounts()
+        await seed_accounts_with_service(ms.repository)
         await ms.save_corporation(
             Corporation(
                 name="合同会社E2E統合",

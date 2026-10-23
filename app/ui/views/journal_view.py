@@ -262,7 +262,7 @@ with tab_entry:
             f"添付証憑: **{active_evidence_name}**（登録時に電帳法準拠ストレージへ自動保存されます）"
         )
 
-    col_submit_sp, col_submit_btn = st.columns([4, 1])
+    _, col_submit_btn = st.columns([4, 1])
     with col_submit_btn:
         do_submit_tx = st.button(
             "仕訳登録",

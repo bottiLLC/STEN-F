@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core_foundation import log, normalize_amount
 from app.domain_contracts import (
-    DEFAULT_ACCOUNTS,
     Abstract,
     Account,
     AccountType,
@@ -264,25 +263,6 @@ class MasterService:
         ):
             raise ValueError("この勘定科目は仕訳で使用されているため削除できません。")
         await self.repository.delete_account(account_id)
-
-    async def initialize_default_accounts(self) -> int:
-        """Seed missing standard default accounts into active ledger.
-
-        Returns:
-            Count of newly inserted default accounts.
-        """
-        existing = {a.code for a in await self.get_accounts()}
-        to_add = [d for d in DEFAULT_ACCOUNTS if d["code"] not in existing]
-        for data in to_add:
-            await self.save_account(
-                Account(
-                    code=data["code"],
-                    name=data["name"],
-                    type=data["type"],
-                    description=data.get("description"),
-                )
-            )
-        return len(to_add)
 
     async def get_abstracts(self) -> list[Abstract]:
         """Fetch all predefined transaction abstracts.
