@@ -315,6 +315,8 @@ class PDFService:
         draw_pl_sec(rpt.extra_income)
         draw_pl_sec(rpt.extra_loss)
         draw_pl_step("税引前当期純利益", rpt.income_before_tax)
+        draw_pl_sec(rpt.taxes)
+        draw_pl_step("当期純利益", rpt.net_income)
         c.showPage()
 
         # 4. 附属明細書

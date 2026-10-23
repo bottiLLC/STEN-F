@@ -522,6 +522,9 @@ class FinancialReport(BaseModel):
     non_op_expense: FinancialSection
     extra_income: FinancialSection
     extra_loss: FinancialSection
+    taxes: FinancialSection = Field(
+        default_factory=lambda: FinancialSection(title="【法人税等】")
+    )
     total_assets: int = 0
     total_liabilities: int = 0
     total_equity: int = 0

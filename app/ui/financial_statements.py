@@ -57,6 +57,7 @@ class NormalizedFinancialReport:
     non_op_expense: StatementSectionData
     extra_income: StatementSectionData
     extra_loss: StatementSectionData
+    taxes: StatementSectionData
     total_assets: int
     total_liabilities: int
     total_equity: int
@@ -136,6 +137,7 @@ def _normalize_report_data(
             non_op_expense=_normalize_section(data.non_op_expense, "営業外費用"),
             extra_income=_normalize_section(data.extra_income, "特別利益"),
             extra_loss=_normalize_section(data.extra_loss, "特別損失"),
+            taxes=_normalize_section(data.taxes, "法人税等"),
             total_assets=data.total_assets,
             total_liabilities=data.total_liabilities,
             total_equity=data.total_equity,
@@ -161,6 +163,7 @@ def _normalize_report_data(
     no_exp = _normalize_section(data.get("non_op_expense"), "営業外費用")
     ex_inc = _normalize_section(data.get("extra_income"), "特別利益")
     ex_loss = _normalize_section(data.get("extra_loss"), "特別損失")
+    tx_sec = _normalize_section(data.get("taxes"), "法人税等")
 
     gross_profit = int(data.get("gross_profit", rev.total - cos.total))
     operating_income = int(data.get("operating_income", gross_profit - sga.total))
@@ -170,7 +173,7 @@ def _normalize_report_data(
     income_before_tax = int(
         data.get("income_before_tax", ordinary_income + ex_inc.total - ex_loss.total)
     )
-    net_income = int(data.get("net_income", income_before_tax))
+    net_income = int(data.get("net_income", income_before_tax - tx_sec.total))
 
     tot_assets = int(data.get("total_assets", cur_a.total + fix_a.total + def_a.total))
     tot_liabs = int(data.get("total_liabilities", cur_l.total + fix_l.total))
@@ -190,6 +193,7 @@ def _normalize_report_data(
         non_op_expense=no_exp,
         extra_income=ex_inc,
         extra_loss=ex_loss,
+        taxes=tx_sec,
         total_assets=tot_assets,
         total_liabilities=tot_liabs,
         total_equity=tot_equity,
@@ -537,6 +541,8 @@ def build_profit_and_loss_html(
         f'<span class="fs-name">{"税引前当期純利益" if rpt.income_before_tax >= 0 else "税引前当期純損失"}</span>'
         f'<span class="fs-amount">{_format_currency(rpt.income_before_tax)}</span>'
         f"</div>",
+        # 8. Corporate Taxes
+        _render_pl_section_html(rpt.taxes, "VIII. 法人税等", hide_zero),
         # Stage Profit 5: Net Income (Final Double-Underline)
         f'<div class="fs-row fs-pl-net-income">'
         f'<span class="fs-name">{"当期純利益" if rpt.net_income >= 0 else "当期純損失"}</span>'

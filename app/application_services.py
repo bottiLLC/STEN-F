@@ -480,12 +480,13 @@ class LedgerService:
         no_exp = sec("【営業外費用】", AccountType.NON_OPERATING_EXPENSE)
         ex_inc = sec("【特別利益】", AccountType.EXTRAORDINARY_INCOME)
         ex_loss = sec("【特別損失】", AccountType.EXTRAORDINARY_LOSS)
+        taxes_sec = sec("【法人税等】", AccountType.TAXES)
 
         gross_profit = rev.total - cost.total
         operating_income = gross_profit - sga.total
         ordinary_income = operating_income + no_inc.total - no_exp.total
         income_before_tax = ordinary_income + ex_inc.total - ex_loss.total
-        net_income = income_before_tax
+        net_income = income_before_tax - taxes_sec.total
 
         fy_obj = await self.repository.get_fiscal_year(fiscal_year_id) or FiscalYear(
             id=fiscal_year_id,
@@ -511,6 +512,7 @@ class LedgerService:
             non_op_expense=no_exp,
             extra_income=ex_inc,
             extra_loss=ex_loss,
+            taxes=taxes_sec,
             total_assets=cur_assets.total + fix_assets.total + def_assets.total,
             total_liabilities=cur_liabs.total + fix_liabs.total,
             total_equity=equity.total + net_income,
