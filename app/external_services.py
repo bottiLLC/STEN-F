@@ -272,43 +272,48 @@ class PDFService:
 
         # 3. 損益計算書
         draw_hdr("損益計算書 (Profit & Loss)", drange)
-        y, xl, xv = h - 40 * mm, 30 * mm, 170 * mm
+        y, xl, xv = h - 32 * mm, 30 * mm, 170 * mm
+
+        def ensure_space(required_mm: float) -> None:
+            nonlocal y
+            if y - required_mm < 22 * mm:
+                c.showPage()
+                draw_hdr("損益計算書 (続)", drange)
+                y = h - 32 * mm
 
         def draw_pl_sec(sec: FinancialSection) -> None:
             nonlocal y
-            c.setFont(settings.FONT_NAME, 11)
+            active_rows = [r for r in sec.rows if r.balance != 0]
+            sec_height = 5 * mm + (len(active_rows) * 4.2 * mm) + 5.5 * mm
+            ensure_space(sec_height)
+
+            c.setFont(settings.FONT_NAME, 10.5)
             c.drawString(xl - 5 * mm, y, sec.title)
-            y -= 6 * mm
-            c.setFont(settings.FONT_NAME, 10)
-            for r in sec.rows:
-                if r.balance != 0:
-                    c.drawString(xl + 5 * mm, y, r.account_name)
-                    c.drawRightString(xv - 10 * mm, y, f"{r.balance:,}")
-                    y -= 5 * mm
+            y -= 5 * mm
+            c.setFont(settings.FONT_NAME, 9.5)
+            for r in active_rows:
+                c.drawString(xl + 5 * mm, y, r.account_name)
+                c.drawRightString(xv - 10 * mm, y, f"{r.balance:,}")
+                y -= 4.2 * mm
             c.drawString(
                 xl + 5 * mm, y, f"{sec.title.replace('【', '').replace('】', '')} 合計"
             )
             c.drawRightString(xv, y, f"{sec.total:,}")
-            y -= 8 * mm
+            y -= 5.5 * mm
 
         def draw_pl_step(title: str, val: int) -> None:
             nonlocal y
-            c.setFont(settings.FONT_NAME, 11)
+            ensure_space(7.5 * mm)
+            c.setFont(settings.FONT_NAME, 10.5)
             c.drawString(xl, y, title)
             c.drawRightString(xv, y, f"{val:,}")
-            y -= 10 * mm
+            y -= 6.5 * mm
 
         draw_pl_sec(rpt.revenue)
         draw_pl_sec(rpt.cost_of_sales)
         draw_pl_step("売上総利益", rpt.gross_profit)
         draw_pl_sec(rpt.sga)
         draw_pl_step("営業利益", rpt.operating_income)
-
-        if y < 60 * mm:
-            c.showPage()
-            draw_hdr("損益計算書 (続)")
-            y = h - 40 * mm
-
         draw_pl_sec(rpt.non_op_income)
         draw_pl_sec(rpt.non_op_expense)
         draw_pl_step("経常利益", rpt.ordinary_income)
