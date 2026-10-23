@@ -11,8 +11,9 @@ from PIL import Image
 import pytest
 from pytest_mock import MockerFixture
 from google.genai.errors import APIError
+import fitz
 
-from app.ai_ocr_service import GeminiOCRService
+from app.ai_ocr_service import GeminiOCRService, normalize_receipt_file_format
 from app.application_services import Container
 from app.domain_contracts import (
     AccountType,
@@ -36,6 +37,41 @@ def _create_dummy_image() -> bytes:
     return buf.getvalue()
 
 
+def test_normalize_receipt_file_format() -> None:
+    """Verify normalize_receipt_file_format normalizes MIME types, extensions, and paths."""
+    # MIME types
+    assert normalize_receipt_file_format("application/pdf") == "pdf"
+    assert normalize_receipt_file_format("APPLICATION/PDF") == "pdf"
+    assert normalize_receipt_file_format("image/png") == "png"
+    assert normalize_receipt_file_format("image/jpeg") == "jpeg"
+    assert normalize_receipt_file_format("image/jpg") == "jpeg"
+    assert normalize_receipt_file_format("image/pjpeg") == "jpeg"
+    assert normalize_receipt_file_format("image/webp") == "webp"
+
+    # Dotted extensions & filenames
+    assert normalize_receipt_file_format(".pdf") == "pdf"
+    assert normalize_receipt_file_format("receipt.PDF") == "pdf"
+    assert normalize_receipt_file_format(".png") == "png"
+    assert normalize_receipt_file_format("test.jpg") == "jpg"
+    assert normalize_receipt_file_format(".jpeg") == "jpeg"
+    assert normalize_receipt_file_format("sample.webp") == "webp"
+
+    # Bare extensions
+    assert normalize_receipt_file_format("pdf") == "pdf"
+    assert normalize_receipt_file_format("png") == "png"
+    assert normalize_receipt_file_format("jpg") == "jpg"
+    assert normalize_receipt_file_format("jpeg") == "jpeg"
+    assert normalize_receipt_file_format("webp") == "webp"
+
+    # Unsupported formats
+    with pytest.raises(ValueError, match="サポートされていないファイル形式です: exe"):
+        normalize_receipt_file_format("exe")
+    with pytest.raises(ValueError, match="サポートされていないファイル形式です"):
+        normalize_receipt_file_format("application/zip")
+    with pytest.raises(ValueError, match="サポートされていないファイル形式です"):
+        normalize_receipt_file_format("document.docx")
+
+
 # --- 1. OCR Service Extraction & Mocking Tests ---
 @pytest.mark.asyncio
 async def test_ocr_service_validations(container: Container) -> None:
@@ -49,7 +85,7 @@ async def test_ocr_service_validations(container: Container) -> None:
 
     # Act & Assert
     with pytest.raises(ValueError, match="アップロードされたファイルが空です"):
-        await service.extract_receipt_data(b"", "png")
+        await service.extract_receipt_data(b"", "application/pdf")
 
     with pytest.raises(ValueError, match="サポートされていないファイル形式です"):
         await service.extract_receipt_data(b"dummy", "exe")
@@ -809,6 +845,67 @@ async def test_ocr_service_extraction_with_corrupted_pdf_raises_value_error(
         ValueError, match="PDFファイルの読み込み・レンダリングに失敗しました"
     ):
         await service.extract_receipt_data(corrupted_pdf, "pdf")
+
+    with pytest.raises(
+        ValueError, match="PDFファイルの読み込み・レンダリングに失敗しました"
+    ):
+        await service.extract_receipt_data(corrupted_pdf, "application/pdf")
+
+
+@pytest.mark.asyncio
+async def test_ocr_service_extraction_with_empty_page_pdf_raises_value_error(
+    container: Container, mocker: MockerFixture
+) -> None:
+    """Verify extract_receipt_data raises ValueError when provided 0-page PDF bytes."""
+    # Arrange
+    service = GeminiOCRService()
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-key"
+        await ms.save_system_settings(settings_obj)
+
+    mock_doc = mocker.MagicMock()
+    mock_doc.__len__.return_value = 0
+    mocker.patch("fitz.open", return_value=mock_doc)
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="PDFファイルが空（0ページ）です"):
+        await service.extract_receipt_data(b"%PDF-sample", "application/pdf")
+
+
+@pytest.mark.asyncio
+async def test_ocr_service_extraction_with_valid_pdf_renders_and_parses(
+    container: Container, mocker: MockerFixture
+) -> None:
+    """Verify Gemini OCR parses valid PDF bytes via PyMuPDF rendering and accepts MIME types."""
+    # Arrange
+    service = GeminiOCRService()
+    doc = fitz.open()
+    doc.new_page(width=300, height=300)
+    pdf_bytes = doc.tobytes()
+
+    mock_resp = mocker.MagicMock()
+    mock_resp.text = (
+        '{"raw_company_name": "㈱PDFストア", "date": "2026-06-15", '
+        '"total_amount": 9900, "invoice_number": "T9999999999999"}'
+    )
+    mock_generate = mocker.patch(
+        "google.genai.models.Models.generate_content", return_value=mock_resp
+    )
+
+    async with container.master_service_scope() as ms:
+        settings_obj = await ms.get_system_settings()
+        settings_obj.ai_api_key = "test-golden-key"
+        await ms.save_system_settings(settings_obj)
+
+    # Act - invoke with MIME type "application/pdf"
+    receipt = await service.extract_receipt_data(pdf_bytes, "application/pdf")
+
+    # Assert
+    assert mock_generate.call_count == 1
+    assert receipt.transaction_date == "2026-06-15"
+    assert receipt.total_amount_incl_tax == 9900
+    assert receipt.invoice_registration_number == "T9999999999999"
 
 
 @pytest.mark.asyncio

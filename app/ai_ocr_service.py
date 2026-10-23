@@ -452,6 +452,55 @@ def optimize_receipt_image(file_bytes: bytes, mime_type: str) -> tuple[bytes, st
         return file_bytes, mime_type
 
 
+_MIME_FORMAT_MAP: Final[dict[str, str]] = {
+    "application/pdf": "pdf",
+    "image/png": "png",
+    "image/jpeg": "jpeg",
+    "image/jpg": "jpeg",
+    "image/pjpeg": "jpeg",
+    "image/webp": "webp",
+}
+_SUPPORTED_FORMATS: Final[frozenset[str]] = frozenset(
+    {"pdf", "png", "jpg", "jpeg", "webp"}
+)
+
+
+def normalize_receipt_file_format(raw_type: str) -> str:
+    """Normalize MIME types, dotted extensions, and filenames into standard formats.
+
+    Args:
+        raw_type: MIME type (e.g. 'application/pdf'), extension (e.g. '.pdf', 'png'),
+                  or filename (e.g. 'receipt.PDF').
+
+    Returns:
+        Canonical format token ('pdf', 'png', 'jpg', 'jpeg', or 'webp').
+
+    Raises:
+        ValueError: If raw_type is unsupported or unparseable.
+    """
+    token = raw_type.strip().lower()
+
+    if token in _MIME_FORMAT_MAP:
+        return _MIME_FORMAT_MAP[token]
+
+    if "/" in token:
+        _, _, sub = token.partition("/")
+        if sub in _SUPPORTED_FORMATS:
+            return sub
+
+    if "." in token:
+        ext = token.rsplit(".", 1)[-1]
+        if ext in _SUPPORTED_FORMATS:
+            return ext
+
+    if token in _SUPPORTED_FORMATS:
+        return token
+
+    raise ValueError(
+        f"サポートされていないファイル形式です: {raw_type} (対応形式: PDF, PNG, JPG, JPEG, WEBP)"
+    )
+
+
 # --- 3. Public Orchestration Layer ---
 class GeminiOCRService:
     """Multimodal OCR extraction engine utilizing Google Gemini models."""
@@ -497,8 +546,8 @@ class GeminiOCRService:
         if not file_bytes:
             raise ValueError("アップロードされたファイルが空です。")
 
-        ft = file_type.lower()
-        if ft == "pdf":
+        fmt = normalize_receipt_file_format(file_type)
+        if fmt == "pdf":
             try:
                 doc = fitz.open(stream=file_bytes, filetype="pdf")
                 if len(doc) == 0:
@@ -509,12 +558,8 @@ class GeminiOCRService:
                 raise ValueError(
                     f"PDFファイルの読み込み・レンダリングに失敗しました: {str(e)}"
                 ) from e
-        elif ft in ("png", "jpg", "jpeg", "webp"):
-            mime_type = "image/jpeg" if ft == "jpg" else f"image/{ft}"
         else:
-            raise ValueError(
-                f"サポートされていないファイル形式です: {file_type} (対応形式: PDF, PNG, JPG, JPEG, WEBP)"
-            )
+            mime_type = "image/jpeg" if fmt in ("jpg", "jpeg") else f"image/{fmt}"
 
         opt_bytes, opt_mime = optimize_receipt_image(file_bytes, mime_type)
         sys_instruct = (

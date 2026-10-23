@@ -52,7 +52,7 @@ with tab_entry:
     st.subheader("Step 1: 証憑のアップロード ＆ AI自動読取")
     uploaded_file = st.file_uploader(
         "領収書・請求書をドラッグ＆ドロップ",
-        type=["pdf", "png", "jpg", "jpeg"],
+        type=["pdf", "png", "jpg", "jpeg", "webp"],
         key="journal_file_uploader",
     )
 
@@ -88,12 +88,13 @@ with tab_entry:
         if run_fast or run_boost:
             target_model = "gemini-3.5-flash-lite" if run_fast else "gemini-3.8-flash"
             model_label = "通常読取" if run_fast else "高精度読取"
-            mime = uploaded_file.type or ("application/pdf" if is_pdf else "image/png")
+            file_ext = Path(file_name).suffix.lstrip(".").lower()
+            file_format = uploaded_file.type or file_ext or ("pdf" if is_pdf else "png")
             with st.spinner(f"Gemini AI ({model_label}) が証憑を解析中..."):
                 try:
                     ocr_res = run_async(
                         DI.get_ocr_service().extract_receipt_data(
-                            file_bytes, mime, model_id=target_model
+                            file_bytes, file_format, model_id=target_model
                         )
                     )
                     st.session_state["ocr_result"] = ocr_res
