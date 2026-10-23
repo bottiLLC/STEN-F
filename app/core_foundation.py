@@ -10,6 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TypeVar
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import sniffio
 import structlog
@@ -61,7 +62,12 @@ class Settings(BaseSettings):
     DB_NAME: str = "sten_f.db"
     DATABASE_URL: str | None = None
 
-    GEMINI_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "GEMINI_API_KEY", "Gemini_API_KEY", "gemini_api_key"
+        ),
+    )
     GEMINI_DEFAULT_MODEL: str = "gemini-3.5-flash-lite"
 
     WINDOWS_FONT_PATH: Path = Path("C:/Windows/Fonts/msgothic.ttc")

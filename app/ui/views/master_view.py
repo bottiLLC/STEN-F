@@ -44,6 +44,7 @@ from app.core_foundation import (
     call_journal,
     call_master,
     run_async,
+    settings,
 )
 from app.domain_contracts import (
     Abstract,
@@ -931,7 +932,7 @@ with tab_sys:
     with st.form("sys_form"):
         api_key_input = st.text_input(
             "Gemini API キー",
-            value=sys_conf.ai_api_key or "",
+            value=sys_conf.ai_api_key or settings.GEMINI_API_KEY or "",
             type="password",
             help="Google AI Studio で発行された API キー",
         )
