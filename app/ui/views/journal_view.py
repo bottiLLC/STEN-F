@@ -21,7 +21,13 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from app.core_foundation import DI, call_journal, call_master, run_async
+from app.core_foundation import (
+    DI,
+    call_journal,
+    call_master,
+    normalize_amount,
+    run_async,
+)
 from app.domain_contracts import FiscalYear, Transaction, TransactionLine
 from app.ui.design_system import (
     COLOR_DANGER,
@@ -39,7 +45,10 @@ abstracts = call_master(lambda s: s.get_abstracts())
 all_fys = call_master(lambda s: s.get_fiscal_years())
 open_fy = next((f for f in all_fys if f.status == "OPEN"), None)
 account_labels = [""] + [
-    f"{a.code}: {a.name}" for a in sorted(accounts, key=lambda x: int(x.code))
+    f"{a.code}: {a.name}"
+    for a in sorted(
+        accounts, key=lambda x: (int(x.code) if x.code.isdigit() else 999999, x.code)
+    )
 ]
 account_code_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
 account_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
@@ -227,14 +236,15 @@ with tab_entry:
 
     tx_lines: list[TransactionLine] = []
     for _, r in edited_lines_df.iterrows():
-        if (d_acc := r.get("debit_account")) and (
-            d_amt := int(r.get("debit_amount") or 0)
-        ) > 0:
+        d_val = r.get("debit_amount")
+        c_val = r.get("credit_amount")
+        d_amt = normalize_amount(d_val) if not pd.isna(d_val) else 0
+        c_amt = normalize_amount(c_val) if not pd.isna(c_val) else 0
+
+        if (d_acc := r.get("debit_account")) and d_amt > 0:
             if aid := account_code_to_id.get(str(d_acc)):
                 tx_lines.append(TransactionLine(account_id=aid, debit=d_amt, credit=0))
-        if (c_acc := r.get("credit_account")) and (
-            c_amt := int(r.get("credit_amount") or 0)
-        ) > 0:
+        if (c_acc := r.get("credit_account")) and c_amt > 0:
             if aid := account_code_to_id.get(str(c_acc)):
                 tx_lines.append(TransactionLine(account_id=aid, debit=0, credit=c_amt))
 

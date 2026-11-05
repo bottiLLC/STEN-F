@@ -264,6 +264,22 @@ class FiscalYear(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
+    @model_validator(mode="after")
+    def validate_dates_and_status(self) -> FiscalYear:
+        """Validate date ordering and status value.
+
+        Returns:
+            Validated FiscalYear instance.
+
+        Raises:
+            ValueError: If start_date is after end_date or status is invalid.
+        """
+        if self.start_date > self.end_date:
+            raise ValueError("開始日は終了日以前の日付である必要があります。")
+        if self.status not in ("OPEN", "CLOSED"):
+            raise ValueError(f"無効なステータスです: {self.status}")
+        return self
+
 
 class Abstract(BaseModel):
     """Common transaction summary description snippet."""
@@ -286,6 +302,22 @@ class TransactionLine(BaseModel):
     account: Account | None = None
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_single_side(self) -> TransactionLine:
+        """Enforce Single-Side Line Constraint under Rule 6.
+
+        Returns:
+            Validated TransactionLine instance.
+
+        Raises:
+            ValueError: If both debit and credit amounts are positive simultaneously.
+        """
+        if self.debit > 0 and self.credit > 0:
+            raise ValueError(
+                "1つの明細行に借方金額と貸方金額の両方を設定することはできません。"
+            )
+        return self
 
     @property
     def amount(self) -> int:
@@ -427,9 +459,12 @@ class VendorMasterRecord(BaseModel):
 
     vendor_id: int
     name: str
+    trade_name: str | None = None
     invoice_number: str | None = None
     tel: str | None = None
     debit_account: str | None = None
+    credit_account: str | None = None
+    description_template: str | None = None
     tax_rate: float | None = 0.10
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")

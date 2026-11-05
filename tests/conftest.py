@@ -19,7 +19,7 @@ from datetime import date
 import pytest
 
 from app.application_services import Container
-from app.domain_contracts import Account, AccountType, Corporation, FiscalYear
+from app.domain_contracts import Account, AccountType, Corporation
 from app.storage_repository import Base, engine, init_db
 
 
@@ -38,17 +38,21 @@ async def container() -> AsyncIterator[Container]:
 
     c = Container()
 
-    async with c.master_service_scope() as ms:
+    async with c.session_scope() as session:
+        from app.storage_repository import FiscalYearTable
+
         today = date.today()
-        await ms.save_fiscal_year(
-            FiscalYear(
-                name=f"FY{today.year}",
-                start_date=date(today.year, 1, 1),
-                end_date=date(today.year, 12, 31),
-                status="OPEN",
-                period_number=1,
-            )
+        fy_row = FiscalYearTable(
+            name=f"FY{today.year}",
+            start_date=date(today.year, 1, 1),
+            end_date=date(today.year, 12, 31),
+            status="OPEN",
+            period_number=1,
         )
+        session.add(fy_row)
+        await session.commit()
+
+    async with c.master_service_scope() as ms:
         await ms.save_corporation(Corporation(name="Test Corp", address="Test Address"))
         await ms.save_account(
             Account(

@@ -360,7 +360,10 @@ with tab_acc:
                 "type": a.type.label,
                 "description": a.description or "",
             }
-            for a in sorted(acc_list, key=lambda x: int(x.code))
+            for a in sorted(
+                acc_list,
+                key=lambda x: (int(x.code) if x.code.isdigit() else 999999, x.code),
+            )
         ],
         columns=["selected", "id", "code", "name", "type", "description"],
     )
@@ -942,7 +945,11 @@ with tab_sys:
         if sys_submitted:
             call_master(
                 lambda s: s.save_system_settings(
-                    SystemSettings(ai_api_key=api_key_input.strip() or None)
+                    SystemSettings(
+                        id=sys_conf.id,
+                        ai_api_key=api_key_input.strip() or None,
+                        backup_path=sys_conf.backup_path,
+                    )
                 )
             )
             st.success("システム設定を保存しました！")

@@ -24,6 +24,7 @@ uploaded_files/
 
 # Generated Files & Reports
 *.pdf
+!動作確認用領収書.pdf
 *.csv
 !app/infrastructure/db/*.csv
 

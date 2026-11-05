@@ -13,6 +13,22 @@
 
 ## 4. Projection Separation for Ledgers and Balances (Projection Pattern)
 - **Rule**: General ledgers and account balance tables must be treated as "caches (projections) derived from the journal log"; direct manual input of numerical values into these tables is strictly prohibited.
+- **Compound Entry Aggregation Constraint**: When projecting general ledgers or balances from transactions, never use single-match extraction (e.g., `next()`) per transaction; iterate over ALL matching `TransactionLine` legs within a transaction so compound entries with multiple lines for the same account are fully aggregated and strictly match the Trial Balance (T/B).
+- **Non-Zero Rendering Parity**: Financial statement views (HTML and PDF) and supporting schedules must evaluate account/section visibility using `balance != 0` (never `> 0`), ensuring negative/contra balances are never silently omitted from subtotals or grand totals.
+
+## 5. Fiscal Period Lock & Reversing Entry Guardrails
+- **Closed Period Immutability**: Every journal entry—including reversing entries ("red slips"), opening balances, and period-end rollover entries—must validate its `occurred_at` date against active `OPEN` fiscal years. Posting any entry into a `CLOSED` fiscal period is strictly prohibited.
+- **Anti-Duplicate & Anti-Double-Reversal Constraint**:
+  - Reversing entries (`[取消: ...]`) must never be reversed a second time.
+  - Opening balance (`期首残高`) and rollover (`前期繰越`) entries must be mutually exclusive and idempotent per fiscal year start date; duplicate registration must be rejected.
+  - Fiscal year boundaries must satisfy `start_date <= end_date` and must not overlap with existing fiscal periods.
+
+## 6. Domain Line-Item Exclusivity & Master Referential Hygiene
+- **Single-Side Line Constraint**: A single `TransactionLine` must never hold positive values in both `debit` and `credit` simultaneously (`debit > 0 and credit > 0` is prohibited).
+- **Master Uniqueness & Alphanumeric Sorting Safety**: Account codes must be unique across the chart of accounts. Sorting by account code must safely handle alphanumeric codes (e.g., `(int(code) if code.isdigit() else 999999, code)`) rather than calling raw `int(code)`.
+- **DataFrame NaN & Partial-Update Hygiene**:
+  - Always sanitize `st.data_editor` numeric cells against `NaN`/`None` via `pd.isna()` and `normalize_amount()` before integer casting.
+  - When updating singleton or master records (e.g., `SystemSettings`, `Counterparty`), preserve all existing sibling attributes (such as `backup_path`, `trade_name`, `credit_account_id`, `description_template`) to prevent unintended state erasure or OCR metadata drop.
 
 ---
 

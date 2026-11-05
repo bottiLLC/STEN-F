@@ -232,7 +232,8 @@ async def test_journal_entry_register_opening_balance_duplicate_raises_value_err
 
         # Duplicate registration raises ValueError
         with pytest.raises(
-            ValueError, match="指定日の会計年度には既に「期首残高」が登録されています"
+            ValueError,
+            match="指定日の会計年度には既に「期首残高」または「前期繰越」が登録されています",
         ):
             await js.register_opening_balance(
                 opening_date=open_fy.start_date,
@@ -695,12 +696,18 @@ async def test_journal_service_validation_raises_when_date_outside_open_fiscal_y
     """Verify JournalService raises ValueError when transaction date falls outside open fiscal year range."""
     # Arrange
     async with container.master_service_scope() as ms:
-        # Re-open or create an open fiscal year
+        # Re-open or create an open fiscal year without overlapping existing FYs
+        fys = await ms.get_fiscal_years()
+        max_end = max((f.end_date for f in fys), default=date(2025, 12, 31))
+        fy_start = max_end + timedelta(days=1)
+        fy_end = date(fy_start.year + 1, fy_start.month, fy_start.day) - timedelta(
+            days=1
+        )
         fy = await ms.save_fiscal_year(
             FiscalYear(
                 name="期間外検証テスト期",
-                start_date=date(2025, 4, 1),
-                end_date=date(2026, 3, 31),
+                start_date=fy_start,
+                end_date=fy_end,
                 status="OPEN",
                 period_number=99,
             )

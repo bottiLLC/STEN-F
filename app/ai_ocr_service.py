@@ -234,12 +234,20 @@ def calculate_match_score(
         if ext_tel and mst_tel and ext_tel == mst_tel:
             breakdown["tel"] = 80.0
 
-    # 3. Fuzzy company name matching
-    if extracted.raw_company_name and vendor.name:
+    # 3. Fuzzy company name and trade name matching
+    if extracted.raw_company_name:
         ext_norm = normalize_merchant_name(extracted.raw_company_name)
-        mst_norm = normalize_merchant_name(vendor.name)
-        ratio = float(fuzz.partial_ratio(ext_norm, mst_norm))
-        breakdown["name_fuzzy"] = round(ratio * 0.3, 2)
+        candidates: list[str] = []
+        if vendor.name:
+            candidates.append(normalize_merchant_name(vendor.name))
+        if vendor.trade_name:
+            candidates.append(normalize_merchant_name(vendor.trade_name))
+        if candidates:
+            ratio = max(
+                (float(fuzz.partial_ratio(ext_norm, c)) for c in candidates if c),
+                default=0.0,
+            )
+            breakdown["name_fuzzy"] = round(ratio * 0.3, 2)
 
     total_score = min(
         100.0,
@@ -321,6 +329,12 @@ def map_extraction_to_receipt_data(
     )
     tax_rate = matched.tax_rate if matched else None
     debit_acc = matched.debit_account if matched else None
+    credit_acc = matched.credit_account if matched else None
+    desc = (
+        matched.description_template
+        if (matched and matched.description_template)
+        else (f"仕入・経費 ({merchant_name})" if merchant_name else None)
+    )
 
     if inv_number:
         m = re.search(r"(T\d{13})", inv_number)
@@ -340,7 +354,8 @@ def map_extraction_to_receipt_data(
         is_registered_merchant=match_result.is_identified,
         is_dictionary_matched=match_result.is_identified,
         inferred_debit_account_id=debit_acc,
-        description=f"仕入・経費 ({merchant_name})" if merchant_name else None,
+        inferred_credit_account_id=credit_acc,
+        description=desc,
     )
 
 
@@ -594,6 +609,7 @@ class GeminiOCRService:
                     VendorMasterRecord(
                         vendor_id=cp.id or 0,
                         name=cp.name,
+                        trade_name=cp.trade_name,
                         invoice_number=cp.invoice_number,
                         tel=cp.tel,
                         debit_account=(
@@ -601,6 +617,12 @@ class GeminiOCRService:
                             if cp.debit_account_id
                             else None
                         ),
+                        credit_account=(
+                            acc_id_to_name.get(str(cp.credit_account_id))
+                            if cp.credit_account_id
+                            else None
+                        ),
+                        description_template=cp.description_template,
                         tax_rate=cp.tax_rate if cp.tax_rate is not None else 0.10,
                     )
                     for cp in cps

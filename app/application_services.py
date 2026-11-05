@@ -211,14 +211,25 @@ class MasterService:
         return await self.repository.get_fiscal_year(fy_id)
 
     async def save_fiscal_year(self, fy: FiscalYear) -> FiscalYear:
-        """Save fiscal year period boundary.
+        """Save fiscal year period boundary with non-overlapping period validation.
 
         Args:
             fy: FiscalYear domain model.
 
         Returns:
             Persisted FiscalYear instance.
+
+        Raises:
+            ValueError: If the period boundaries overlap with an existing fiscal year.
         """
+        existing = await self.repository.get_fiscal_years()
+        for ex in existing:
+            if ex.id != fy.id and max(fy.start_date, ex.start_date) <= min(
+                fy.end_date, ex.end_date
+            ):
+                raise ValueError(
+                    f"会計年度の期間が既存の年度「{ex.name}」({ex.start_date}〜{ex.end_date}) と重複しています。"
+                )
         return await self.repository.save_fiscal_year(fy)
 
     async def delete_fiscal_year(self, fy_id: int) -> None:
@@ -238,14 +249,22 @@ class MasterService:
         return await self.repository.get_accounts()
 
     async def save_account(self, account: Account) -> Account:
-        """Save account definition.
+        """Save account definition enforcing unique account code.
 
         Args:
             account: Account domain model.
 
         Returns:
             Persisted Account instance.
+
+        Raises:
+            ValueError: If an account with the same code already exists.
         """
+        existing = await self.repository.get_accounts()
+        if any(a.code == account.code and a.id != account.id for a in existing):
+            raise ValueError(
+                f"勘定科目コード '{account.code}' は既に使用されています。"
+            )
         return await self.repository.save_account(account)
 
     async def delete_account(self, account_id: int) -> None:
@@ -409,24 +428,25 @@ class LedgerService:
         transactions.sort(key=lambda x: (x.occurred_at, x.recorded_at, x.id or 0))
 
         for tx in transactions:
-            line = next((ln for ln in tx.lines if ln.account_id == account_id), None)
-            if not line:
+            matching_lines = [ln for ln in tx.lines if ln.account_id == account_id]
+            if not matching_lines:
                 continue
-            debit, credit = line.debit, line.credit
-            running_balance += (
-                (debit - credit) if is_debit_positive else (credit - debit)
-            )
             tx_date = tx.occurred_at or tx.date or target_fy.start_date
-            gl_lines.append(
-                {
-                    "日付": tx_date,
-                    "摘要": tx.description,
-                    "借方": debit if debit > 0 else 0,
-                    "貸方": credit if credit > 0 else 0,
-                    "残高": running_balance,
-                    "TransactionID": tx.id,
-                }
-            )
+            for line in matching_lines:
+                debit, credit = line.debit, line.credit
+                running_balance += (
+                    (debit - credit) if is_debit_positive else (credit - debit)
+                )
+                gl_lines.append(
+                    {
+                        "日付": tx_date,
+                        "摘要": tx.description,
+                        "借方": debit if debit > 0 else 0,
+                        "貸方": credit if credit > 0 else 0,
+                        "残高": running_balance,
+                        "TransactionID": tx.id,
+                    }
+                )
         return pd.DataFrame(gl_lines)
 
     async def generate_financial_report(self, fiscal_year_id: int) -> FinancialReport:
@@ -623,13 +643,13 @@ class JournalService:
         Raises:
             ValueError: If no non-zero amounts provided.
         """
-        # Rule 4 & 1 Invariant: 既存期首残高の重複起票抑止
+        # Rule 4 & 1 Invariant: 既存期首残高・前期繰越の重複起票抑止
         existing_entries = await self.get_entries(
             start_date=opening_date, end_date=opening_date
         )
-        if any(tx.description == "期首残高" for tx in existing_entries):
+        if any(tx.description in ("期首残高", "前期繰越") for tx in existing_entries):
             raise ValueError(
-                "指定日の会計年度には既に「期首残高」が登録されています。"
+                "指定日の会計年度には既に「期首残高」または「前期繰越」が登録されています。"
                 "訂正が必要な場合は、過去仕訳に対し赤伝（反対仕訳）を起票してください。"
             )
 
@@ -667,7 +687,23 @@ class JournalService:
 
         Returns:
             Newly created reversing transaction ID.
+
+        Raises:
+            ValueError: If original transaction not found, already reversed/cancelling, or date outside open fiscal year.
         """
+        all_txs = await self.repository.get_transactions(include_deleted=True)
+        orig = next((t for t in all_txs if t.id == transaction_id), None)
+        if not orig:
+            raise ValueError(f"仕訳ID {transaction_id} が見つかりません。")
+
+        if orig.description.startswith("[取消:"):
+            raise ValueError("取消仕訳（赤伝）自体を再度取り消すことはできません。")
+
+        target_date = cancel_date or orig.occurred_at or orig.date
+        if not target_date:
+            raise ValueError("Transaction requires occurred_at or date")
+        await self._validate_transaction_date(target_date)
+
         rev_id = await self.repository.reverse_transaction(
             original_tx_id=transaction_id,
             reason=reason,
@@ -799,7 +835,22 @@ class FiscalYearService:
         next_period = (current_fy.period_number or 0) + 1
         next_fy = next((f for f in all_fys if f.period_number == next_period), None)
 
-        if not next_fy:
+        if next_fy:
+            if next_fy.status != "OPEN":
+                raise ValueError(
+                    f"次期会計年度「{next_fy.name}」が既にクローズされているため繰り越しできません。"
+                )
+            existing_next_entries = await self.journal_service.get_entries(
+                start_date=next_fy.start_date, end_date=next_fy.start_date
+            )
+            if any(
+                tx.description in ("前期繰越", "期首残高")
+                for tx in existing_next_entries
+            ):
+                raise ValueError(
+                    f"次期会計年度「{next_fy.name}」には既に期首繰越仕訳が登録されています。"
+                )
+        else:
             next_fy = await self.master_service.save_fiscal_year(
                 FiscalYear(
                     name=next_fy_name or f"第{next_period}期",

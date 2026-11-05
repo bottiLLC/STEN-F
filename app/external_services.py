@@ -225,7 +225,7 @@ class PDFService:
             rpt.current_assets, "流動資産合計", rpt.current_assets.total, y - 6 * mm
         )
         yl = draw_bs_sec(rpt.fixed_assets, "固定資産合計", rpt.fixed_assets.total, yl)
-        if rpt.deferred_assets.total > 0:
+        if rpt.deferred_assets.total != 0:
             yl = draw_bs_sec(
                 rpt.deferred_assets, "繰延資産合計", rpt.deferred_assets.total, yl
             )
@@ -336,12 +336,12 @@ class PDFService:
             )
             y -= 6 * mm
             c.setFont(settings.FONT_NAME, 10)
-            pos_rows = [r for r in sec.rows if r.balance > 0]
-            if not pos_rows:
+            active_rows = [r for r in sec.rows if r.balance != 0]
+            if not active_rows:
                 c.drawString(35 * mm, y, "(該当なし)")
                 y -= 8 * mm
                 return
-            for r in pos_rows:
+            for r in active_rows:
                 c.drawString(35 * mm, y, r.account_name)
                 c.drawRightString(150 * mm, y, f"{r.balance:,}")
                 y -= 5 * mm
