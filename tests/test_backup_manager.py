@@ -196,9 +196,7 @@ def test_set_backup_dir_os_error(
 # ---------------------------------------------------------------------------
 
 
-def test_run_backup_interlock_source_not_exists(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_backup_interlock_source_not_exists(tmp_path: Path) -> None:
     """[インターロック検証] バックアップ元ディレクトリが存在しない場合、直ちに失敗を返すことを検証"""
     # Arrange
     nonexistent = tmp_path / "nonexistent_data"
@@ -212,9 +210,7 @@ def test_run_backup_interlock_source_not_exists(
     assert "timestamp" in result
 
 
-def test_run_backup_interlock_source_empty(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_backup_interlock_source_empty(tmp_path: Path) -> None:
     """[インターロック検証] バックアップ元ディレクトリが空の場合、直ちに失敗を返すことを検証"""
     # Arrange
     empty_dir = tmp_path / "empty_data"

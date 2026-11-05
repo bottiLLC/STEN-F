@@ -19,7 +19,6 @@ COLOR_TEXT_MUTED: Final[str] = "#6B7280"
 COLOR_PRIMARY_ACTION: Final[str] = "#1E3A8A"
 COLOR_PRIMARY_ACTION_HOVER: Final[str] = "#2563EB"
 COLOR_DANGER: Final[str] = "#DC2626"
-COLOR_SUCCESS: Final[str] = "#059669"
 BORDER_RADIUS: Final[str] = "4px"
 
 GLOBAL_DESIGN_SYSTEM_CSS: Final[str] = f"""
