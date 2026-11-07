@@ -185,6 +185,82 @@ def test_master_view_counterparty_commit_persists_to_database() -> None:
     assert saved_cp.invoice_number == test_invoice
 
 
+def test_master_view_account_edit_and_add_commit_persists_to_database() -> None:
+    """Verify modifying an initial FIXED_LIABILITY account and adding a new account succeed without AccountType error."""
+    from app.core_foundation import DI, run_async
+    from app.domain_contracts import Account, AccountType
+
+    async def _ensure_seeded() -> list[Account]:
+        async with DI.get_master_service() as ms:
+            await seed_accounts_with_service(ms.repository)
+            return await ms.get_accounts()
+
+    initial_accs = run_async(_ensure_seeded())
+    fixed_liab_acc = next(
+        (a for a in initial_accs if a.type == AccountType.FIXED_LIABILITY), None
+    )
+    assert fixed_liab_acc is not None
+
+    at = AppTest.from_file(
+        str(_REPO_ROOT / "app" / "ui" / "views" / "master_view.py"),
+        default_timeout=15,
+    )
+    at.run()
+
+    acc_df = at.dataframe[1].value
+    row_indices = acc_df.index[acc_df["id"] == fixed_liab_acc.id].tolist()
+    assert len(row_indices) == 1
+    row_idx = str(row_indices[0])
+
+    current_ver = at.session_state.get("editor_accounts_version", 0)
+    current_key = f"editor_accounts_v{current_ver}"
+    new_code = f"98{current_ver:02d}"
+    new_name = f"新規追加科目_{current_ver}"
+    updated_desc = f"更新後説明_{current_ver}"
+
+    at.session_state[current_key] = {
+        "added_rows": [
+            {
+                "code": new_code,
+                "name": new_name,
+                "type": "流動資産",
+                "description": float("nan"),
+            }
+        ],
+        "edited_rows": {row_idx: {"description": updated_desc}},
+        "deleted_rows": [],
+    }
+    at.run()
+
+    save_btns = [
+        b for b in at.button if b.key and "btn_commit_editor_accounts" in b.key
+    ]
+    assert len(save_btns) == 1
+    save_btns[0].click().run()
+    assert not at.exception
+    assert len(at.error) == 0, (
+        f"Unexpected errors during commit: {[e.value for e in at.error]}"
+    )
+
+    async def _fetch_accounts_and_cleanup() -> tuple[Account | None, Account | None]:
+        async with DI.get_master_service() as ms:
+            accs = await ms.get_accounts()
+            edited_a = next((a for a in accs if a.id == fixed_liab_acc.id), None)
+            added_a = next((a for a in accs if a.code == new_code), None)
+            if added_a and added_a.id is not None:
+                await ms.delete_account(added_a.id)
+            return edited_a, added_a
+
+    edited_res, added_res = run_async(_fetch_accounts_and_cleanup())
+    assert edited_res is not None
+    assert edited_res.description == updated_desc
+    assert edited_res.type == AccountType.FIXED_LIABILITY
+    assert added_res is not None
+    assert added_res.name == new_name
+    assert added_res.type == AccountType.CURRENT_ASSET
+    assert added_res.description is None
+
+
 # --- 2. End-to-End System Integration Tests ---
 @pytest.mark.asyncio
 async def test_full_system_accounting_cycle(container: Container) -> None:

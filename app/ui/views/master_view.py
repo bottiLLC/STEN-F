@@ -348,7 +348,61 @@ with tab_op:
 
 # 4. 勘定科目マスタ
 with tab_acc:
-    st.subheader("勘定科目マスタ一括管理")
+    col_acc_head, col_acc_add = st.columns([4, 1])
+    with col_acc_head:
+        st.subheader("勘定科目マスタ一括管理")
+        st.caption("勘定科目の登録、編集、および一括削除を管理します。")
+    with col_acc_add:
+        with st.popover("新規科目追加", icon=":material/add:"):
+            st.markdown("**新規勘定科目の登録**")
+            with st.form("form_create_account", border=False):
+                c_code, c_type = st.columns([1, 2])
+                new_code_in = c_code.text_input(
+                    "科目コード", placeholder="例: 1195", max_chars=10
+                )
+                new_type_label = c_type.selectbox(
+                    "勘定区分", options=[t.label for t in AccountType]
+                )
+                new_name_in = st.text_input("科目名", placeholder="例: 仮払金")
+                new_desc_in = st.text_input(
+                    "説明・用途（任意）", placeholder="例: 出張等の仮渡金"
+                )
+                _, c_add_btn = st.columns([2, 1])
+                with c_add_btn:
+                    add_submitted = st.form_submit_button("登録", type="primary")
+
+                if add_submitted:
+                    clean_code = new_code_in.strip()
+                    clean_name = new_name_in.strip()
+                    clean_desc = new_desc_in.strip() or None
+                    if not clean_code:
+                        st.error("科目コードを入力してください。")
+                    elif not clean_name:
+                        st.error("科目名を入力してください。")
+                    else:
+                        try:
+                            target_type = AccountType.from_any(new_type_label)
+                            call_master(
+                                lambda s: s.save_account(
+                                    Account(
+                                        code=clean_code,
+                                        name=clean_name,
+                                        type=target_type,
+                                        description=clean_desc,
+                                    )
+                                )
+                            )
+                            st.session_state["editor_accounts_version"] = (
+                                st.session_state.get("editor_accounts_version", 0) + 1
+                            )
+                            st.toast(
+                                f"勘定科目「{clean_name}」を登録しました",
+                                icon=":material/check:",
+                            )
+                            st.rerun()
+                        except Exception as err:
+                            st.error(f"登録エラー: {err}")
+
     acc_list = call_master(lambda s: s.get_accounts())
     acc_df = pd.DataFrame(
         [
@@ -376,46 +430,101 @@ with tab_acc:
         async def do_commit() -> list[str]:
             errors: list[str] = []
             async with DI.get_master_service() as s:
-                for r in added:
-                    if r.get("code") and r.get("name") and r.get("type"):
-                        t_val = str(r["type"])
-                        try:
-                            acc_type = AccountType.from_label(t_val)
-                        except ValueError:
-                            acc_type = AccountType(t_val)
-                        try:
-                            await s.save_account(
-                                Account(
-                                    code=str(r["code"]),
-                                    name=str(r["name"]),
-                                    type=acc_type,
-                                    description=r.get("description"),
-                                )
+                for idx, r in enumerate(added):
+                    raw_code_val = r.get("code")
+                    raw_name_val = r.get("name")
+                    raw_type_val = r.get("type")
+                    clean_code = (
+                        ""
+                        if pd.isna(raw_code_val) or raw_code_val is None
+                        else str(raw_code_val).strip()
+                    )
+                    clean_name = (
+                        ""
+                        if pd.isna(raw_name_val) or raw_name_val is None
+                        else str(raw_name_val).strip()
+                    )
+                    if (
+                        not clean_code
+                        or not clean_name
+                        or pd.isna(raw_type_val)
+                        or not raw_type_val
+                    ):
+                        errors.append(
+                            f"追加行 {idx + 1}: 科目コード・科目名・勘定区分をすべて入力してください。"
+                        )
+                        continue
+                    try:
+                        acc_type = AccountType.from_any(raw_type_val)
+                    except ValueError as err:
+                        errors.append(
+                            f"勘定科目「{clean_name}」の勘定区分が不正です: {err}"
+                        )
+                        continue
+                    raw_desc = r.get("description")
+                    clean_desc = (
+                        None
+                        if (
+                            pd.isna(raw_desc)
+                            or raw_desc is None
+                            or str(raw_desc).strip() == ""
+                        )
+                        else str(raw_desc).strip()
+                    )
+                    try:
+                        await s.save_account(
+                            Account(
+                                code=clean_code,
+                                name=clean_name,
+                                type=acc_type,
+                                description=clean_desc,
                             )
-                        except Exception as err:
-                            errors.append(
-                                f"勘定科目「{r.get('name')}」の保存に失敗しました: {err}"
-                            )
+                        )
+                    except Exception as err:
+                        errors.append(
+                            f"勘定科目「{clean_name}」の保存に失敗しました: {err}"
+                        )
                 for pk, chg in edited.items():
                     cur = next((a for a in acc_list if a.id == pk), None)
                     if cur:
-                        t_val = str(chg.get("type", cur.type))
+                        raw_type = chg.get("type", cur.type)
                         try:
-                            acc_type = AccountType.from_label(t_val)
-                        except ValueError:
-                            acc_type = (
-                                AccountType(t_val)
-                                if isinstance(t_val, str)
-                                else cur.type
+                            acc_type = AccountType.from_any(raw_type)
+                        except ValueError as err:
+                            errors.append(
+                                f"勘定科目「{cur.name}」の勘定区分が不正です: {err}"
                             )
+                            continue
+                        raw_code_val = chg.get("code", cur.code)
+                        raw_name_val = chg.get("name", cur.name)
+                        clean_code = (
+                            ""
+                            if pd.isna(raw_code_val) or raw_code_val is None
+                            else str(raw_code_val).strip()
+                        )
+                        clean_name = (
+                            ""
+                            if pd.isna(raw_name_val) or raw_name_val is None
+                            else str(raw_name_val).strip()
+                        )
+                        raw_desc = chg.get("description", cur.description)
+                        clean_desc = (
+                            None
+                            if (
+                                pd.isna(raw_desc)
+                                or raw_desc is None
+                                or str(raw_desc).strip() == ""
+                            )
+                            else str(raw_desc).strip()
+                        )
                         try:
                             await s.save_account(
                                 Account(
                                     id=pk,
-                                    code=str(chg.get("code", cur.code)),
-                                    name=str(chg.get("name", cur.name)),
+                                    code=clean_code,
+                                    name=clean_name,
                                     type=acc_type,
-                                    description=chg.get("description", cur.description),
+                                    description=clean_desc,
                                 )
                             )
                         except Exception as err:

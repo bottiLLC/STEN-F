@@ -634,6 +634,44 @@ def test_account_type_from_label_with_invalid_label_raises_value_error(
 
 
 @pytest.mark.parametrize(
+    ("raw_input", "expected_type"),
+    [
+        (AccountType.FIXED_LIABILITY, AccountType.FIXED_LIABILITY),
+        ("固定負債", AccountType.FIXED_LIABILITY),
+        ("FixedLiability", AccountType.FIXED_LIABILITY),
+        ("FIXED_LIABILITY", AccountType.FIXED_LIABILITY),
+        ("AccountType.FIXED_LIABILITY", AccountType.FIXED_LIABILITY),
+        ("fixedliability", AccountType.FIXED_LIABILITY),
+        ("流動資産", AccountType.CURRENT_ASSET),
+        ("AccountType.CURRENT_ASSET", AccountType.CURRENT_ASSET),
+    ],
+)
+def test_account_type_from_any_resolves_all_representations(
+    raw_input: AccountType | str, expected_type: AccountType
+) -> None:
+    """Verify AccountType.from_any resolves enum instances, labels, values, names, and prefixed strings."""
+    # Arrange & Act
+    resolved = AccountType.from_any(raw_input)
+
+    # Assert
+    assert resolved == expected_type
+    assert isinstance(resolved, AccountType)
+    assert str(AccountType.FIXED_LIABILITY) == "FixedLiability"
+
+
+@pytest.mark.parametrize(
+    "invalid_input",
+    ["", "UnknownType", "AccountType.NON_EXISTENT", 123],
+)
+def test_account_type_from_any_with_invalid_input_raises_value_error(
+    invalid_input: object,
+) -> None:
+    """Verify AccountType.from_any raises ValueError on unresolvable or non-string inputs."""
+    with pytest.raises(ValueError):
+        AccountType.from_any(invalid_input)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
     ("debit", "credit", "expected_amount"),
     [
         (5000, 0, 5000),

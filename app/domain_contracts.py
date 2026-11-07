@@ -6,7 +6,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import datetime as _dt
 from datetime import date, datetime, timezone
-from enum import Enum
+from enum import StrEnum
 import re
 from typing import Final, TypedDict
 import unicodedata
@@ -48,7 +48,7 @@ def _normalize_invoice_number(v: object) -> str | None:
 
 
 # --- 1. Datum Plane (Enums, Constants, and Schemas) ---
-class AccountType(str, Enum):
+class AccountType(StrEnum):
     """Accounting classification category adhering to Japanese double-entry standards."""
 
     CURRENT_ASSET = "CurrentAsset"
@@ -104,6 +104,44 @@ class AccountType(str, Enum):
             if t.label == label:
                 return t
         raise ValueError(f"Unknown label: {label}")
+
+    @classmethod
+    def from_any(cls, value: AccountType | str) -> AccountType:
+        """Resolve AccountType enum variant from enum member, label, value, or enum string.
+
+        Args:
+            value: AccountType instance, localized label, enum value, member name, or repr string.
+
+        Returns:
+            Resolved AccountType enum member.
+
+        Raises:
+            ValueError: If value cannot be resolved to any AccountType.
+        """
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Cannot resolve AccountType from non-string value: {value!r}"
+            )
+        raw = value.strip()
+        for member in cls:
+            if member.label == raw:
+                return member
+        try:
+            return cls(raw)
+        except ValueError:
+            pass
+        clean = raw.removeprefix("AccountType.")
+        if clean in cls.__members__:
+            return cls[clean]
+        for member in cls:
+            if (
+                member.value.lower() == raw.lower()
+                or member.name.lower() == clean.lower()
+            ):
+                return member
+        raise ValueError(f"Unknown AccountType value or label: '{value}'")
 
 
 _RAW_ACCOUNTS: Final[tuple[tuple[str, str, AccountType, str], ...]] = (
