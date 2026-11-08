@@ -58,7 +58,11 @@ def test_journal_view_interactions_renders_essential_widgets() -> None:
     assert len(at.tabs) >= 1
     assert len(at.date_input) >= 1
     assert len(at.file_uploader) >= 1
-    assert len(at.checkbox) >= 1
+    assert len(at.checkbox) >= 2
+    assert any(
+        cb.label == "取消(赤伝)処理したものを非表示" and cb.value is True
+        for cb in at.checkbox
+    )
 
 
 def test_ledger_view_interactions_renders_essential_widgets() -> None:
@@ -592,3 +596,63 @@ def test_logging_configuration_rotating_handler_and_noise_filter(
     )
     assert noise_filter.filter(noisy_record) is False
     assert noise_filter.filter(clean_record) is True
+
+
+@pytest.mark.asyncio
+async def test_journal_history_cancellation_filtering_isolates_cancelled_pairs(
+    container: Container,
+) -> None:
+    """Verify that cancellation filter properly isolates red slips and original cancelled entries."""
+    today = date.today()
+    async with container.master_service_scope() as ms:
+        accounts = await ms.get_accounts()
+        cash = next(a for a in accounts if a.code == "1110")
+        sales = next(a for a in accounts if a.code == "4110")
+
+    async with container.journal_service_scope() as js:
+        # 1. Valid active transaction
+        tx1 = await js.add_journal_entry(
+            Transaction(
+                occurred_at=today,
+                description="有効な売上",
+                lines=[
+                    TransactionLine(account_id=cash.id, debit=10000, credit=0),
+                    TransactionLine(account_id=sales.id, debit=0, credit=10000),
+                ],
+            )
+        )
+        # 2. Erroneous transaction to be cancelled
+        tx2 = await js.add_journal_entry(
+            Transaction(
+                occurred_at=today,
+                description="誤謬入力仕訳",
+                lines=[
+                    TransactionLine(account_id=cash.id, debit=5000, credit=0),
+                    TransactionLine(account_id=sales.id, debit=0, credit=5000),
+                ],
+            )
+        )
+        # 3. Create reversing entry (red slip) for tx2
+        await js.reverse_journal_entry(tx2, reason="誤謬入力の取消")
+
+        all_entries = await js.get_entries()
+        assert len(all_entries) == 3
+
+        cancelled_orig_ids = {
+            t.reversed_transaction_id
+            for t in all_entries
+            if t.reversed_transaction_id is not None
+        }
+        assert tx2 in cancelled_orig_ids
+
+        # When exclude_cancelled is applied: only tx1 remains
+        filtered = [
+            t
+            for t in all_entries
+            if t.id not in cancelled_orig_ids
+            and t.reversed_transaction_id is None
+            and not (t.description and t.description.startswith("[取消:"))
+        ]
+        assert len(filtered) == 1
+        assert filtered[0].id == tx1
+        assert filtered[0].description == "有効な売上"

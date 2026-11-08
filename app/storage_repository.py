@@ -137,6 +137,9 @@ class TransactionTable(Base):
     counterparty: Mapped[str | None] = mapped_column(nullable=True)
     invoice_number: Mapped[str | None] = mapped_column(nullable=True)
     evidence_path: Mapped[str | None] = mapped_column(nullable=True)
+    reversed_transaction_id: Mapped[int | None] = mapped_column(
+        index=True, nullable=True
+    )
     lines: Mapped[list[TransactionLineTable]] = relationship(
         "TransactionLineTable",
         back_populates="transaction",
@@ -199,6 +202,7 @@ def _to_domain_transaction(row: TransactionTable) -> Transaction:
         counterparty=row.counterparty,
         invoice_number=row.invoice_number,
         evidence_path=row.evidence_path,
+        reversed_transaction_id=getattr(row, "reversed_transaction_id", None),
     )
 
 
@@ -356,6 +360,21 @@ async def init_db(target_engine: AsyncEngine | None = None) -> None:
                 )
             except Exception as e:
                 log.warning("db_migration_skip", column="recorded_at", error=str(e))
+        try:
+            await conn.execute(
+                text("SELECT reversed_transaction_id FROM transactions LIMIT 1")
+            )
+        except Exception:
+            try:
+                await conn.execute(
+                    text(
+                        "ALTER TABLE transactions ADD COLUMN reversed_transaction_id INTEGER"
+                    )
+                )
+            except Exception as e:
+                log.warning(
+                    "db_migration_skip", column="reversed_transaction_id", error=str(e)
+                )
 
 
 class SQLAlchemyMasterRepository(IMasterRepository):
@@ -815,6 +834,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             counterparty=transaction.counterparty,
             invoice_number=transaction.invoice_number,
             evidence_path=transaction.evidence_path,
+            reversed_transaction_id=transaction.reversed_transaction_id,
         )
         self.session.add(db_tx)
         await self.session.flush()
@@ -876,6 +896,7 @@ class SQLAlchemyLedgerRepository(ILedgerRepository):
             lines=rev_lines,
             counterparty=orig.counterparty,
             invoice_number=orig.invoice_number,
+            reversed_transaction_id=original_tx_id,
         )
         return await self.add_transaction(rev_tx)
 

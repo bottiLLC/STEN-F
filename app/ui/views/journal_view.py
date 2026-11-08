@@ -58,11 +58,14 @@ tab_entry, tab_history = st.tabs(["振替伝票・AI仕訳入力", "仕訳帳 (G
 
 # 1. 振替伝票入力
 with tab_entry:
+    form_ver = int(st.session_state.get("journal_entry_form_version", 0))
+    is_submitting = bool(st.session_state.get("journal_tx_submitting", False))
+
     st.subheader("Step 1: 証憑のアップロード ＆ AI自動読取")
     uploaded_file = st.file_uploader(
         "領収書・請求書をドラッグ＆ドロップ",
         type=["pdf", "png", "jpg", "jpeg", "webp"],
-        key="journal_file_uploader",
+        key=f"journal_file_uploader_{form_ver}",
     )
 
     if uploaded_file is not None:
@@ -150,23 +153,27 @@ with tab_entry:
 
     col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 3, 2])
     with col_h1:
-        tx_date = st.date_input("取引日", value=ocr_date, key="tx_header_date")
+        tx_date = st.date_input(
+            "取引日", value=ocr_date, key=f"tx_header_date_{form_ver}"
+        )
     with col_h2:
         abs_choice = st.selectbox(
-            "よく使う摘要から選ぶ", abstract_options, key="tx_header_abs_choice"
+            "よく使う摘要から選ぶ",
+            abstract_options,
+            key=f"tx_header_abs_choice_{form_ver}",
         )
         tx_desc = st.text_input(
             "伝票摘要 (取引内容)",
             value=abs_choice
             if abs_choice
             else (ocr.description if ocr and ocr.description else ""),
-            key="tx_header_desc",
+            key=f"tx_header_desc_{form_ver}",
         )
     with col_h3:
         tx_cp = st.text_input(
             "取引先",
             value=ocr.merchant_name if ocr and ocr.merchant_name else "",
-            key="tx_header_cp",
+            key=f"tx_header_cp_{form_ver}",
         )
     with col_h4:
         tx_inv = st.text_input(
@@ -174,7 +181,7 @@ with tab_entry:
             value=ocr.invoice_registration_number
             if ocr and ocr.invoice_registration_number
             else "",
-            key="tx_header_inv",
+            key=f"tx_header_inv_{form_ver}",
         )
 
     d_init, c_init, init_amt = "", "", 0
@@ -233,7 +240,7 @@ with tab_entry:
         num_rows="dynamic",
         width="stretch",
         hide_index=True,
-        key="journal_voucher_lines_editor",
+        key=f"journal_voucher_lines_editor_{form_ver}",
     )
 
     tx_lines: list[TransactionLine] = []
@@ -282,9 +289,11 @@ with tab_entry:
             type="primary",
             icon=":material/check:",
             width="stretch",
-            disabled=not is_balanced,
+            disabled=(not is_balanced) or is_submitting,
+            key=f"btn_submit_tx_{form_ver}",
         )
-    if do_submit_tx:
+    if do_submit_tx and not is_submitting:
+        st.session_state["journal_tx_submitting"] = True
         new_tx = Transaction(
             occurred_at=tx_date,
             description=tx_desc.strip() if tx_desc else "振替仕訳",
@@ -307,12 +316,25 @@ with tab_entry:
                     else s.add_journal_entry(new_tx)
                 ),
             )
+            for k in [
+                f"journal_file_uploader_{form_ver}",
+                f"tx_header_date_{form_ver}",
+                f"tx_header_abs_choice_{form_ver}",
+                f"tx_header_desc_{form_ver}",
+                f"tx_header_cp_{form_ver}",
+                f"tx_header_inv_{form_ver}",
+                f"journal_voucher_lines_editor_{form_ver}",
+            ]:
+                st.session_state.pop(k, None)
             st.session_state["ocr_result"] = None
             st.session_state["ocr_bytes"] = None
             st.session_state["ocr_filename"] = None
+            st.session_state["journal_entry_form_version"] = form_ver + 1
+            st.session_state["journal_tx_submitting"] = False
             st.toast("仕訳が正常に登録されました", icon=":material/check_circle:")
             st.rerun()
         except Exception as e:
+            st.session_state["journal_tx_submitting"] = False
             st.error(f"仕訳登録エラー: {e}")
 
 
@@ -327,7 +349,7 @@ def render_journal_history_section(
         account_id_to_label: Mapping from account primary keys to human-readable labels.
     """
     st.subheader("仕訳帳 (General Journal) 一覧・検索・CSV出力")
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
+    col_f1, col_f2, col_f3 = st.columns([2, 2, 3])
     with col_f1:
         s_date = st.date_input(
             "開始日",
@@ -343,13 +365,63 @@ def render_journal_history_section(
     with col_f3:
         st.write("")
         st.write("")
-        evidence_only = st.checkbox(
-            "証憑添付ありのみ表示", value=False, key="hist_evidence_only"
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            evidence_only = st.checkbox(
+                "証憑添付ありのみ表示", value=False, key="hist_evidence_only"
+            )
+        with col_c2:
+            exclude_cancelled = st.checkbox(
+                "取消(赤伝)処理したものを非表示",
+                value=True,
+                key="hist_exclude_cancelled",
+            )
+
+    all_txs = call_journal(lambda s: s.get_entries())
+    cancelled_orig_ids: set[int] = {
+        tx.reversed_transaction_id
+        for tx in all_txs
+        if tx.reversed_transaction_id is not None
+    }
+
+    def is_red_slip(tx: Transaction) -> bool:
+        return tx.reversed_transaction_id is not None or (
+            bool(tx.description) and tx.description.startswith("[取消:")
         )
 
-    entries = call_journal(
-        lambda s: s.get_entries(start_date=s_date, end_date=e_date),
-    )
+    # Legacy fallback pairing for older database rows without reversed_transaction_id
+    for tx in all_txs:
+        if (
+            tx.reversed_transaction_id is None
+            and tx.description
+            and tx.description.startswith("[取消:")
+        ):
+            target_desc = (
+                tx.description.split("]", 1)[-1].strip()
+                if "]" in tx.description
+                else ""
+            )
+            for cand in all_txs:
+                if (
+                    cand.id is not None
+                    and tx.id is not None
+                    and cand.id < tx.id
+                    and cand.id not in cancelled_orig_ids
+                    and not is_red_slip(cand)
+                    and (cand.description or "").strip() == target_desc
+                ):
+                    cancelled_orig_ids.add(cand.id)
+                    break
+
+    entries = [
+        tx for tx in all_txs if tx.occurred_at and s_date <= tx.occurred_at <= e_date
+    ]
+    if exclude_cancelled:
+        entries = [
+            tx
+            for tx in entries
+            if tx.id not in cancelled_orig_ids and not is_red_slip(tx)
+        ]
     if evidence_only:
         entries = [tx for tx in entries if tx.evidence_path]
 
@@ -472,10 +544,18 @@ def render_journal_history_section(
                 st.caption(
                     "※ 会計不変制約（Rule 1）に基づき、過去仕訳の上書き更新・削除は禁止されています。貸借を反転させた赤伝（反対仕訳）を発行して残高を相殺します。"
                 )
+                is_already_reversed = target_id in cancelled_orig_ids or is_red_slip(
+                    selected_tx
+                )
+                if is_already_reversed:
+                    st.info(
+                        "※ この仕訳は既に取消（赤伝）処理済み、または赤伝仕訳のため再取消できません。"
+                    )
                 rev_reason = st.text_input(
                     "取消理由",
                     value="入力誤謬による取消",
                     key=f"rev_reason_{target_id}",
+                    disabled=is_already_reversed,
                 )
                 st.html('<div class="sten-destructive-wrapper">')
                 do_rev = st.button(
@@ -483,10 +563,11 @@ def render_journal_history_section(
                     type="secondary",
                     icon=":material/swap_horiz:",
                     width="stretch",
+                    disabled=is_already_reversed,
                     key=f"rev_btn_{target_id}",
                 )
                 st.html("</div>")
-                if do_rev:
+                if do_rev and not is_already_reversed:
                     try:
                         rev_id = call_journal(
                             lambda s: s.reverse_journal_entry(

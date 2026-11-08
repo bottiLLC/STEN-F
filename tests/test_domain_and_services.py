@@ -853,11 +853,20 @@ async def test_journal_service_reversing_entry_workflow_rectifies_transaction(
         assert orig_tx is not None
         assert rev_tx is not None
         assert "[取消: 金額誤認]" in rev_tx.description
+        assert rev_tx.reversed_transaction_id == tx_id
         assert rev_tx.occurred_at == orig_tx.occurred_at
         assert rev_tx.recorded_at is not None
         # Verify dual timestamps are set
         assert orig_tx.occurred_at == open_fy.start_date
         assert orig_tx.recorded_at is not None
+
+        # Verify Rule 5 Anti-Double-Reversal: Reversing original transaction a second time is rejected
+        with pytest.raises(ValueError, match="既に取消"):
+            await js.reverse_journal_entry(tx_id, reason="二重取消テスト")
+
+        # Verify Rule 5 Anti-Double-Reversal: Reversing the red slip itself is rejected
+        with pytest.raises(ValueError, match="取消仕訳（赤伝）自体"):
+            await js.reverse_journal_entry(rev_id, reason="赤伝の取消テスト")
 
 
 @pytest.mark.asyncio

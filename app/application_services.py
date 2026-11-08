@@ -699,6 +699,16 @@ class JournalService:
         if orig.description.startswith("[取消:"):
             raise ValueError("取消仕訳（赤伝）自体を再度取り消すことはできません。")
 
+        already_reversed_ids = {
+            t.reversed_transaction_id
+            for t in all_txs
+            if t.reversed_transaction_id is not None
+        }
+        if transaction_id in already_reversed_ids:
+            raise ValueError(
+                f"仕訳ID {transaction_id} は既に取消（赤伝）処理済みです。"
+            )
+
         target_date = cancel_date or orig.occurred_at or orig.date
         if not target_date:
             raise ValueError("Transaction requires occurred_at or date")

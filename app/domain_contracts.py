@@ -384,6 +384,10 @@ class Transaction(BaseModel):
     counterparty: str | None = None
     invoice_number: str | None = Field(None, pattern=r"^T[0-9]{13}$")
     evidence_path: str | None = None
+    reversed_transaction_id: int | None = Field(
+        default=None,
+        description="Target original transaction ID if this entry is a reversing red slip",
+    )
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
