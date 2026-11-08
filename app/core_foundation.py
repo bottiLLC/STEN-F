@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
 from decimal import Decimal, ROUND_HALF_UP
 import logging
+from logging.handlers import RotatingFileHandler
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TypeVar, cast
 
@@ -133,16 +135,57 @@ def normalize_amount(value: object) -> int:
         return 0
 
 
+class WindowsSocketNoiseFilter(logging.Filter):
+    """Suppress benign Windows async socket disconnects and event loop pipe noise."""
+
+    _SUPPRESSED_PATTERNS: Final[tuple[str, ...]] = (
+        "WinError 10054",
+        "event loop self pipe",
+        "connection reset by peer",
+        "wsaccel",
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Filter log records matching suppressed noise patterns."""
+        msg = record.getMessage().lower()
+        if any(p.lower() in msg for p in self._SUPPRESSED_PATTERNS):
+            return False
+        if record.exc_info and record.exc_info[1]:
+            exc_msg = str(record.exc_info[1]).lower()
+            if any(p.lower() in exc_msg for p in self._SUPPRESSED_PATTERNS):
+                return False
+        return True
+
+
 def _configure_logging(log_dir: Path) -> structlog.stdlib.BoundLogger:
     """Configure structured logging and isolate file execution logs strictly under log_dir."""
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "app.log"
     std_logger = logging.getLogger("sten_f")
     std_logger.setLevel(logging.INFO)
+
+    noise_filter = WindowsSocketNoiseFilter()
+
     if not std_logger.handlers:
-        fh = logging.FileHandler(log_file, encoding="utf-8")
-        fh.setFormatter(logging.Formatter("%(message)s"))
-        std_logger.addHandler(fh)
+        rfh = RotatingFileHandler(
+            log_file,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        rfh.setFormatter(logging.Formatter("%(message)s"))
+        rfh.addFilter(noise_filter)
+        std_logger.addHandler(rfh)
+
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(logging.Formatter("%(message)s"))
+        sh.addFilter(noise_filter)
+        std_logger.addHandler(sh)
+
+    for noise_src in ("tornado", "asyncio", "streamlit"):
+        sub_logger = logging.getLogger(noise_src)
+        sub_logger.addFilter(noise_filter)
+
     structlog.configure(
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),

@@ -20,24 +20,6 @@ import pandas as pd
 from pydantic import ValidationError
 import streamlit as st
 
-
-def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
-    """Calculate start and end boundary dates for succeeding fiscal period.
-
-    Args:
-        current_end: Ending date of closing fiscal period.
-
-    Returns:
-        Tuple containing next start date and next end date.
-    """
-    next_start = current_end + timedelta(days=1)
-    try:
-        target = next_start.replace(year=next_start.year + 1)
-    except ValueError:
-        target = next_start.replace(year=next_start.year + 1, month=2, day=28)
-    return next_start, target - timedelta(days=1)
-
-
 from app.core_foundation import (
     DI,
     call_fiscal_year,
@@ -59,6 +41,24 @@ from app.ui.editor import (
     format_counterparty_validation_error,
     render_accounting_editor,
 )
+
+
+def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
+    """Calculate start and end boundary dates for succeeding fiscal period.
+
+    Args:
+        current_end: Ending date of closing fiscal period.
+
+    Returns:
+        Tuple containing next start date and next end date.
+    """
+    next_start = current_end + timedelta(days=1)
+    try:
+        target = next_start.replace(year=next_start.year + 1)
+    except ValueError:
+        target = next_start.replace(year=next_start.year + 1, month=2, day=28)
+    return next_start, target - timedelta(days=1)
+
 
 st.header("マスタ・システム設定", divider="gray")
 st.caption(

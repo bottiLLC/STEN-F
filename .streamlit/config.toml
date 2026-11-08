@@ -1,10 +1,19 @@
-[server]
-headless = false
-enableXsrfProtection = true
-maxUploadSize = 20
-
 [browser]
 gatherUsageStats = false
+
+[server]
+headless = false
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 200
+maxCacheDataSize = "1024mb"
+
+[runner]
+magicEnabled = false
+connectionDefaultTTL = 300
+
+[client]
+showErrorDetails = "stacktrace"
 
 [theme]
 base = "light"
@@ -13,4 +22,3 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F8F9FA"
 textColor = "#1F2937"
 font = "sans serif"
-

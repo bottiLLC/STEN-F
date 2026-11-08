@@ -89,8 +89,8 @@ def render_trial_balance_section(selected_fy: FiscalYear) -> None:
     tot_db = sum(r.debit_balance for r in tb_rows)
     tot_cb = sum(r.credit_balance for r in tb_rows)
     c1, c2, c3 = st.columns(3)
-    c1.metric("借方残高合計", f"¥{tot_db:,}")
-    c2.metric("貸方残高合計", f"¥{tot_cb:,}")
+    c1.metric("借方残高合計", f"¥{tot_db:,}", border=True)
+    c2.metric("貸方残高合計", f"¥{tot_cb:,}", border=True)
     if tot_db == tot_cb:
         c3.success("貸借一致 (バランス検証 OK)")
     else:

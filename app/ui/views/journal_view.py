@@ -81,21 +81,19 @@ with tab_entry:
                 width="stretch",
             )
 
-        col_btn1, col_btn2, _ = st.columns([1, 1, 3])
-        with col_btn1:
+        with st.container(horizontal=True):
             run_fast = st.button(
                 "通常読取",
                 key="btn_run_ocr_fast",
                 icon=":material/bolt:",
-                width="stretch",
+                width="content",
             )
-        with col_btn2:
             run_boost = st.button(
                 "高精度読取",
                 type="primary",
                 key="btn_run_ocr_boost",
                 icon=":material/auto_awesome:",
-                width="stretch",
+                width="content",
             )
 
         if run_fast or run_boost:
@@ -256,12 +254,13 @@ with tab_entry:
     total_credit = sum(line.credit for line in tx_lines)
 
     col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("借方合計", f"¥{total_debit:,}")
-    col_m2.metric("貸方合計", f"¥{total_credit:,}")
+    col_m1.metric("借方合計", f"¥{total_debit:,}", border=True)
+    col_m2.metric("貸方合計", f"¥{total_credit:,}", border=True)
     is_balanced = total_debit == total_credit > 0
     col_m3.metric(
         "貸借バランス(差額)",
         "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
+        border=True,
     )
 
     # Active evidence attachment indicator

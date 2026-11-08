@@ -394,6 +394,7 @@ _app_mod = importlib.util.module_from_spec(_app_spec)
 _app_spec.loader.exec_module(_app_mod)
 resolve_active_fiscal_year = _app_mod.resolve_active_fiscal_year
 load_sidebar_metadata = _app_mod.load_sidebar_metadata
+_render_system_diagnostic = _app_mod._render_system_diagnostic
 
 
 def test_resolve_active_fiscal_year_with_mixed_statuses_returns_open_instance() -> None:
@@ -526,3 +527,68 @@ def test_financial_statements_render_functions_invoke_st_html(
     assert len(captured_html) == 2
     assert "貸借対照表" in captured_html[0]
     assert "損益計算書" in captured_html[1]
+
+
+def test_system_diagnostic_sidebar_harness_renders_successfully(
+    tmp_path: Path,
+) -> None:
+    """Verify system diagnostic harness extracts logs, formats triage block, and increments run count."""
+    import streamlit as st
+
+    log_file = tmp_path / "app.log"
+    log_file.write_text(
+        "line1: normal operation\nline2: state transition\nline3: success\n",
+        encoding="utf-8",
+    )
+    st.session_state.clear()
+    st.session_state["test_key"] = "test_val"
+
+    _render_system_diagnostic(log_file)
+    assert st.session_state["_run_count"] == 1
+
+    _render_system_diagnostic(log_file)
+    assert st.session_state["_run_count"] == 2
+
+
+def test_logging_configuration_rotating_handler_and_noise_filter(
+    tmp_path: Path,
+) -> None:
+    """Verify structured logging configures RotatingFileHandler, StreamHandler, and noise filter."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+    from app.core_foundation import WindowsSocketNoiseFilter, _configure_logging
+
+    log_dir = tmp_path / "logs"
+    _configure_logging(log_dir)
+
+    std_logger = logging.getLogger("sten_f")
+    has_rfh = any(isinstance(h, RotatingFileHandler) for h in std_logger.handlers)
+    has_sh = any(
+        isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+        for h in std_logger.handlers
+    )
+    assert has_rfh, "RotatingFileHandler must be attached to sten_f logger"
+    assert has_sh, "StreamHandler must be attached to sten_f logger"
+
+    # Verify filter
+    noise_filter = WindowsSocketNoiseFilter()
+    noisy_record = logging.LogRecord(
+        name="tornado.general",
+        level=logging.WARNING,
+        pathname="",
+        lineno=0,
+        msg="Exception in callback: [WinError 10054] An existing connection was forcibly closed",
+        args=(),
+        exc_info=None,
+    )
+    clean_record = logging.LogRecord(
+        name="sten_f",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="Normal journal entry created",
+        args=(),
+        exc_info=None,
+    )
+    assert noise_filter.filter(noisy_record) is False
+    assert noise_filter.filter(clean_record) is True
