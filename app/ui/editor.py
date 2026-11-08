@@ -117,6 +117,8 @@ def render_accounting_editor(
         if st.button(
             "取消",
             key=f"btn_cancel_{current_key}",
+            icon=":material/close:",
+            width="stretch",
             help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
         ):
             st.session_state.pop(pending_key, None)
@@ -128,6 +130,8 @@ def render_accounting_editor(
             "保存",
             type="primary",
             key=f"btn_commit_{current_key}",
+            icon=":material/save:",
+            width="stretch",
         ):
             try:
                 commit_ok = on_commit(added_list, pk_edited_map, pk_deleted_list)

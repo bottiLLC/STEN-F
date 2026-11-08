@@ -149,6 +149,7 @@ def render_financial_statements_section(selected_fy: FiscalYear) -> None:
             "PDF生成",
             type="primary",
             icon=":material/picture_as_pdf:",
+            width="stretch",
         ):
 
             async def generate_pdf(fy: FiscalYear) -> bytes:
@@ -169,6 +170,7 @@ def render_financial_statements_section(selected_fy: FiscalYear) -> None:
                     file_name=f"report_{selected_fy.name}.pdf",
                     mime="application/pdf",
                     icon=":material/download:",
+                    width="stretch",
                 )
             except Exception as e:
                 st.error(f"PDF 生成エラー: {e}")

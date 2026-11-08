@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
+import asyncio
 from typing import Final
 
 # Prepend script root to sys.path for deterministic module resolution
@@ -61,7 +61,12 @@ def _render_sidebar_backup() -> None:
     current_dir = str(get_backup_dir())
     new_dir = st.text_input("保存先フォルダ", value=current_dir)
     if new_dir != current_dir:
-        if st.button("パス更新", type="secondary"):
+        if st.button(
+            "パス更新",
+            type="secondary",
+            icon=":material/folder:",
+            width="stretch",
+        ):
             save_res = set_backup_dir(new_dir)
             if save_res["success"]:
                 st.success(save_res["message"])
@@ -69,7 +74,12 @@ def _render_sidebar_backup() -> None:
             else:
                 st.error(save_res["message"])
 
-    if st.button("バックアップ", type="primary", icon=":material/backup:"):
+    if st.button(
+        "バックアップ",
+        type="primary",
+        icon=":material/backup:",
+        width="stretch",
+    ):
         with st.spinner("圧縮・整合性検証中..."):
             res = run_backup(app_name="app")
         if res["success"]:
@@ -77,7 +87,7 @@ def _render_sidebar_backup() -> None:
             st.caption(f"完了日時: {res['timestamp']}")
             st.caption(f"保存先: {res['destination']}")
         else:
-            st.error(res["message"])
+            st.error(str(res["message"]))
 
 
 def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) -> None:

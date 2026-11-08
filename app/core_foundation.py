@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
 from decimal import Decimal, ROUND_HALF_UP
-from pathlib import Path
+import logging
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, TypeVar
+from typing import TYPE_CHECKING, Any, Final, TypeVar, cast
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
     DATA_DIR: Path = Path(__file__).resolve().parent.parent / "data"
     STORAGE_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "storage"
     BACKUP_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "backups"
+    LOGS_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "logs"
 
     DB_NAME: str = "sten_f.db"
     DATABASE_URL: str | None = None
@@ -90,6 +92,7 @@ class Settings(BaseSettings):
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
         self.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        self.LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
         if not self.DATABASE_URL or "bookkeeping.db" in self.DATABASE_URL:
             db_path = self.DATA_DIR / self.DB_NAME
@@ -130,7 +133,30 @@ def normalize_amount(value: object) -> int:
         return 0
 
 
-logger: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
+def _configure_logging(log_dir: Path) -> structlog.stdlib.BoundLogger:
+    """Configure structured logging and isolate file execution logs strictly under log_dir."""
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "app.log"
+    std_logger = logging.getLogger("sten_f")
+    std_logger.setLevel(logging.INFO)
+    if not std_logger.handlers:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setFormatter(logging.Formatter("%(message)s"))
+        std_logger.addHandler(fh)
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.add_log_level,
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger("sten_f"))
+
+
+logger: Final[structlog.stdlib.BoundLogger] = _configure_logging(settings.LOGS_DIR)
 log: Final[structlog.stdlib.BoundLogger] = logger
 
 

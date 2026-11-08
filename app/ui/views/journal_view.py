@@ -86,12 +86,16 @@ with tab_entry:
             run_fast = st.button(
                 "通常読取",
                 key="btn_run_ocr_fast",
+                icon=":material/bolt:",
+                width="stretch",
             )
         with col_btn2:
             run_boost = st.button(
                 "高精度読取",
                 type="primary",
                 key="btn_run_ocr_boost",
+                icon=":material/auto_awesome:",
+                width="stretch",
             )
 
         if run_fast or run_boost:
@@ -277,6 +281,8 @@ with tab_entry:
         do_submit_tx = st.button(
             "仕訳登録",
             type="primary",
+            icon=":material/check:",
+            width="stretch",
             disabled=not is_balanced,
         )
     if do_submit_tx:
@@ -305,7 +311,7 @@ with tab_entry:
             st.session_state["ocr_result"] = None
             st.session_state["ocr_bytes"] = None
             st.session_state["ocr_filename"] = None
-            st.success("仕訳が正常に登録されました！")
+            st.toast("仕訳が正常に登録されました", icon=":material/check_circle:")
             st.rerun()
         except Exception as e:
             st.error(f"仕訳登録エラー: {e}")
@@ -390,6 +396,7 @@ def render_journal_history_section(
             file_name=f"journal_{s_date}_{e_date}.csv",
             mime="text/csv",
             icon=":material/download:",
+            width="stretch",
         )
 
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -437,6 +444,7 @@ def render_journal_history_section(
                             else "image/jpeg"
                         ),
                         icon=":material/download:",
+                        width="stretch",
                         key=f"dl_evidence_{selected_tx.id}",
                     )
                     if is_evidence_pdf:
@@ -475,6 +483,7 @@ def render_journal_history_section(
                     "赤伝発行",
                     type="secondary",
                     icon=":material/swap_horiz:",
+                    width="stretch",
                     key=f"rev_btn_{target_id}",
                 )
                 st.html("</div>")

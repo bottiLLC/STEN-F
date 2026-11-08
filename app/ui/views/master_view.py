@@ -82,7 +82,7 @@ with tab_corp:
     st.subheader("自社・事業者情報設定")
     corp = call_master(lambda s: s.get_corporation())
 
-    with st.form("corp_form"):
+    with st.form("corp_form", border=True):
         corp_name = st.text_input("法人名 / 屋号", value=corp.name if corp else "")
         corp_addr = st.text_input(
             "本店所在地 / 住所", value=corp.address if corp and corp.address else ""
@@ -101,7 +101,9 @@ with tab_corp:
 
         _, col_btn_sub = st.columns([4, 1])
         with col_btn_sub:
-            corp_submitted = st.form_submit_button("保存", type="primary")
+            corp_submitted = st.form_submit_button(
+                "保存", type="primary", width="stretch"
+            )
         if corp_submitted:
             if not corp_name.strip():
                 st.error("法人名・屋号を入力してください。")
@@ -114,7 +116,7 @@ with tab_corp:
                     representative_name=corp_rep_name.strip() or None,
                 )
                 call_master(lambda s: s.save_corporation(updated_corp))
-                st.success("自社情報を保存しました！")
+                st.toast("自社情報を保存しました", icon=":material/check_circle:")
                 st.rerun()
 
 # 2. 会計年度・年度締め (ステートマシン遷移制御)
@@ -125,7 +127,7 @@ with tab_fy:
         # 【State 0: 未初期化状態】
         st.subheader("第1期 初期セットアップ")
         st.info("会計年度が未登録です。第1期の初期セットアップを行ってください。")
-        with st.form("initial_fy_setup_form"):
+        with st.form("initial_fy_setup_form", border=True):
             c_p, c_n = st.columns([1, 2])
             new_period = c_p.number_input("期数", min_value=1, value=1)
             new_name = c_n.text_input(
@@ -139,7 +141,9 @@ with tab_fy:
 
             _, col_fy_btn = st.columns([3, 1])
             with col_fy_btn:
-                fy_submitted = st.form_submit_button("第1期を作成", type="primary")
+                fy_submitted = st.form_submit_button(
+                    "第1期を作成", type="primary", width="stretch"
+                )
             if fy_submitted:
                 if new_start >= new_end:
                     st.error("期末日は期首日より後の日付を指定してください。")
@@ -154,7 +158,9 @@ with tab_fy:
                         status="OPEN",
                     )
                     call_master(lambda s: s.save_fiscal_year(new_fy))
-                    st.success("第1期会計年度を作成しました。")
+                    st.toast(
+                        "第1期会計年度を作成しました", icon=":material/check_circle:"
+                    )
                     st.rerun()
     else:
         # 【State 1: 通常運用（期中）状態】＆【State 2: 締め＆次期繰越処理】
@@ -205,7 +211,7 @@ with tab_fy:
                     st.text(f"期数: 第{next_period}期")
                     st.text(f"期間: {next_start} 〜 {next_end}")
 
-                with st.form("fy_rollover_form"):
+                with st.form("fy_rollover_form", border=True):
                     next_fy_name = st.text_input(
                         "次期年度名称",
                         value=default_next_name,
@@ -216,6 +222,7 @@ with tab_fy:
                         close_submitted = st.form_submit_button(
                             "確定して次期へ繰越",
                             type="primary",
+                            width="stretch",
                         )
                     if close_submitted:
                         if not next_fy_name.strip():
@@ -228,8 +235,9 @@ with tab_fy:
                                         curr_fy_id, next_fy_name.strip()
                                     )
                                 )
-                                st.success(
-                                    "年度締め処理が完了し、次期へ繰り越されました。"
+                                st.toast(
+                                    "年度締め処理が完了し、次期へ繰り越されました",
+                                    icon=":material/check_circle:",
                                 )
                                 st.rerun()
                             except Exception as e:
@@ -269,7 +277,7 @@ with tab_op:
             )
         ]
 
-        with st.form("opening_balance_form"):
+        with st.form("opening_balance_form", border=True):
             c_l, c_r = st.columns(2)
             op_d: dict[str, str] = {}
             op_c: dict[str, str] = {}
@@ -330,6 +338,7 @@ with tab_op:
                 op_submitted = st.form_submit_button(
                     "登録",
                     type="primary",
+                    width="stretch",
                     disabled=has_opening_entry,
                 )
             if op_submitted:
@@ -341,7 +350,9 @@ with tab_op:
                         call_journal(
                             lambda s: s.register_opening_balance(s_date, op_d, op_c)
                         )
-                        st.success("期首残高を登録しました！")
+                        st.toast(
+                            "期首残高を登録しました", icon=":material/check_circle:"
+                        )
                         st.rerun()
                     except ValueError as err:
                         st.error(f"登録エラー: {err}")
@@ -369,7 +380,9 @@ with tab_acc:
                 )
                 _, c_add_btn = st.columns([2, 1])
                 with c_add_btn:
-                    add_submitted = st.form_submit_button("登録", type="primary")
+                    add_submitted = st.form_submit_button(
+                        "登録", type="primary", width="stretch"
+                    )
 
                 if add_submitted:
                     clean_code = new_code_in.strip()
@@ -589,6 +602,8 @@ with tab_acc:
             do_delete = st.button(
                 "削除",
                 type="secondary",
+                icon=":material/delete:",
+                width="stretch",
                 key="btn_delete_selected_accounts",
             )
             st.html("</div>")
@@ -853,6 +868,8 @@ with tab_cp:
             do_delete_cp = st.button(
                 "削除",
                 type="secondary",
+                icon=":material/delete:",
+                width="stretch",
                 key="btn_delete_selected_counterparties",
             )
             st.html("</div>")
@@ -1009,6 +1026,8 @@ with tab_abs:
             do_delete_abs = st.button(
                 "削除",
                 type="secondary",
+                icon=":material/delete:",
+                width="stretch",
                 key="btn_delete_selected_abstracts",
             )
             st.html("</div>")
@@ -1041,7 +1060,7 @@ with tab_abs:
 with tab_sys:
     st.subheader("AI（Google Gemini）＆ システム設定")
     sys_conf = call_master(lambda s: s.get_system_settings())
-    with st.form("sys_form"):
+    with st.form("sys_form", border=True):
         api_key_input = st.text_input(
             "Gemini API キー",
             value=sys_conf.ai_api_key or settings.GEMINI_API_KEY or "",
@@ -1050,7 +1069,9 @@ with tab_sys:
         )
         _, col_sys_btn = st.columns([4, 1])
         with col_sys_btn:
-            sys_submitted = st.form_submit_button("保存", type="primary")
+            sys_submitted = st.form_submit_button(
+                "保存", type="primary", width="stretch"
+            )
         if sys_submitted:
             call_master(
                 lambda s: s.save_system_settings(
@@ -1061,5 +1082,5 @@ with tab_sys:
                     )
                 )
             )
-            st.success("システム設定を保存しました！")
+            st.toast("システム設定を保存しました", icon=":material/check_circle:")
             st.rerun()
