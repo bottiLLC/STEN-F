@@ -338,7 +338,6 @@ with tab_entry:
             st.error(f"仕訳登録エラー: {e}")
 
 
-
 def _resolve_evidence_mime(filename: str) -> str:
     """Resolve MIME type string from evidence filename extension."""
     lower_name = filename.lower()
@@ -623,16 +622,24 @@ def render_journal_history_section(
                 c = c_lines[i] if i < len(c_lines) else None
                 detail_rows.append(
                     {
-                        "借方科目": account_id_to_label.get(d.account_id, "") if d else "",
+                        "借方科目": account_id_to_label.get(d.account_id, "")
+                        if d
+                        else "",
                         "借方金額 (¥)": d.debit if d else 0,
-                        "貸方科目": account_id_to_label.get(c.account_id, "") if c else "",
+                        "貸方科目": account_id_to_label.get(c.account_id, "")
+                        if c
+                        else "",
                         "貸方金額 (¥)": c.credit if c else 0,
                         "行摘要": selected_tx.description or "",
                     }
                 )
             detail_cfg = {
-                "借方金額 (¥)": st.column_config.NumberColumn("借方金額 (¥)", format="¥%d"),
-                "貸方金額 (¥)": st.column_config.NumberColumn("貸方金額 (¥)", format="¥%d"),
+                "借方金額 (¥)": st.column_config.NumberColumn(
+                    "借方金額 (¥)", format="¥%d"
+                ),
+                "貸方金額 (¥)": st.column_config.NumberColumn(
+                    "貸方金額 (¥)", format="¥%d"
+                ),
             }
             st.dataframe(
                 pd.DataFrame(detail_rows),
@@ -659,7 +666,9 @@ def render_journal_history_section(
                 st.markdown("##### 証憑情報・操作")
                 if selected_tx.evidence_path:
                     file_service = DI.get_file_service()
-                    resolved = file_service.resolve_evidence_path(selected_tx.evidence_path)
+                    resolved = file_service.resolve_evidence_path(
+                        selected_tx.evidence_path
+                    )
                     if resolved and resolved.exists():
                         evidence_bytes = resolved.read_bytes()
                         evidence_filename = resolved.name
@@ -669,7 +678,9 @@ def render_journal_history_section(
                         )
                         col_btn_view, col_btn_dl = st.columns(2)
                         with col_btn_view:
-                            b64_evidence = base64.b64encode(evidence_bytes).decode("utf-8")
+                            b64_evidence = base64.b64encode(evidence_bytes).decode(
+                                "utf-8"
+                            )
                             st.iframe(
                                 _build_evidence_popup_html(b64_evidence, mime_type),
                                 height=42,
@@ -698,8 +709,8 @@ def render_journal_history_section(
                     st.caption(
                         "※ 会計不変制約（Rule 1）に基づき、過去仕訳の上書き更新・削除は禁止されています。貸借を反転させた赤伝（反対仕訳）を発行して残高を相殺します。"
                     )
-                    is_already_reversed = target_id in cancelled_orig_ids or is_red_slip(
-                        selected_tx
+                    is_already_reversed = (
+                        target_id in cancelled_orig_ids or is_red_slip(selected_tx)
                     )
                     if is_already_reversed:
                         st.info(
