@@ -65,6 +65,27 @@ def test_journal_view_interactions_renders_essential_widgets() -> None:
     )
 
 
+def test_evidence_mime_resolver_and_popup_builder() -> None:
+    """Verify evidence MIME resolution and self-contained window popup HTML generator."""
+    from app.ui.views.journal_view import (
+        _build_evidence_popup_html,
+        _resolve_evidence_mime,
+    )
+
+    assert _resolve_evidence_mime("receipt.pdf") == "application/pdf"
+    assert _resolve_evidence_mime("RECEIPT.PDF") == "application/pdf"
+    assert _resolve_evidence_mime("scan.png") == "image/png"
+    assert _resolve_evidence_mime("photo.webp") == "image/webp"
+    assert _resolve_evidence_mime("receipt.jpg") == "image/jpeg"
+    assert _resolve_evidence_mime("invoice.jpeg") == "image/jpeg"
+
+    html = _build_evidence_popup_html("SGVsbG8=", "application/pdf")
+    assert "証憑の表示" in html
+    assert "URL.createObjectURL(blob)" in html
+    assert "window.open(fileUrl, '_blank', 'noopener,noreferrer')" in html
+    assert "application/pdf" in html
+
+
 def test_ledger_view_interactions_renders_essential_widgets() -> None:
     """Verify ledger workspace renders trial balance, general ledger, and reports."""
     # Arrange

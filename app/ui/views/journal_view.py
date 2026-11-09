@@ -338,6 +338,76 @@ with tab_entry:
             st.error(f"仕訳登録エラー: {e}")
 
 
+
+def _resolve_evidence_mime(filename: str) -> str:
+    """Resolve MIME type string from evidence filename extension."""
+    lower_name = filename.lower()
+    if lower_name.endswith(".pdf"):
+        return "application/pdf"
+    if lower_name.endswith(".png"):
+        return "image/png"
+    if lower_name.endswith(".webp"):
+        return "image/webp"
+    return "image/jpeg"
+
+
+def _build_evidence_popup_html(b64_data: str, mime_type: str) -> str:
+    """Build self-contained HTML/JS button that opens base64 evidence in a new browser window via Blob URL."""
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body {{ margin: 0; padding: 0; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+  .btn-view {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: 38px;
+    box-sizing: border-box;
+    background-color: #1E3A8A;
+    color: #FFFFFF;
+    border: 1px solid #1E3A8A;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }}
+  .btn-view:hover {{
+    background-color: #172554;
+    border-color: #172554;
+  }}
+</style>
+</head>
+<body>
+  <button class="btn-view" onclick="openEvidence()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+    </svg>
+    証憑の表示
+  </button>
+  <script>
+    function openEvidence() {{
+      const b64 = "{b64_data}";
+      const mime = "{mime_type}";
+      const byteChars = atob(b64);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {{
+        byteNums[i] = byteChars.charCodeAt(i);
+      }}
+      const byteArray = new Uint8Array(byteNums);
+      const blob = new Blob([byteArray], {{type: mime}});
+      const fileUrl = URL.createObjectURL(blob);
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+    }}
+  </script>
+</body>
+</html>"""
+
+
 @st.fragment
 def render_journal_history_section(
     open_fy: FiscalYear | None, account_id_to_label: dict[int | None, str]
@@ -438,6 +508,7 @@ def render_journal_history_section(
             c = c_lines[i] if i < len(c_lines) else None
             rows.append(
                 {
+                    "選択": False,
                     "id": tx.id,
                     "発生日": str(tx.occurred_at),
                     "記録日時(UTC)": tx.recorded_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -454,8 +525,9 @@ def render_journal_history_section(
                 }
             )
 
+    df_display = pd.DataFrame(rows)
     csv_buf = io.StringIO()
-    pd.DataFrame(rows).to_csv(csv_buf, index=False)
+    df_display.drop(columns=["選択"]).to_csv(csv_buf, index=False)
 
     col_tbl_info, col_tbl_action = st.columns([4, 1])
     with col_tbl_info:
@@ -470,117 +542,199 @@ def render_journal_history_section(
             width="stretch",
         )
 
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    col_cfg = {
+        "選択": st.column_config.CheckboxColumn(
+            "選択",
+            help="詳細・証憑を確認する仕訳を選択",
+            default=False,
+        ),
+        "借方金額": st.column_config.NumberColumn("借方金額", format="¥%d"),
+        "貸方金額": st.column_config.NumberColumn("貸方金額", format="¥%d"),
+    }
+    disabled_cols = [c for c in df_display.columns if c != "選択"]
+    edited_df = st.data_editor(
+        df_display,
+        column_config=col_cfg,
+        disabled=disabled_cols,
+        hide_index=True,
+        width="stretch",
+        key="hist_journal_editor",
+    )
 
     st.divider()
     st.markdown("##### 選択仕訳の詳細・証憑確認 (PDF/画像)")
-    tx_options = {
-        f"ID {tx.id} | 発生日: {tx.occurred_at} | {tx.description or '振替仕訳'} (¥{sum(line.debit for line in tx.lines):,}) [{'証憑あり' if tx.evidence_path else '証憑なし'}]": tx
-        for tx in entries
+
+    checked_mask = edited_df["選択"].fillna(False).astype(bool)
+    selected_ids: list[int] = [
+        int(tid) for tid in edited_df.loc[checked_mask, "id"].dropna().unique()
+    ]
+    tx_by_id: dict[int, Transaction] = {
+        tx.id: tx for tx in entries if tx.id is not None
     }
-    selected_label = st.selectbox(
-        "確認する仕訳を選択",
-        options=[""] + list(tx_options.keys()),
-        key="hist_selected_tx_box",
-    )
-    if selected_label and (selected_tx := tx_options.get(selected_label)):
-        col_d_left, col_d_right = st.columns([3, 2])
-        with col_d_left:
-            st.markdown(
-                f"**発生日:** `{selected_tx.occurred_at}` | **記録日時:** `{selected_tx.recorded_at.strftime('%Y-%m-%d %H:%M:%S UTC') if selected_tx.recorded_at else '-'}`"
+    selected_txs = [tx_by_id[tid] for tid in selected_ids if tid in tx_by_id]
+
+    if not selected_txs:
+        st.info(
+            "仕訳一覧の「選択」チェックボックスにチェックを入れると、ここに詳細と証憑が表示されます。"
+        )
+        return
+
+    for selected_tx in selected_txs:
+        with st.container(border=True):
+            st.caption(
+                f"仕訳ID: {selected_tx.id} | 記録日時: {selected_tx.recorded_at.strftime('%Y-%m-%d %H:%M:%S UTC') if selected_tx.recorded_at else '-'}"
             )
-            st.markdown(
-                f"**摘要:** `{selected_tx.description or '-'}` | **取引先:** `{selected_tx.counterparty or '-'}` | **インボイス番号:** `{selected_tx.invoice_number or '-'}`"
+            col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 3, 2])
+            with col_h1:
+                st.date_input(
+                    "取引日",
+                    value=selected_tx.occurred_at,
+                    disabled=True,
+                    key=f"detail_tx_date_{selected_tx.id}",
+                )
+            with col_h2:
+                st.text_input(
+                    "伝票摘要 (取引内容)",
+                    value=selected_tx.description or "",
+                    disabled=True,
+                    key=f"detail_tx_desc_{selected_tx.id}",
+                )
+            with col_h3:
+                st.text_input(
+                    "取引先",
+                    value=selected_tx.counterparty or "",
+                    disabled=True,
+                    key=f"detail_tx_cp_{selected_tx.id}",
+                )
+            with col_h4:
+                st.text_input(
+                    "インボイス番号 (T+13桁)",
+                    value=selected_tx.invoice_number or "",
+                    disabled=True,
+                    key=f"detail_tx_inv_{selected_tx.id}",
+                )
+
+            st.markdown("##### 【 振替伝票 明細行 】")
+            d_lines = [line for line in selected_tx.lines if line.debit > 0]
+            c_lines = [line for line in selected_tx.lines if line.credit > 0]
+            detail_rows: list[dict[str, object]] = []
+            for i in range(max(len(d_lines), len(c_lines), 1)):
+                d = d_lines[i] if i < len(d_lines) else None
+                c = c_lines[i] if i < len(c_lines) else None
+                detail_rows.append(
+                    {
+                        "借方科目": account_id_to_label.get(d.account_id, "") if d else "",
+                        "借方金額 (¥)": d.debit if d else 0,
+                        "貸方科目": account_id_to_label.get(c.account_id, "") if c else "",
+                        "貸方金額 (¥)": c.credit if c else 0,
+                        "行摘要": selected_tx.description or "",
+                    }
+                )
+            detail_cfg = {
+                "借方金額 (¥)": st.column_config.NumberColumn("借方金額 (¥)", format="¥%d"),
+                "貸方金額 (¥)": st.column_config.NumberColumn("貸方金額 (¥)", format="¥%d"),
+            }
+            st.dataframe(
+                pd.DataFrame(detail_rows),
+                column_config=detail_cfg,
+                hide_index=True,
+                width="stretch",
+                key=f"detail_lines_df_{selected_tx.id}",
             )
 
-            if selected_tx.evidence_path:
-                file_service = DI.get_file_service()
-                resolved = file_service.resolve_evidence_path(selected_tx.evidence_path)
-                if resolved and resolved.exists():
-                    evidence_bytes = resolved.read_bytes()
-                    evidence_filename = resolved.name
-                    is_evidence_pdf = evidence_filename.lower().endswith(".pdf")
-                    st.success(
-                        f"添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)"
-                    )
-                    st.download_button(
-                        label="証憑出力",
-                        data=evidence_bytes,
-                        file_name=evidence_filename,
-                        mime="application/pdf"
-                        if is_evidence_pdf
-                        else (
-                            "image/png"
-                            if evidence_filename.lower().endswith(".png")
-                            else "image/jpeg"
-                        ),
-                        icon=":material/download:",
-                        width="stretch",
-                        key=f"dl_evidence_{selected_tx.id}",
-                    )
-                    if is_evidence_pdf:
-                        with st.expander("PDFプレビューを表示", expanded=True):
-                            b64_pdf = base64.b64encode(evidence_bytes).decode("utf-8")
-                            st.html(
-                                f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="500" type="application/pdf"></iframe>'
+            total_debit = sum(line.debit for line in selected_tx.lines)
+            total_credit = sum(line.credit for line in selected_tx.lines)
+            col_m1, col_m2, col_m3 = st.columns(3)
+            col_m1.metric("借方合計", f"¥{total_debit:,}", border=True)
+            col_m2.metric("貸方合計", f"¥{total_credit:,}", border=True)
+            is_balanced = total_debit == total_credit > 0
+            col_m3.metric(
+                "貸借バランス(差額)",
+                "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
+                border=True,
+            )
+
+            col_d_left, col_d_right = st.columns([3, 2])
+            with col_d_left:
+                st.markdown("##### 証憑情報・操作")
+                if selected_tx.evidence_path:
+                    file_service = DI.get_file_service()
+                    resolved = file_service.resolve_evidence_path(selected_tx.evidence_path)
+                    if resolved and resolved.exists():
+                        evidence_bytes = resolved.read_bytes()
+                        evidence_filename = resolved.name
+                        mime_type = _resolve_evidence_mime(evidence_filename)
+                        st.success(
+                            f"添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)"
+                        )
+                        col_btn_view, col_btn_dl = st.columns(2)
+                        with col_btn_view:
+                            b64_evidence = base64.b64encode(evidence_bytes).decode("utf-8")
+                            st.iframe(
+                                _build_evidence_popup_html(b64_evidence, mime_type),
+                                height=42,
+                            )
+                        with col_btn_dl:
+                            st.download_button(
+                                label="証憑出力",
+                                data=evidence_bytes,
+                                file_name=evidence_filename,
+                                mime=mime_type,
+                                icon=":material/download:",
+                                width="stretch",
+                                key=f"dl_evidence_{selected_tx.id}",
                             )
                     else:
-                        st.image(
-                            evidence_bytes,
-                            caption=f"証憑プレビュー: {evidence_filename}",
-                            width="stretch",
+                        st.warning(
+                            f"証憑ファイルがストレージ上に見つかりません: {selected_tx.evidence_path}"
                         )
                 else:
-                    st.warning(
-                        f"証憑ファイルがストレージ上に見つかりません: {selected_tx.evidence_path}"
-                    )
-            else:
-                st.caption("※ この仕訳に添付された証憑はありません。")
+                    st.caption("※ この仕訳に添付された証憑はありません。")
 
-        with col_d_right:
-            if selected_tx.id is not None:
-                target_id: int = selected_tx.id
-                st.markdown("##### 赤伝起票（反対仕訳による訂正）")
-                st.caption(
-                    "※ 会計不変制約（Rule 1）に基づき、過去仕訳の上書き更新・削除は禁止されています。貸借を反転させた赤伝（反対仕訳）を発行して残高を相殺します。"
-                )
-                is_already_reversed = target_id in cancelled_orig_ids or is_red_slip(
-                    selected_tx
-                )
-                if is_already_reversed:
-                    st.info(
-                        "※ この仕訳は既に取消（赤伝）処理済み、または赤伝仕訳のため再取消できません。"
+            with col_d_right:
+                if selected_tx.id is not None:
+                    target_id: int = selected_tx.id
+                    st.markdown("##### 赤伝起票（反対仕訳による訂正）")
+                    st.caption(
+                        "※ 会計不変制約（Rule 1）に基づき、過去仕訳の上書き更新・削除は禁止されています。貸借を反転させた赤伝（反対仕訳）を発行して残高を相殺します。"
                     )
-                rev_reason = st.text_input(
-                    "取消理由",
-                    value="入力誤謬による取消",
-                    key=f"rev_reason_{target_id}",
-                    disabled=is_already_reversed,
-                )
-                st.html('<div class="sten-destructive-wrapper">')
-                do_rev = st.button(
-                    "赤伝発行",
-                    type="secondary",
-                    icon=":material/swap_horiz:",
-                    width="stretch",
-                    disabled=is_already_reversed,
-                    key=f"rev_btn_{target_id}",
-                )
-                st.html("</div>")
-                if do_rev and not is_already_reversed:
-                    try:
-                        rev_id = call_journal(
-                            lambda s: s.reverse_journal_entry(
-                                target_id, reason=rev_reason
+                    is_already_reversed = target_id in cancelled_orig_ids or is_red_slip(
+                        selected_tx
+                    )
+                    if is_already_reversed:
+                        st.info(
+                            "※ この仕訳は既に取消（赤伝）処理済み、または赤伝仕訳のため再取消できません。"
+                        )
+                    rev_reason = st.text_input(
+                        "取消理由",
+                        value="入力誤謬による取消",
+                        key=f"rev_reason_{target_id}",
+                        disabled=is_already_reversed,
+                    )
+                    st.html('<div class="sten-destructive-wrapper">')
+                    do_rev = st.button(
+                        "赤伝発行",
+                        type="secondary",
+                        icon=":material/swap_horiz:",
+                        width="stretch",
+                        disabled=is_already_reversed,
+                        key=f"rev_btn_{target_id}",
+                    )
+                    st.html("</div>")
+                    if do_rev and not is_already_reversed:
+                        try:
+                            rev_id = call_journal(
+                                lambda s: s.reverse_journal_entry(
+                                    target_id, reason=rev_reason
+                                )
                             )
-                        )
-                        st.toast(
-                            f"赤伝を発行しました (新仕訳ID: {rev_id})",
-                            icon=":material/check:",
-                        )
-                        st.rerun()
-                    except Exception as ex:
-                        st.error(f"赤伝起票エラー: {ex}")
+                            st.toast(
+                                f"赤伝を発行しました (新仕訳ID: {rev_id})",
+                                icon=":material/check:",
+                            )
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"赤伝起票エラー: {ex}")
 
 
 # 2. 仕訳帳一覧
