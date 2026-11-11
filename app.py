@@ -16,7 +16,7 @@ if str(_ROOT) not in sys.path:
 import streamlit as st
 
 from backup_manager import get_backup_dir, run_backup, set_backup_dir
-from app.core_foundation import DI, log, run_async, run_scoped, settings
+from app.core_foundation import DI, log, run_async, run_scoped
 from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
 from app.storage_repository import seed_accounts
 from app.ui.design_system import inject_global_design_system
@@ -90,57 +90,6 @@ def _render_sidebar_backup() -> None:
             st.error(str(res["message"]))
 
 
-def _render_system_diagnostic(log_path: Path) -> None:
-    """Mount discrete Antigravity System Diagnostic harness inside sidebar popover.
-
-    Args:
-        log_path: Path to the centralized application log file.
-    """
-    st.session_state["_run_count"] = st.session_state.get("_run_count", 0) + 1
-    run_count = st.session_state["_run_count"]
-
-    with st.sidebar.popover("System Diagnostic", icon=":material/bug_report:"):
-        st.markdown(f"**Execution Counter:** `{run_count}`")
-        st.caption("Active Session State Snapshot:")
-        state_snapshot = {
-            k: (
-                f"<{len(v)} bytes>"
-                if isinstance(v, bytes)
-                else str(v)[:100] + ("..." if len(str(v)) > 100 else "")
-            )
-            for k, v in st.session_state.items()
-            if not k.startswith("_")
-        }
-        st.json(state_snapshot)
-
-        # Log Tail Retrieval
-        log_lines: list[str] = []
-        if log_path.exists():
-            try:
-                content = log_path.read_text(encoding="utf-8")
-                log_lines = [line for line in content.splitlines() if line.strip()][
-                    -30:
-                ]
-            except Exception as e:
-                log_lines = [f"[Log Read Error: {e}]"]
-        else:
-            log_lines = ["[Log file does not exist yet]"]
-
-        st.caption(f"Log Tail (Last {len(log_lines)} lines):")
-        st.text("\n".join(log_lines))
-
-        # Antigravity IDE markdown block for one-click triage copy-paste
-        triage_payload = (
-            "### Antigravity System Diagnostic Context\n"
-            f"- **Execution Count:** `{run_count}`\n"
-            f"- **Session Keys:** `{list(st.session_state.keys())}`\n"
-            "\n#### Recent Execution Logs (Tail 30)\n"
-            "```log\n" + "\n".join(log_lines) + "\n```\n"
-        )
-        st.caption("Antigravity Prompt Context (Click to copy):")
-        st.code(triage_payload, language="markdown")
-
-
 def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) -> None:
     """Render Streamlit sidebar navigation and tenant identity headers.
 
@@ -170,9 +119,6 @@ def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) ->
             st.warning("進行中の会計年度がありません。")
 
         _render_sidebar_backup()
-        st.divider()
-        _render_system_diagnostic(settings.LOGS_DIR / "app.log")
-
         st.divider()
         st.caption("© 2026 合同会社ぼっち (GPL-3.0)")
 

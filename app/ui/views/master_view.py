@@ -37,6 +37,7 @@ from app.domain_contracts import (
     FiscalYear,
     SystemSettings,
 )
+from app.ui.design_system import render_system_diagnostic
 from app.ui.editor import (
     format_counterparty_validation_error,
     render_accounting_editor,
@@ -1080,3 +1081,7 @@ with tab_sys:
             )
             st.toast("システム設定を保存しました", icon=":material/check_circle:")
             st.rerun()
+
+    st.divider()
+    st.subheader("システム診断")
+    render_system_diagnostic(settings.LOGS_DIR / "app.log")

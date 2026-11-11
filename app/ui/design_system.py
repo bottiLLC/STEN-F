@@ -6,6 +6,7 @@ strict color token enforcement, and uniform border-radius (4px).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Final
 import streamlit as st
 
@@ -178,3 +179,54 @@ h1, h2, h3, h4, h5, h6 {{
 def inject_global_design_system() -> None:
     """Inject global STEN-F industrial minimalism CSS into current Streamlit view."""
     st.html(GLOBAL_DESIGN_SYSTEM_CSS)
+
+
+def render_system_diagnostic(log_path: Path) -> None:
+    """Mount discrete Antigravity System Diagnostic harness inside popover.
+
+    Args:
+        log_path: Path to the centralized application log file.
+    """
+    st.session_state["_run_count"] = int(st.session_state.get("_run_count", 0)) + 1
+    run_count: int = int(st.session_state["_run_count"])
+
+    with st.popover("System Diagnostic", icon=":material/bug_report:"):
+        st.markdown(f"**Execution Counter:** `{run_count}`")
+        st.caption("Active Session State Snapshot:")
+        state_snapshot: dict[str, str] = {
+            str(k): (
+                f"<{len(v)} bytes>"
+                if isinstance(v, bytes)
+                else str(v)[:100] + ("..." if len(str(v)) > 100 else "")
+            )
+            for k, v in st.session_state.items()
+            if not str(k).startswith("_")
+        }
+        st.json(state_snapshot)
+
+        # Log Tail Retrieval
+        log_lines: list[str] = []
+        if log_path.exists():
+            try:
+                content = log_path.read_text(encoding="utf-8")
+                log_lines = [line for line in content.splitlines() if line.strip()][
+                    -30:
+                ]
+            except Exception as e:
+                log_lines = [f"[Log Read Error: {e}]"]
+        else:
+            log_lines = ["[Log file does not exist yet]"]
+
+        st.caption(f"Log Tail (Last {len(log_lines)} lines):")
+        st.text("\n".join(log_lines))
+
+        # Antigravity IDE markdown block for one-click triage copy-paste
+        triage_payload: str = (
+            "### Antigravity System Diagnostic Context\n"
+            f"- **Execution Count:** `{run_count}`\n"
+            f"- **Session Keys:** `{list(st.session_state.keys())}`\n"
+            "\n#### Recent Execution Logs (Tail 30)\n"
+            "```log\n" + "\n".join(log_lines) + "\n```\n"
+        )
+        st.caption("Antigravity Prompt Context (Click to copy):")
+        st.code(triage_payload, language="markdown")

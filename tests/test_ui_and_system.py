@@ -419,7 +419,6 @@ _app_mod = importlib.util.module_from_spec(_app_spec)
 _app_spec.loader.exec_module(_app_mod)
 resolve_active_fiscal_year = _app_mod.resolve_active_fiscal_year
 load_sidebar_metadata = _app_mod.load_sidebar_metadata
-_render_system_diagnostic = _app_mod._render_system_diagnostic
 
 
 def test_resolve_active_fiscal_year_with_mixed_statuses_returns_open_instance() -> None:
@@ -554,11 +553,12 @@ def test_financial_statements_render_functions_invoke_st_html(
     assert "損益計算書" in captured_html[1]
 
 
-def test_system_diagnostic_sidebar_harness_renders_successfully(
+def test_system_diagnostic_harness_renders_successfully(
     tmp_path: Path,
 ) -> None:
     """Verify system diagnostic harness extracts logs, formats triage block, and increments run count."""
     import streamlit as st
+    from app.ui.design_system import render_system_diagnostic
 
     log_file = tmp_path / "app.log"
     log_file.write_text(
@@ -568,10 +568,10 @@ def test_system_diagnostic_sidebar_harness_renders_successfully(
     st.session_state.clear()
     st.session_state["test_key"] = "test_val"
 
-    _render_system_diagnostic(log_file)
+    render_system_diagnostic(log_file)
     assert st.session_state["_run_count"] == 1
 
-    _render_system_diagnostic(log_file)
+    render_system_diagnostic(log_file)
     assert st.session_state["_run_count"] == 2
 
 
