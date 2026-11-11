@@ -3,45 +3,61 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual Environments
+# Virtual Environments & Env Files
 .venv/
 venv/
 env/
 .env
+.env.*
+!.env.sample
+
+# Build & Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
 
 # Streamlit Local Secrets
 .streamlit/secrets.toml
 
-# Database & Storage
+# Database, Storage & Backups
 *.db
 *.db-wal
 *.db-shm
-*.sqlite3
+*.sqlite
+*.sqlite3*
 data/
 storage/
 backups/
 uploaded_files/
+*_backup_*.zip
 
 # Generated Files & Reports
 *.pdf
-!動作確認用領収書.pdf
 *.csv
 
 # Logs & Temp
+logs/
 *.log
+*.log.*
 *.tmp
 *.bak
 
 # Testing & Coverage
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
 
-# OS & IDE
+# OS, IDE & Local Agent Docs
 .DS_Store
 Thumbs.db
+Desktop.ini
 .vscode/
 .idea/
 .context/
+AGENTS.md

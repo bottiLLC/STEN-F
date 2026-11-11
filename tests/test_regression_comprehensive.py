@@ -29,17 +29,17 @@ from app.external_services import PDFService
 from app.storage_repository import seed_accounts_with_service
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
-_RECEIPT_PDF_PATH: Final[Path] = _REPO_ROOT / "動作確認用領収書.pdf"
+_SAMPLE_RECEIPT_PDF_BYTES: Final[bytes] = (
+    b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+)
 
 
-# --- 1. Real Receipt PDF (動作確認用領収書.pdf) & OCR Matching Verification ---
+# --- 1. Synthetic Receipt PDF & OCR Matching Verification ---
 def test_verify_sample_receipt_pdf_exists_and_matches_counterparty_master() -> None:
-    """Verify physical existence of 動作確認用領収書.pdf and multi-tier composite OCR matching."""
+    """Verify synthetic sample receipt PDF payload and multi-tier composite OCR matching."""
     # Arrange
-    assert _RECEIPT_PDF_PATH.exists(), (
-        f"Missing verification receipt at {_RECEIPT_PDF_PATH}"
-    )
-    pdf_bytes = _RECEIPT_PDF_PATH.read_bytes()
+    pdf_bytes = _SAMPLE_RECEIPT_PDF_BYTES
     assert len(pdf_bytes) > 0
     assert pdf_bytes.startswith(b"%PDF"), "Evidence file must be valid PDF format"
 
@@ -113,7 +113,7 @@ async def test_full_regression_accounting_cycle_all_48_accounts(
         assert saved_corp is not None
         assert saved_corp.name == "合同会社STEN-F検証"
 
-        # Step 3: Setup Counterparty for 動作確認用領収書.pdf
+        # Step 3: Setup Counterparty for synthetic receipt PDF
         cp_arclink = Counterparty(
             name="株式会社アークリンク",
             name_kana="アークリンク",
@@ -170,8 +170,8 @@ async def test_full_regression_accounting_cycle_all_48_accounts(
             )
         )
 
-        # Step 6: Evidence Attachment with 動作確認用領収書.pdf
-        pdf_bytes = _RECEIPT_PDF_PATH.read_bytes()
+        # Step 6: Evidence Attachment with synthetic receipt PDF
+        pdf_bytes = _SAMPLE_RECEIPT_PDF_BYTES
         receipt_tx = Transaction(
             occurred_at=date(2026, 6, 2),
             description="十日市場駐車場代",
