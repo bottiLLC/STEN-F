@@ -26,9 +26,6 @@ from app.ui.financial_statements import (
 )
 
 st.header("帳簿・決算", divider="gray")
-st.caption(
-    "総勘定元帳の閲覧、合計残高試算表 (T/B) による貸借検証、および貸借対照表 (B/S)・損益計算書 (P/L) の確認・PDF 出力を一元的に行います。"
-)
 
 fys = call_master(lambda s: s.get_fiscal_years())
 if not fys:

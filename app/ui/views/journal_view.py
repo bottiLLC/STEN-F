@@ -36,9 +36,6 @@ from app.ui.design_system import (
 )
 
 st.header("仕訳・記帳", divider="gray")
-st.caption(
-    "AI OCR（領収書・請求書自動読取）起点での振替伝票作成、および仕訳帳の一覧・検索・CSV出力を一元的に行います。"
-)
 
 accounts = call_master(lambda s: s.get_accounts())
 abstracts = call_master(lambda s: s.get_abstracts())
@@ -705,10 +702,7 @@ def render_journal_history_section(
             with col_d_right:
                 if selected_tx.id is not None:
                     target_id: int = selected_tx.id
-                    st.markdown("##### 赤伝起票（反対仕訳による訂正）")
-                    st.caption(
-                        "※ 会計不変制約（Rule 1）に基づき、過去仕訳の上書き更新・削除は禁止されています。貸借を反転させた赤伝（反対仕訳）を発行して残高を相殺します。"
-                    )
+                    st.markdown("##### 赤伝起票（反対仕訳による取消）")
                     is_already_reversed = (
                         target_id in cancelled_orig_ids or is_red_slip(selected_tx)
                     )

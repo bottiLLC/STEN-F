@@ -61,9 +61,6 @@ def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
 
 
 st.header("マスタ・システム設定", divider="gray")
-st.caption(
-    "事業者情報、会計年度・決算締め処理、期首残高、勘定科目・取引先・摘要マスタ、AI設定を一括管理します。"
-)
 
 tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_sys = st.tabs(
     [
@@ -667,7 +664,6 @@ with tab_cp:
     acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
 
     st.caption(
-        "会社名・屋号・インボイス番号・デフォルト勘定科目・摘要を一括設定します。"
         "インボイス番号は13桁の数字を入力すると「T」が自動付与されます（例: 1234567890123 → T1234567890123）。"
     )
     cps = call_master(lambda s: s.get_counterparties())
