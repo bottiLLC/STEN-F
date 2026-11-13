@@ -24,11 +24,8 @@ from app.domain_contracts import (
     compute_next_fiscal_year_dates,
     resolve_open_fiscal_year,
 )
+from app.ui.design_system import render_balance_metrics
 from app.ui.master_catalog_sections import (
-    _execute_commit_plan,
-    _render_add_account_popover,
-    _render_batch_delete_bar,
-    _render_master_editor_section,
     render_abstracts_section,
     render_accounts_section,
     render_counterparties_section,
@@ -39,10 +36,6 @@ from app.ui.master_helpers import (
 )
 
 __all__ = [
-    "_execute_commit_plan",
-    "_render_add_account_popover",
-    "_render_batch_delete_bar",
-    "_render_master_editor_section",
     "render_abstracts_section",
     "render_accounts_section",
     "render_corp_section",
@@ -283,13 +276,13 @@ def render_opening_balance_section(
         total_c = sum(int(v) for v in op_c.values())
         diff = total_d - total_c
         st.divider()
-        with st.grid(3):
-            st.metric("資産合計 (借方)", f"¥{total_d:,}")
-            st.metric("負債・純資産合計 (貸方)", f"¥{total_c:,}")
-            st.metric(
-                "貸借バランス(差額)",
-                "一致" if diff == 0 and total_d > 0 else f"¥{diff:,}",
-            )
+        render_balance_metrics(
+            total_d,
+            total_c,
+            debit_label="資産合計 (借方)",
+            credit_label="負債・純資産合計 (貸方)",
+            border=False,
+        )
 
         with st.container(horizontal=True, horizontal_alignment="right"):
             op_submitted = st.form_submit_button(

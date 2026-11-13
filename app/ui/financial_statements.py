@@ -284,7 +284,7 @@ _COMMON_CSS = f"""
     margin-top: auto;
     background-color: {COLOR_SURFACE_BG};
     border-top: 1px solid {COLOR_BORDER};
-    border-bottom: 3px double #1f2937;
+    border-bottom: 3px double {COLOR_TEXT_PRIMARY};
     font-weight: 700;
     font-size: 0.98rem;
     padding: 10px 12px;
@@ -366,7 +366,7 @@ _COMMON_CSS = f"""
 .fs-pl-net-income {{
     background-color: {COLOR_SURFACE_BG};
     border-top: 1px solid {COLOR_BORDER};
-    border-bottom: 3px double #1f2937;
+    border-bottom: 3px double {COLOR_TEXT_PRIMARY};
     font-weight: 700;
     font-size: 1.02rem;
     margin-top: 12px;

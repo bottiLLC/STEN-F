@@ -506,3 +506,67 @@ def test_build_abstract_commit_plan_collects_validation_errors() -> None:
         build_abstract_df(existing_abs, {10: "1110: 現金"}).iloc[0]["text"]
         == "タクシー代"
     )
+
+
+def test_render_balance_metrics_displays_balanced_and_diff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify render_balance_metrics outputs expected labels and difference amounts."""
+    from contextlib import nullcontext
+    import streamlit as st
+    from app.ui.design_system import render_balance_metrics
+
+    recorded: list[tuple[str, str, bool]] = []
+    monkeypatch.setattr(st, "grid", lambda _n: nullcontext())
+    monkeypatch.setattr(
+        st,
+        "metric",
+        lambda label, value, border=True: recorded.append((label, value, border)),
+    )
+
+    render_balance_metrics(1000, 1000)
+    render_balance_metrics(
+        500,
+        200,
+        debit_label="資産合計 (借方)",
+        credit_label="負債・純資産合計 (貸方)",
+        border=False,
+    )
+
+    assert recorded[0] == ("借方合計", "¥1,000", True)
+    assert recorded[1] == ("貸方合計", "¥1,000", True)
+    assert recorded[2] == ("貸借バランス(差額)", "一致", True)
+    assert recorded[3] == ("資産合計 (借方)", "¥500", False)
+    assert recorded[4] == ("負債・純資産合計 (貸方)", "¥200", False)
+    assert recorded[5] == ("貸借バランス(差額)", "¥300", False)
+
+
+def test_submit_voucher_transaction_resets_lock_on_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify invalid voucher metadata resets journal_tx_submitting and emits st.error."""
+    import streamlit as st
+    from app.ui.journal_entry_section import _submit_voucher_transaction
+
+    errors: list[str] = []
+    fake_state: dict[str, object] = {"journal_tx_submitting": True}
+    monkeypatch.setattr(st, "session_state", fake_state)
+    monkeypatch.setattr(st, "error", lambda msg: errors.append(str(msg)))
+
+    _submit_voucher_transaction(
+        0,
+        date(2026, 5, 1),
+        "テスト摘要",
+        "テスト取引先",
+        "INVALID_INV",
+        [
+            TransactionLine(account_id=1, debit=1000, credit=0),
+            TransactionLine(account_id=2, debit=0, credit=1000),
+        ],
+        None,
+        None,
+    )
+
+    assert fake_state["journal_tx_submitting"] is False
+    assert len(errors) == 1
+    assert "仕訳登録エラー:" in errors[0]

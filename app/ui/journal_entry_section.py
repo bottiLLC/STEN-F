@@ -20,7 +20,8 @@ from typing import Any
 import streamlit as st
 
 from app.core_foundation import DI, call_journal, run_async
-from app.domain_contracts import Transaction, TransactionLine
+from app.domain_contracts import TransactionLine
+from app.ui.design_system import render_balance_metrics
 from app.ui.journal_helpers import (
     build_voucher_initial_df,
     build_voucher_transaction,
@@ -214,25 +215,23 @@ def _render_voucher_lines_editor(
     total_credit = sum(line.credit for line in tx_lines)
     is_balanced = total_debit == total_credit > 0
 
-    with st.grid(3):
-        st.metric("借方合計", f"¥{total_debit:,}", border=True)
-        st.metric("貸方合計", f"¥{total_credit:,}", border=True)
-        st.metric(
-            "貸借バランス(差額)",
-            "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
-            border=True,
-        )
+    render_balance_metrics(total_debit, total_credit)
     return tx_lines, is_balanced
 
 
 def _submit_voucher_transaction(
     form_ver: int,
-    new_tx: Transaction,
+    tx_date: date,
+    tx_desc: str,
+    tx_cp: str,
+    tx_inv: str,
+    tx_lines: list[TransactionLine],
     active_evidence_bytes: bytes | None,
     active_evidence_name: str | None,
 ) -> None:
-    """Persist balanced journal transaction with optional electronic evidence."""
+    """Validate, build, and persist balanced journal transaction with optional electronic evidence."""
     try:
+        new_tx = build_voucher_transaction(tx_date, tx_desc, tx_cp, tx_inv, tx_lines)
         ext = Path(active_evidence_name).suffix if active_evidence_name else ".pdf"
         call_journal(
             lambda s: (
@@ -302,9 +301,15 @@ def _render_voucher_entry_step(
 
     if do_submit_tx and not is_submitting:
         st.session_state["journal_tx_submitting"] = True
-        new_tx = build_voucher_transaction(tx_date, tx_desc, tx_cp, tx_inv, tx_lines)
         _submit_voucher_transaction(
-            form_ver, new_tx, active_evidence_bytes, active_evidence_name
+            form_ver,
+            tx_date,
+            tx_desc,
+            tx_cp,
+            tx_inv,
+            tx_lines,
+            active_evidence_bytes,
+            active_evidence_name,
         )
 
 

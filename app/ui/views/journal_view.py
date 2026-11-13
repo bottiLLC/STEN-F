@@ -28,7 +28,7 @@ from app.domain_contracts import (
     account_code_sort_key,
     resolve_open_fiscal_year,
 )
-from app.ui.design_system import destructive_button_container
+from app.ui.design_system import destructive_button_container, render_balance_metrics
 from app.ui.journal_entry_section import render_journal_entry_section
 from app.ui.journal_helpers import (
     build_detail_line_rows,
@@ -161,15 +161,7 @@ def _render_detail_header_and_lines(
 
     total_debit = sum(line.debit for line in selected_tx.lines)
     total_credit = sum(line.credit for line in selected_tx.lines)
-    is_balanced = total_debit == total_credit > 0
-    with st.grid(3):
-        st.metric("借方合計", f"¥{total_debit:,}", border=True)
-        st.metric("貸方合計", f"¥{total_credit:,}", border=True)
-        st.metric(
-            "貸借バランス(差額)",
-            "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
-            border=True,
-        )
+    render_balance_metrics(total_debit, total_credit)
 
 
 def _render_evidence_actions(selected_tx: Transaction) -> None:

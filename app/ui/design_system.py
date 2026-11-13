@@ -160,8 +160,8 @@ div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button:hove
 }}
 [class*="st-key-sten_destructive_confirm_"] div[data-testid="stButton"] > button:hover,
 [class*="st-key-sten_destructive_confirm_"] div[data-testid="stFormSubmitButton"] > button:hover {{
-    background-color: #B91C1C !important;
-    border-color: #B91C1C !important;
+    background-color: {COLOR_DANGER} !important;
+    border-color: {COLOR_DANGER} !important;
     color: #FFFFFF !important;
 }}
 
@@ -284,3 +284,25 @@ def render_system_diagnostic(log_path: Path) -> None:
         )
         st.caption("Antigravity Prompt Context (Click to copy):")
         st.code(triage_payload, language="markdown")
+
+
+def render_balance_metrics(
+    total_debit: int,
+    total_credit: int,
+    *,
+    debit_label: str = "借方合計",
+    credit_label: str = "貸方合計",
+    require_positive: bool = True,
+    border: bool = True,
+) -> None:
+    """Render standardized 3-column debit/credit balance metrics."""
+    diff = total_debit - total_credit
+    is_balanced = diff == 0 and (total_debit > 0 if require_positive else True)
+    with st.grid(3):
+        st.metric(debit_label, f"¥{total_debit:,}", border=border)
+        st.metric(credit_label, f"¥{total_credit:,}", border=border)
+        st.metric(
+            "貸借バランス(差額)",
+            "一致" if is_balanced else f"¥{diff:,}",
+            border=border,
+        )

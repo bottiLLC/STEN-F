@@ -83,4 +83,7 @@ plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 files = ["app", "tests", "backup_manager.py"]
 
 [tool.ruff.lint]
-ignore = ["E402", "EXE002"]
+ignore = ["EXE002"]
+
+[tool.ruff.lint.per-file-ignores]
+"app.py" = ["E402"]

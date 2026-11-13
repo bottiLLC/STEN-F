@@ -629,16 +629,29 @@ def test_pdf_service_generation_with_deficit_and_missing_representative() -> Non
     )
 
     # Act
-    pdf_bytes = PDFService.generate_annual_report(
-        corp=corp,
-        rpt=rpt,
-        fy=fy,
-    )
+    from unittest.mock import patch
+    from reportlab.pdfgen.canvas import Canvas
+
+    drawn_strings: list[str] = []
+    orig_draw_string = Canvas.drawString
+
+    def spy_draw_string(self: Canvas, x: float, y: float, text: str) -> None:
+        drawn_strings.append(text)
+        orig_draw_string(self, x, y, text)
+
+    with patch.object(Canvas, "drawString", spy_draw_string):
+        pdf_bytes = PDFService.generate_annual_report(
+            corp=corp,
+            rpt=rpt,
+            fy=fy,
+        )
 
     # Assert
     assert isinstance(pdf_bytes, bytes)
     assert len(pdf_bytes) > 1000
     assert pdf_bytes.startswith(b"%PDF")
+    assert "当期純損失" in drawn_strings
+    assert "営業損失" in drawn_strings
 
 
 # --- 4. Filename Sanitization & OCR Defensive Handling ---

@@ -162,7 +162,8 @@ def _draw_balance_sheet_page(
             c.drawString(115 * mm, yr, r.account_name)
             c.drawRightString(180 * mm, yr, f"{r.balance:,}")
             yr -= 5 * mm
-    c.drawString(115 * mm, yr, "当期純利益")
+    income_label = "当期純利益" if rpt.net_income >= 0 else "当期純損失"
+    c.drawString(115 * mm, yr, income_label)
     c.drawRightString(180 * mm, yr, f"{rpt.net_income:,}")
     yr -= 7 * mm
     c.line(115 * mm, yr, 180 * mm, yr)
@@ -234,17 +235,32 @@ def _draw_profit_and_loss_pages(
 
     draw_pl_sec(rpt.revenue)
     draw_pl_sec(rpt.cost_of_sales)
-    draw_pl_step("売上総利益", rpt.gross_profit)
+    draw_pl_step(
+        "売上総利益" if rpt.gross_profit >= 0 else "売上総損失",
+        rpt.gross_profit,
+    )
     draw_pl_sec(rpt.sga)
-    draw_pl_step("営業利益", rpt.operating_income)
+    draw_pl_step(
+        "営業利益" if rpt.operating_income >= 0 else "営業損失",
+        rpt.operating_income,
+    )
     draw_pl_sec(rpt.non_op_income)
     draw_pl_sec(rpt.non_op_expense)
-    draw_pl_step("経常利益", rpt.ordinary_income)
+    draw_pl_step(
+        "経常利益" if rpt.ordinary_income >= 0 else "経常損失",
+        rpt.ordinary_income,
+    )
     draw_pl_sec(rpt.extra_income)
     draw_pl_sec(rpt.extra_loss)
-    draw_pl_step("税引前当期純利益", rpt.income_before_tax)
+    draw_pl_step(
+        "税引前当期純利益" if rpt.income_before_tax >= 0 else "税引前当期純損失",
+        rpt.income_before_tax,
+    )
     draw_pl_sec(rpt.taxes)
-    draw_pl_step("当期純利益", rpt.net_income)
+    draw_pl_step(
+        "当期純利益" if rpt.net_income >= 0 else "当期純損失",
+        rpt.net_income,
+    )
     c.showPage()
 
 
