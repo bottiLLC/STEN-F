@@ -7,9 +7,10 @@ import sys
 from pathlib import Path
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import logging
 from logging.handlers import RotatingFileHandler
+import math
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TypeVar, cast
 
@@ -121,17 +122,24 @@ def normalize_amount(value: object) -> int:
     Returns:
         Cleaned integer amount, rounded half up, or 0 on conversion failure.
     """
-    if value is None:
+    if value is None or isinstance(value, bool):
+        return 0
+    if isinstance(value, float) and not math.isfinite(value):
         return 0
     if isinstance(value, (int, float)):
-        return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        try:
+            return int(
+                Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+        except InvalidOperation, ValueError:
+            return 0
 
     val_str = str(value).strip().translate(_TRANS_MAP)
     if not val_str:
         return 0
     try:
         return int(Decimal(val_str).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-    except Exception:
+    except InvalidOperation, ValueError:
         return 0
 
 

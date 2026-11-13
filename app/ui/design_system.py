@@ -7,8 +7,11 @@ strict color token enforcement, and uniform border-radius (4px).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 import streamlit as st
+
+if TYPE_CHECKING:
+    from streamlit.delta_generator import DeltaGenerator
 
 # Color Palette Tokens per AGENTS.md
 COLOR_BASE_BG: Final[str] = "#FFFFFF"
@@ -124,7 +127,9 @@ button.sten-btn-compact {{
 /* Destructive Button: Ghost Outline with Danger Accent */
 button.sten-btn-destructive,
 div.sten-destructive-wrapper div[data-testid="stButton"] > button,
-div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button {{
+div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button,
+[class*="st-key-sten_destructive_"] div[data-testid="stButton"] > button,
+[class*="st-key-sten_destructive_"] div[data-testid="stFormSubmitButton"] > button {{
     background-color: {COLOR_BASE_BG} !important;
     border: 1px solid {COLOR_DANGER} !important;
     color: {COLOR_DANGER} !important;
@@ -134,7 +139,9 @@ div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button {{
 }}
 button.sten-btn-destructive:hover,
 div.sten-destructive-wrapper div[data-testid="stButton"] > button:hover,
-div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button:hover {{
+div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button:hover,
+[class*="st-key-sten_destructive_"] div[data-testid="stButton"] > button:hover,
+[class*="st-key-sten_destructive_"] div[data-testid="stFormSubmitButton"] > button:hover {{
     background-color: {COLOR_SURFACE_BG} !important;
     color: {COLOR_DANGER} !important;
     border-color: {COLOR_DANGER} !important;
@@ -179,6 +186,11 @@ h1, h2, h3, h4, h5, h6 {{
 def inject_global_design_system() -> None:
     """Inject global STEN-F industrial minimalism CSS into current Streamlit view."""
     st.html(GLOBAL_DESIGN_SYSTEM_CSS)
+
+
+def destructive_button_container(key: str) -> DeltaGenerator:
+    """Create a real Streamlit container targeted by destructive-button CSS rules."""
+    return st.container(key=f"sten_destructive_{key}")
 
 
 def render_system_diagnostic(log_path: Path) -> None:

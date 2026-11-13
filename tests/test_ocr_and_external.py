@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 import hashlib
 import io
 from pathlib import Path
@@ -293,7 +294,7 @@ def test_composite_scoring_fuzzy_company_name_and_threshold_pass() -> None:
         name="スターバックス コーヒー ジャパン 株式会社",
         invoice_number="T9991234567890",
         debit_account="会議費",
-        tax_rate=0.10,
+        tax_rate=Decimal("0.10"),
     )
 
     result = match_counterparty_master(raw, [vendor])

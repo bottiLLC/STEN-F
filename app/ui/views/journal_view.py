@@ -28,7 +28,12 @@ from app.domain_contracts import (
     Transaction,
     account_code_sort_key,
 )
-from app.ui.design_system import COLOR_DANGER, COLOR_SURFACE_BG, COLOR_TEXT_PRIMARY
+from app.ui.design_system import (
+    COLOR_DANGER,
+    COLOR_SURFACE_BG,
+    COLOR_TEXT_PRIMARY,
+    destructive_button_container,
+)
 from app.ui.journal_helpers import (
     build_detail_line_rows,
     build_journal_display_rows,
@@ -321,14 +326,14 @@ def _render_voucher_entry_step(
     total_credit = sum(line.credit for line in tx_lines)
     is_balanced = total_debit == total_credit > 0
 
-    col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("借方合計", f"¥{total_debit:,}", border=True)
-    col_m2.metric("貸方合計", f"¥{total_credit:,}", border=True)
-    col_m3.metric(
-        "貸借バランス(差額)",
-        "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
-        border=True,
-    )
+    with st.grid(3):
+        st.metric("借方合計", f"¥{total_debit:,}", border=True)
+        st.metric("貸方合計", f"¥{total_credit:,}", border=True)
+        st.metric(
+            "貸借バランス(差額)",
+            "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
+            border=True,
+        )
 
     active_evidence_bytes = (
         uploaded_file.getvalue() if uploaded_file else st.session_state.get("ocr_bytes")
@@ -439,14 +444,14 @@ def _render_transaction_detail_card(
         total_debit = sum(line.debit for line in selected_tx.lines)
         total_credit = sum(line.credit for line in selected_tx.lines)
         is_balanced = total_debit == total_credit > 0
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("借方合計", f"¥{total_debit:,}", border=True)
-        col_m2.metric("貸方合計", f"¥{total_credit:,}", border=True)
-        col_m3.metric(
-            "貸借バランス(差額)",
-            "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
-            border=True,
-        )
+        with st.grid(3):
+            st.metric("借方合計", f"¥{total_debit:,}", border=True)
+            st.metric("貸方合計", f"¥{total_credit:,}", border=True)
+            st.metric(
+                "貸借バランス(差額)",
+                "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
+                border=True,
+            )
 
         col_d_left, col_d_right = st.columns([3, 2])
         with col_d_left:
@@ -504,16 +509,15 @@ def _render_transaction_detail_card(
                     key=f"rev_reason_{target_id}",
                     disabled=is_already_reversed,
                 )
-                st.html('<div class="sten-destructive-wrapper">')
-                do_rev = st.button(
-                    "赤伝発行",
-                    type="secondary",
-                    icon=":material/swap_horiz:",
-                    width="content",
-                    disabled=is_already_reversed,
-                    key=f"rev_btn_{target_id}",
-                )
-                st.html("</div>")
+                with destructive_button_container(f"rev_{target_id}"):
+                    do_rev = st.button(
+                        "赤伝発行",
+                        type="secondary",
+                        icon=":material/swap_horiz:",
+                        width="content",
+                        disabled=is_already_reversed,
+                        key=f"rev_btn_{target_id}",
+                    )
                 if do_rev and not is_already_reversed:
                     try:
                         rev_id = call_journal(
@@ -541,33 +545,25 @@ def render_journal_history_section(
         account_id_to_label: Mapping from account primary keys to human-readable labels.
     """
     st.subheader("仕訳帳 (General Journal) 一覧・検索・CSV出力")
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 3])
-    with col_f1:
+    with st.container(horizontal=True, vertical_alignment="bottom"):
         s_date = st.date_input(
             "開始日",
             value=open_fy.start_date if open_fy else date(date.today().year, 1, 1),
             key="hist_s_date",
         )
-    with col_f2:
         e_date = st.date_input(
             "終了日",
             value=open_fy.end_date if open_fy else date(date.today().year, 12, 31),
             key="hist_e_date",
         )
-    with col_f3:
-        st.write("")
-        st.write("")
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            evidence_only = st.checkbox(
-                "証憑添付ありのみ表示", value=False, key="hist_evidence_only"
-            )
-        with col_c2:
-            exclude_cancelled = st.checkbox(
-                "取消(赤伝)処理したものを非表示",
-                value=True,
-                key="hist_exclude_cancelled",
-            )
+        evidence_only = st.checkbox(
+            "証憑添付ありのみ表示", value=False, key="hist_evidence_only"
+        )
+        exclude_cancelled = st.checkbox(
+            "取消(赤伝)処理したものを非表示",
+            value=True,
+            key="hist_exclude_cancelled",
+        )
 
     all_txs = call_journal(lambda s: s.get_entries())
     entries, cancelled_orig_ids = filter_journal_entries(

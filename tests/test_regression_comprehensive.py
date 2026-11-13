@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Final
 from pydantic import ValidationError
@@ -59,14 +60,14 @@ def test_verify_sample_receipt_pdf_exists_and_matches_counterparty_master() -> N
             name="株式会社アークリンク",
             invoice_number="T5011001046175",
             debit_account="6150",
-            tax_rate=0.10,
+            tax_rate=Decimal("0.10"),
         ),
         VendorMasterRecord(
             vendor_id=102,
             name="無関係商店",
             invoice_number="T9999999999999",
             debit_account="6170",
-            tax_rate=0.10,
+            tax_rate=Decimal("0.10"),
         ),
     ]
 

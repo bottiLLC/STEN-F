@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from unittest.mock import patch
 import pandas as pd
 import pytest
@@ -197,7 +198,7 @@ def test_master_helpers_counterparty_preserves_tel_and_tax_rate() -> None:
         trade_name="テスト屋号",
         invoice_number="T1234567890123",
         tel="03-1111-2222",
-        tax_rate=0.08,
+        tax_rate=Decimal("0.08"),
         debit_account_id=10,
         credit_account_id=20,
         description_template="定例仕入",
@@ -231,7 +232,7 @@ def test_master_helpers_counterparty_preserves_tel_and_tax_rate() -> None:
     updated = plan.to_save[0]
     assert updated.trade_name == "新屋号"
     assert updated.tel == "03-1111-2222"
-    assert updated.tax_rate == 0.08
+    assert updated.tax_rate == Decimal("0.08")
     assert plan.to_delete == [99]
 
 

@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.application_services import Container
 from app.core_foundation import (
@@ -27,6 +28,7 @@ from app.domain_contracts import (
 )
 from app.external_services import LocalFileService
 from app.storage_repository import (
+    Base,
     SQLAlchemyLedgerRepository,
     SQLAlchemyMasterRepository,
     init_db,
@@ -52,6 +54,11 @@ from app.storage_repository import (
         ("invalid_string", 0),
         ("¥1000", 0),
         ("1,234.5", 1235),
+        (float("nan"), 0),
+        (float("inf"), 0),
+        (float("-inf"), 0),
+        (True, 0),
+        (False, 0),
     ],
 )
 def test_normalize_amount_with_various_inputs_returns_expected_integer(
@@ -636,3 +643,43 @@ async def test_ledger_repository_add_transaction_unbalanced_raises_value_error(
 
         with pytest.raises(ValueError, match="Zero-Tolerance Balance Violation"):
             await ledger_repo.add_transaction(tx)
+
+
+@pytest.mark.asyncio
+async def test_counterparty_tax_rate_decimal_and_legacy_real_compatibility(
+    tmp_path: Path,
+) -> None:
+    """Verify Counterparty.tax_rate stores Decimal and reads legacy REAL columns without loss."""
+    coerced = Counterparty.model_validate({"name": "浮動小数点検証", "tax_rate": 0.08})
+    assert coerced.tax_rate == Decimal("0.08")
+
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'tax_rate_legacy.db'}"
+    test_engine = create_async_engine(db_url)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    try:
+        async with test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        async with session_factory() as session:
+            repo = SQLAlchemyMasterRepository(session)
+            saved = await repo.save_counterparty(
+                Counterparty(name="軽減税率業者", tax_rate=Decimal("0.08"))
+            )
+            assert saved.tax_rate == Decimal("0.08")
+
+        # Insert raw REAL directly to simulate legacy SQLite storage before Numeric(5, 4)
+        async with test_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO counterparties (name, tax_rate) VALUES ('レガシー業者', 0.10)"
+                )
+            )
+
+        async with session_factory() as session:
+            repo = SQLAlchemyMasterRepository(session)
+            loaded = await repo.get_counterparty_by_keyword("レガシー業者")
+            assert loaded is not None
+            assert isinstance(loaded.tax_rate, Decimal)
+            assert loaded.tax_rate == Decimal("0.10")
+    finally:
+        await test_engine.dispose()

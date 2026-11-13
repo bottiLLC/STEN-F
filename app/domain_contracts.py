@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import datetime as _dt
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+import math
 import re
 from typing import Final, TypedDict
 import unicodedata
@@ -45,6 +47,30 @@ def _normalize_invoice_number(v: object) -> str | None:
     if _DIGIT_13_PATTERN.fullmatch(cleaned):
         return f"T{cleaned}"
     return cleaned
+
+
+def _coerce_decimal_rate(v: object) -> Decimal | None:
+    """Coerce numeric or string tax rate inputs into exact Decimal values."""
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, Decimal):
+        return v if v.is_finite() else None
+    if isinstance(v, float):
+        if not math.isfinite(v):
+            return None
+        return Decimal(str(v))
+    if isinstance(v, int):
+        return Decimal(v)
+    if isinstance(v, str):
+        stripped = v.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = Decimal(stripped)
+            return parsed if parsed.is_finite() else None
+        except InvalidOperation as e:
+            raise ValueError(f"Invalid tax_rate decimal value: {v!r}") from e
+    raise ValueError(f"Unsupported tax_rate type: {type(v).__name__}")
 
 
 # --- 1. Datum Plane (Enums, Constants, and Schemas) ---
@@ -258,12 +284,18 @@ class Counterparty(BaseModel):
     trade_name: str | None = None
     invoice_number: str | None = Field(None, pattern=r"^T[0-9]{13}$")
     tel: str | None = None
-    tax_rate: float | None = None
+    tax_rate: Decimal | None = None
     debit_account_id: int | None = None
     credit_account_id: int | None = None
     description_template: str | None = None
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    @field_validator("tax_rate", mode="before")
+    @classmethod
+    def _validate_tax_rate(cls, v: object) -> Decimal | None:
+        """Coerce numeric or string tax rate into Decimal."""
+        return _coerce_decimal_rate(v)
 
     @field_validator("invoice_number", mode="before")
     @classmethod
@@ -507,9 +539,15 @@ class VendorMasterRecord(BaseModel):
     debit_account: str | None = None
     credit_account: str | None = None
     description_template: str | None = None
-    tax_rate: float | None = 0.10
+    tax_rate: Decimal | None = Decimal("0.10")
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    @field_validator("tax_rate", mode="before")
+    @classmethod
+    def _validate_tax_rate(cls, v: object) -> Decimal | None:
+        """Coerce numeric or string tax rate into Decimal."""
+        return _coerce_decimal_rate(v)
 
 
 class MatchScoreResult(BaseModel):
@@ -532,7 +570,7 @@ class ReceiptData(BaseModel):
     total_amount_incl_tax: int | None = None
     invoice_registration_number: str | None = None
     tel: str | None = None
-    tax_rate: float | None = None
+    tax_rate: Decimal | None = None
     tax_breakdown: list[TaxBreakdownItem] | None = None
     total_tax_amount: int | None = None
     total_amount_excl_tax: int | None = None
@@ -546,6 +584,12 @@ class ReceiptData(BaseModel):
     is_dictionary_matched: bool = False
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    @field_validator("tax_rate", mode="before")
+    @classmethod
+    def _validate_tax_rate(cls, v: object) -> Decimal | None:
+        """Coerce numeric or string tax rate into Decimal."""
+        return _coerce_decimal_rate(v)
 
 
 class SystemSettings(BaseModel):
@@ -795,3 +839,13 @@ def account_code_sort_key(code: str) -> tuple[int, str]:
     """Derive deterministic numeric-first sort key for alphanumeric account codes."""
     stripped = code.strip()
     return (int(stripped) if stripped.isdigit() else 999999, stripped)
+
+
+def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
+    """Calculate start and end boundary dates for succeeding fiscal period."""
+    next_start = current_end + timedelta(days=1)
+    try:
+        target = next_start.replace(year=next_start.year + 1)
+    except ValueError:
+        target = next_start.replace(year=next_start.year + 1, month=2, day=28)
+    return next_start, target - timedelta(days=1)
