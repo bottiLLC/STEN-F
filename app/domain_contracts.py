@@ -789,3 +789,9 @@ class ILedgerRepository(ABC):
     async def get_fiscal_year(self, fiscal_year_id: int) -> FiscalYear | None:
         """Fetch fiscal year metadata."""
         ...
+
+
+def account_code_sort_key(code: str) -> tuple[int, str]:
+    """Derive deterministic numeric-first sort key for alphanumeric account codes."""
+    stripped = code.strip()
+    return (int(stripped) if stripped.isdigit() else 999999, stripped)

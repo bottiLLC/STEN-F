@@ -26,6 +26,7 @@ from app.domain_contracts import (
     Transaction,
     TransactionLine,
     TrialBalanceRow,
+    account_code_sort_key,
 )
 from app.storage_repository import (
     AsyncSessionLocal,
@@ -396,7 +397,10 @@ class LedgerService:
                 credit_balance=abs(net) if net < 0 else 0,
             )
 
-        return sorted([make_row(acc) for acc in accounts], key=lambda x: x.account_code)
+        return sorted(
+            [make_row(acc) for acc in accounts],
+            key=lambda x: account_code_sort_key(x.account_code),
+        )
 
     async def get_general_ledger(
         self, fiscal_year_id: int, account_id: int

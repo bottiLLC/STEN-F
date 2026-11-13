@@ -22,6 +22,14 @@ from pydantic import ValidationError
 import streamlit as st
 
 
+def clean_editor_text(value: object) -> str | None:
+    """Sanitize DataFrame editor cell values against None, NaN, and blank strings."""
+    if value is None or bool(pd.isna(value)):
+        return None
+    text = str(value).strip()
+    return text if text else None
+
+
 def render_accounting_editor(
     df: pd.DataFrame,
     pk_column: str = "id",
@@ -107,44 +115,44 @@ def render_accounting_editor(
     if not (on_commit and has_changes):
         return edited_df
 
-    col_info, col_cancel, col_save = st.columns([5, 2, 2])
+    col_info, col_actions = st.columns([5, 4])
     with col_info:
         st.info(
             f"変更が検出されました（追加: {len(added_list)}件, "
             f"更新: {len(pk_edited_map)}件, 削除: {len(pk_deleted_list)}件）"
         )
-    with col_cancel:
-        if st.button(
-            "取消",
-            key=f"btn_cancel_{current_key}",
-            icon=":material/close:",
-            width="stretch",
-            help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
-        ):
-            st.session_state.pop(pending_key, None)
-            st.session_state[version_key] += 1
-            st.toast("編集内容を取り消しました", icon=":material/undo:")
-            st.rerun()
-    with col_save:
-        if st.button(
-            "保存",
-            type="primary",
-            key=f"btn_commit_{current_key}",
-            icon=":material/save:",
-            width="stretch",
-        ):
-            try:
-                commit_ok = on_commit(added_list, pk_edited_map, pk_deleted_list)
-                if commit_ok is False:
+    with col_actions:
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            if st.button(
+                "取消",
+                key=f"btn_cancel_{current_key}",
+                icon=":material/close:",
+                width="content",
+                help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
+            ):
+                st.session_state.pop(pending_key, None)
+                st.session_state[version_key] += 1
+                st.toast("編集内容を取り消しました", icon=":material/undo:")
+                st.rerun()
+            if st.button(
+                "保存",
+                type="primary",
+                key=f"btn_commit_{current_key}",
+                icon=":material/save:",
+                width="content",
+            ):
+                try:
+                    commit_ok = on_commit(added_list, pk_edited_map, pk_deleted_list)
+                    if commit_ok is False:
+                        return edited_df
+                except Exception as err:
+                    st.error(f"変更の保存に失敗しました: {err}")
                     return edited_df
-            except Exception as err:
-                st.error(f"変更の保存に失敗しました: {err}")
-                return edited_df
 
-            st.session_state.pop(pending_key, None)
-            st.session_state[version_key] += 1
-            st.toast("変更を保存しました", icon=":material/check:")
-            st.rerun()
+                st.session_state.pop(pending_key, None)
+                st.session_state[version_key] += 1
+                st.toast("変更を保存しました", icon=":material/check:")
+                st.rerun()
 
     return edited_df
 

@@ -19,33 +19,14 @@ import pandas as pd
 import streamlit as st
 
 from app.core_foundation import DI, call_ledger, call_master, run_async
-from app.domain_contracts import Corporation, FiscalYear
+from app.domain_contracts import (
+    Corporation,
+    FiscalYear,
+    account_code_sort_key,
+)
 from app.ui.financial_statements import (
     render_balance_sheet,
     render_profit_and_loss,
-)
-
-st.header("帳簿・決算", divider="gray")
-
-fys = call_master(lambda s: s.get_fiscal_years())
-if not fys:
-    st.warning("会計年度が登録されていません。マスタ・設定から登録してください。")
-    st.stop()
-
-fy_map = {
-    f"{f.name} ({f.start_date} 〜 {f.end_date}) [{'進行中' if f.status == 'OPEN' else '締切済'}]": f
-    for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
-}
-selected_fy = fy_map[
-    st.selectbox("対象会計年度", list(fy_map.keys()), key="ledger_fy_select")
-]
-
-tab_tb, tab_gl, tab_fs = st.tabs(
-    [
-        "合計残高試算表 (T/B)",
-        "総勘定元帳 (General Ledger)",
-        "決算書 (B/S・P/L・PDF)",
-    ]
 )
 
 
@@ -102,7 +83,10 @@ def render_general_ledger_section(selected_fy: FiscalYear) -> None:
         selected_fy: Target FiscalYear domain model instance.
     """
     st.subheader(f"総勘定元帳 (対象: {selected_fy.name})")
-    accounts = call_master(lambda s: s.get_accounts())
+    accounts = sorted(
+        call_master(lambda s: s.get_accounts()),
+        key=lambda a: account_code_sort_key(a.code),
+    )
     acc_map = {f"{a.code}: {a.name}": a for a in accounts}
     selected_acc = acc_map.get(
         st.selectbox("表示する勘定科目", list(acc_map.keys()), key="gl_acc_select")
@@ -142,12 +126,14 @@ def render_financial_statements_section(selected_fy: FiscalYear) -> None:
         hide_zero = st.checkbox("残高が 0 円の科目を非表示にする", value=True)
 
     with col_btn:
-        if st.button(
-            "PDF生成",
-            type="primary",
-            icon=":material/picture_as_pdf:",
-            width="stretch",
-        ):
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            generate_clicked = st.button(
+                "PDF生成",
+                type="primary",
+                icon=":material/picture_as_pdf:",
+                width="content",
+            )
+        if generate_clicked:
 
             async def generate_pdf(fy: FiscalYear) -> bytes:
                 async with DI.get_master_service() as ms, DI.get_ledger_service() as ls:
@@ -161,14 +147,15 @@ def render_financial_statements_section(selected_fy: FiscalYear) -> None:
 
             try:
                 pdf_bytes = run_async(generate_pdf(selected_fy))
-                st.download_button(
-                    "PDF出力",
-                    data=pdf_bytes,
-                    file_name=f"report_{selected_fy.name}.pdf",
-                    mime="application/pdf",
-                    icon=":material/download:",
-                    width="stretch",
-                )
+                with st.container(horizontal=True, horizontal_alignment="right"):
+                    st.download_button(
+                        "PDF出力",
+                        data=pdf_bytes,
+                        file_name=f"report_{selected_fy.name}.pdf",
+                        mime="application/pdf",
+                        icon=":material/download:",
+                        width="content",
+                    )
             except Exception as e:
                 st.error(f"PDF 生成エラー: {e}")
 
@@ -180,14 +167,37 @@ def render_financial_statements_section(selected_fy: FiscalYear) -> None:
     render_profit_and_loss(report, hide_zero=hide_zero)
 
 
-# 1. 試算表 (T/B)
-with tab_tb:
-    render_trial_balance_section(selected_fy)
+def main() -> None:
+    """Render ledger and financial statement workspace."""
+    st.header("帳簿・決算", divider="gray")
 
-# 2. 総勘定元帳 (General Ledger)
-with tab_gl:
-    render_general_ledger_section(selected_fy)
+    fys = call_master(lambda s: s.get_fiscal_years())
+    if not fys:
+        st.warning("会計年度が登録されていません。マスタ・設定から登録してください。")
+        st.stop()
 
-# 3. 決算書 (B/S・P/L)
-with tab_fs:
-    render_financial_statements_section(selected_fy)
+    fy_map = {
+        f"{f.name} ({f.start_date} 〜 {f.end_date}) [{'進行中' if f.status == 'OPEN' else '締切済'}]": f
+        for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
+    }
+    selected_fy = fy_map[
+        st.selectbox("対象会計年度", list(fy_map.keys()), key="ledger_fy_select")
+    ]
+
+    tab_tb, tab_gl, tab_fs = st.tabs(
+        [
+            "合計残高試算表 (T/B)",
+            "総勘定元帳 (General Ledger)",
+            "決算書 (B/S・P/L・PDF)",
+        ]
+    )
+
+    with tab_tb:
+        render_trial_balance_section(selected_fy)
+    with tab_gl:
+        render_general_ledger_section(selected_fy)
+    with tab_fs:
+        render_financial_statements_section(selected_fy)
+
+
+main()

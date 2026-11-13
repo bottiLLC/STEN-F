@@ -16,10 +16,10 @@ if str(_ROOT) not in sys.path:
 import streamlit as st
 
 from backup_manager import get_backup_dir, run_backup, set_backup_dir
-from app.core_foundation import DI, log, run_async, run_scoped
+from app.core_foundation import DI, log, run_async, run_scoped, settings
 from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
 from app.storage_repository import seed_accounts
-from app.ui.design_system import inject_global_design_system
+from app.ui.design_system import inject_global_design_system, render_system_diagnostic
 
 
 # --- 1. Pure Transformation Helpers ---
@@ -65,7 +65,7 @@ def _render_sidebar_backup() -> None:
             "パス更新",
             type="secondary",
             icon=":material/folder:",
-            width="stretch",
+            width="content",
         ):
             save_res = set_backup_dir(new_dir)
             if save_res["success"]:
@@ -78,7 +78,7 @@ def _render_sidebar_backup() -> None:
         "バックアップ",
         type="primary",
         icon=":material/backup:",
-        width="stretch",
+        width="content",
     ):
         with st.spinner("圧縮・整合性検証中..."):
             res = run_backup(app_name="app")
@@ -121,6 +121,7 @@ def render_sidebar(corp_info: Corporation | None, open_fy: FiscalYear | None) ->
         _render_sidebar_backup()
         st.divider()
         st.caption("© 2026 合同会社ぼっち (GPL-3.0)")
+        render_system_diagnostic(settings.LOGS_DIR / "app.log")
 
 
 def main() -> None:

@@ -14,12 +14,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
 from typing import Any
 import pandas as pd
-from pydantic import ValidationError
 import streamlit as st
 
+from app.application_services import MasterService
 from app.core_foundation import (
     DI,
     call_fiscal_year,
@@ -29,19 +30,26 @@ from app.core_foundation import (
     settings,
 )
 from app.domain_contracts import (
-    Abstract,
     Account,
     AccountType,
     Corporation,
-    Counterparty,
     FiscalYear,
     SystemSettings,
+    account_code_sort_key,
 )
-from app.ui.design_system import render_system_diagnostic
-from app.ui.editor import (
-    format_counterparty_validation_error,
-    render_accounting_editor,
+from app.ui.editor import format_counterparty_validation_error, render_accounting_editor
+from app.ui.master_helpers import (
+    CommitPlan,
+    build_abstract_commit_plan,
+    build_abstract_df,
+    build_account_commit_plan,
+    build_account_df,
+    build_counterparty_commit_plan,
+    build_counterparty_df,
+    extract_selected_pk_ids,
 )
+
+_format_counterparty_validation_error = format_counterparty_validation_error
 
 
 def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
@@ -61,22 +69,92 @@ def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
     return next_start, target - timedelta(days=1)
 
 
-st.header("マスタ・システム設定", divider="gray")
+def _execute_commit_plan[T](
+    plan: CommitPlan[T],
+    save_fn: Callable[[MasterService, T], Awaitable[Any]],
+    delete_fn: Callable[[MasterService, int], Awaitable[Any]],
+    entity_label: str,
+) -> bool:
+    """Persist validated CommitPlan items inside a scoped MasterService session."""
+    if plan.errors:
+        for err_msg in plan.errors:
+            st.error(err_msg)
+        return False
 
-tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_sys = st.tabs(
-    [
-        "自社情報",
-        "会計年度・年度締め",
-        "期首残高設定",
-        "勘定科目",
-        "取引先",
-        "よく使う摘要",
-        "AI・システム設定",
-    ]
-)
+    async def do_commit() -> list[str]:
+        runtime_errors: list[str] = []
+        async with DI.get_master_service() as s:
+            for item in plan.to_save:
+                try:
+                    await save_fn(s, item)
+                except Exception as err:
+                    runtime_errors.append(f"{entity_label}の保存に失敗しました: {err}")
+            for pk in plan.to_delete:
+                try:
+                    await delete_fn(s, pk)
+                except Exception as err:
+                    runtime_errors.append(
+                        f"{entity_label} (ID: {pk}) の削除に失敗しました: {err}"
+                    )
+        return runtime_errors
 
-# 1. 自社情報
-with tab_corp:
+    runtime_errors = run_async(do_commit())
+    if runtime_errors:
+        for err_msg in runtime_errors:
+            st.error(err_msg)
+        return False
+    return True
+
+
+def _render_batch_delete_bar(
+    edited_df: pd.DataFrame,
+    entity_label: str,
+    version_key: str,
+    button_key: str,
+    delete_handler: Callable[[MasterService, list[int]], Awaitable[str | None]],
+) -> None:
+    """Render unified warning bar and destructive batch-delete action for selected rows."""
+    selected_ids = extract_selected_pk_ids(edited_df)
+    if not selected_ids:
+        return
+
+    col_del_info, col_del_btn = st.columns([4, 1])
+    with col_del_info:
+        st.warning(f"{len(selected_ids)} 件の{entity_label}が選択されています。")
+    with col_del_btn:
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            st.html('<div class="sten-destructive-wrapper">')
+            do_delete = st.button(
+                "削除",
+                type="secondary",
+                icon=":material/delete:",
+                width="content",
+                key=button_key,
+            )
+            st.html("</div>")
+
+    if not do_delete:
+        return
+
+    async def execute_delete() -> str | None:
+        async with DI.get_master_service() as ms:
+            return await delete_handler(ms, selected_ids)
+
+    err_msg = run_async(execute_delete())
+    if err_msg:
+        st.error(err_msg)
+        return
+
+    st.session_state[version_key] = st.session_state.get(version_key, 0) + 1
+    st.toast(
+        f"{len(selected_ids)} 件の{entity_label}を正常に削除しました",
+        icon=":material/delete:",
+    )
+    st.rerun()
+
+
+def _render_corp_tab() -> None:
+    """Render tenant corporation profile form."""
     st.subheader("自社・事業者情報設定")
     corp = call_master(lambda s: s.get_corporation())
 
@@ -97,10 +175,9 @@ with tab_corp:
             value=corp.representative_name if corp and corp.representative_name else "",
         )
 
-        _, col_btn_sub = st.columns([4, 1])
-        with col_btn_sub:
+        with st.container(horizontal=True, horizontal_alignment="right"):
             corp_submitted = st.form_submit_button(
-                "保存", type="primary", width="stretch"
+                "保存", type="primary", width="content"
             )
         if corp_submitted:
             if not corp_name.strip():
@@ -117,12 +194,10 @@ with tab_corp:
                 st.toast("自社情報を保存しました", icon=":material/check_circle:")
                 st.rerun()
 
-# 2. 会計年度・年度締め (ステートマシン遷移制御)
-with tab_fy:
-    fys = call_master(lambda s: s.get_fiscal_years())
 
+def _render_fiscal_year_tab(fys: list[FiscalYear]) -> None:
+    """Render fiscal period setup, overview grid, and period-end closing rollover."""
     if not fys:
-        # 【State 0: 未初期化状態】
         st.subheader("第1期 初期セットアップ")
         st.info("会計年度が未登録です。第1期の初期セットアップを行ってください。")
         with st.form("initial_fy_setup_form", border=True):
@@ -137,10 +212,9 @@ with tab_fy:
             new_start = c_d1.date_input("期首日", value=date(date.today().year, 1, 1))
             new_end = c_d2.date_input("期末日", value=date(date.today().year, 12, 31))
 
-            _, col_fy_btn = st.columns([3, 1])
-            with col_fy_btn:
+            with st.container(horizontal=True, horizontal_alignment="right"):
                 fy_submitted = st.form_submit_button(
-                    "第1期を作成", type="primary", width="stretch"
+                    "第1期を作成", type="primary", width="content"
                 )
             if fy_submitted:
                 if new_start >= new_end:
@@ -160,203 +234,196 @@ with tab_fy:
                         "第1期会計年度を作成しました", icon=":material/check_circle:"
                     )
                     st.rerun()
-    else:
-        # 【State 1: 通常運用（期中）状態】＆【State 2: 締め＆次期繰越処理】
-        st.subheader("会計年度一覧")
-        open_fy = next((f for f in fys if f.status == "OPEN"), None)
-        if open_fy:
-            st.caption(
-                f"現在のアクティブ期: **{open_fy.name}** "
-                f"(第{open_fy.period_number}期: {open_fy.start_date} 〜 {open_fy.end_date})"
-            )
+        return
 
-        fy_rows = [
-            {
-                "ID": f.id,
-                "年度名称": f.name,
-                "期数": f"第{f.period_number}期" if f.period_number else "-",
-                "開始日": str(f.start_date),
-                "終了日": str(f.end_date),
-                "状態": "進行中 (OPEN)" if f.status == "OPEN" else "締切済 (CLOSED)",
-            }
-            for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
-        ]
-        st.dataframe(pd.DataFrame(fy_rows), hide_index=True, width="stretch")
+    st.subheader("会計年度一覧")
+    open_fy = next((f for f in fys if f.status == "OPEN"), None)
+    if open_fy:
+        st.caption(
+            f"現在のアクティブ期: **{open_fy.name}** "
+            f"(第{open_fy.period_number}期: {open_fy.start_date} 〜 {open_fy.end_date})"
+        )
 
-        if open_fy:
-            st.divider()
-            # 締め処理用アコーディオン（デフォルトは折りたたみで誤操作防止）
-            with st.expander("年度締め・次期繰越処理", expanded=False):
-                # 【State 2: 締め＆次期繰越処理確認パネル】
-                next_period = (open_fy.period_number or 0) + 1
-                next_start, next_end = compute_next_fiscal_year_dates(open_fy.end_date)
-                default_next_name = f"FY{next_start.year}"
-
-                st.warning(
-                    f"締め処理を実行すると、現行期（`{open_fy.name}`）の仕訳データはロックされ、"
-                    "直接の変更・削除はできなくなります。"
-                )
-
-                c_cur, c_next = st.columns(2)
-                with c_cur:
-                    st.markdown("**クローズ対象 (現行期)**")
-                    st.text(f"年度名称: {open_fy.name}")
-                    st.text(f"期数: 第{open_fy.period_number}期")
-                    st.text(f"期間: {open_fy.start_date} 〜 {open_fy.end_date}")
-
-                with c_next:
-                    st.markdown("**次期パラメーター (自動算出)**")
-                    st.text(f"期数: 第{next_period}期")
-                    st.text(f"期間: {next_start} 〜 {next_end}")
-
-                with st.form("fy_rollover_form", border=True):
-                    next_fy_name = st.text_input(
-                        "次期年度名称",
-                        value=default_next_name,
-                        help="西暦ベースの年度名称（例: FY2026）",
-                    )
-                    _, col_close_btn = st.columns([3, 1])
-                    with col_close_btn:
-                        close_submitted = st.form_submit_button(
-                            "確定して次期へ繰越",
-                            type="primary",
-                            width="stretch",
-                        )
-                    if close_submitted:
-                        if not next_fy_name.strip():
-                            st.error("次期年度名称を入力してください。")
-                        else:
-                            try:
-                                curr_fy_id = open_fy.id or 0
-                                call_fiscal_year(
-                                    lambda s: s.close_fiscal_year(
-                                        curr_fy_id, next_fy_name.strip()
-                                    )
-                                )
-                                st.toast(
-                                    "年度締め処理が完了し、次期へ繰り越されました",
-                                    icon=":material/check_circle:",
-                                )
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"年度締めエラー: {e}")
-        else:
-            st.warning("進行中 (OPEN) の会計年度がありません。")
-
-
-# 3. 期首残高設定
-with tab_op:
-    st.subheader("期首残高設定 (開始貸借対照表)")
-    fys = call_master(lambda s: s.get_fiscal_years())
-    open_fy = next((x for x in fys if x.status == "OPEN"), None)
-    all_accounts = call_master(lambda s: s.get_accounts())
+    fy_rows = [
+        {
+            "ID": f.id,
+            "年度名称": f.name,
+            "期数": f"第{f.period_number}期" if f.period_number else "-",
+            "開始日": str(f.start_date),
+            "終了日": str(f.end_date),
+            "状態": "進行中 (OPEN)" if f.status == "OPEN" else "締切済 (CLOSED)",
+        }
+        for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
+    ]
+    st.dataframe(pd.DataFrame(fy_rows), hide_index=True, width="stretch")
 
     if not open_fy:
         st.warning("進行中 (OPEN) の会計年度がありません。")
-    else:
-        debit_accs = [
-            a
-            for a in all_accounts
-            if a.type
-            in (
-                AccountType.CURRENT_ASSET,
-                AccountType.FIXED_ASSET,
-                AccountType.DEFERRED_ASSET,
-            )
-        ]
-        credit_accs = [
-            a
-            for a in all_accounts
-            if a.type
-            in (
-                AccountType.CURRENT_LIABILITY,
-                AccountType.FIXED_LIABILITY,
-                AccountType.EQUITY,
-            )
-        ]
+        return
 
-        with st.form("opening_balance_form", border=True):
-            c_l, c_r = st.columns(2)
-            op_d: dict[str, str] = {}
-            op_c: dict[str, str] = {}
-            with c_l:
-                st.markdown("### 【 借方 : 資産の部 】")
-                for a in debit_accs:
-                    v = st.number_input(
-                        f"{a.code}: {a.name}",
-                        min_value=0,
-                        value=0,
-                        step=10000,
-                        key=f"op_acc_{a.id}",
-                    )
-                    if a.id:
-                        op_d[str(a.id)] = str(v)
-            with c_r:
-                st.markdown("### 【 貸方 : 負債・純資産の部 】")
-                for a in credit_accs:
-                    v = st.number_input(
-                        f"{a.code}: {a.name}",
-                        min_value=0,
-                        value=0,
-                        step=10000,
-                        key=f"op_acc_{a.id}",
-                    )
-                    if a.id:
-                        op_c[str(a.id)] = str(v)
+    st.divider()
+    with st.expander("年度締め・次期繰越処理", expanded=False):
+        next_period = (open_fy.period_number or 0) + 1
+        next_start, next_end = compute_next_fiscal_year_dates(open_fy.end_date)
+        default_next_name = f"FY{next_start.year}"
 
-            total_d = sum(int(v) for v in op_d.values())
-            total_c = sum(int(v) for v in op_c.values())
-            st.divider()
-            m1, m2, m3 = st.columns(3)
-            m1.metric("資産合計 (借方)", f"¥{total_d:,}")
-            m2.metric("負債・純資産合計 (貸方)", f"¥{total_c:,}")
-            diff = total_d - total_c
-            m3.metric(
-                "貸借バランス(差額)",
-                "一致" if diff == 0 and total_d > 0 else f"¥{diff:,}",
+        st.warning(
+            f"締め処理を実行すると、現行期（`{open_fy.name}`）の仕訳データはロックされ、"
+            "直接の変更・削除はできなくなります。"
+        )
+
+        c_cur, c_next = st.columns(2)
+        with c_cur:
+            st.markdown("**クローズ対象 (現行期)**")
+            st.text(f"年度名称: {open_fy.name}")
+            st.text(f"期数: 第{open_fy.period_number}期")
+            st.text(f"期間: {open_fy.start_date} 〜 {open_fy.end_date}")
+
+        with c_next:
+            st.markdown("**次期パラメーター (自動算出)**")
+            st.text(f"期数: 第{next_period}期")
+            st.text(f"期間: {next_start} 〜 {next_end}")
+
+        with st.form("fy_rollover_form", border=True):
+            next_fy_name = st.text_input(
+                "次期年度名称",
+                value=default_next_name,
+                help="西暦ベースの年度名称（例: FY2026）",
             )
-
-            assert open_fy is not None
-            fy_start = open_fy.start_date
-            existing_open = call_journal(
-                lambda s: s.get_entries(start_date=fy_start, end_date=fy_start)
-            )
-            has_opening_entry = any(
-                tx.description == "期首残高" for tx in existing_open
-            )
-
-            if has_opening_entry:
-                st.info(
-                    "当該会計年度の期首残高は既に登録済みです（不変原則に基づきロック中）。"
-                    "訂正が必要な場合は、振替仕訳画面より赤伝（反対仕訳）を起票してください。"
-                )
-
-            _, col_op_btn = st.columns([4, 1])
-            with col_op_btn:
-                op_submitted = st.form_submit_button(
-                    "登録",
+            with st.container(horizontal=True, horizontal_alignment="right"):
+                close_submitted = st.form_submit_button(
+                    "確定して次期へ繰越",
                     type="primary",
-                    width="stretch",
-                    disabled=has_opening_entry,
+                    width="content",
                 )
-            if op_submitted:
-                if diff != 0 or total_d == 0:
-                    st.error("貸借合計を一致させ、0より大きい金額を入力してください。")
+            if close_submitted:
+                if not next_fy_name.strip():
+                    st.error("次期年度名称を入力してください。")
                 else:
-                    s_date = fy_start
                     try:
-                        call_journal(
-                            lambda s: s.register_opening_balance(s_date, op_d, op_c)
+                        curr_fy_id = open_fy.id or 0
+                        call_fiscal_year(
+                            lambda s: s.close_fiscal_year(
+                                curr_fy_id, next_fy_name.strip()
+                            )
                         )
                         st.toast(
-                            "期首残高を登録しました", icon=":material/check_circle:"
+                            "年度締め処理が完了し、次期へ繰り越されました",
+                            icon=":material/check_circle:",
                         )
                         st.rerun()
-                    except ValueError as err:
-                        st.error(f"登録エラー: {err}")
+                    except Exception as e:
+                        st.error(f"年度締めエラー: {e}")
 
-# 4. 勘定科目マスタ
-with tab_acc:
+
+def _render_opening_balance_tab(
+    fys: list[FiscalYear], all_accounts: list[Account]
+) -> None:
+    """Render opening balance registration form for active open fiscal year."""
+    st.subheader("期首残高設定 (開始貸借対照表)")
+    open_fy = next((x for x in fys if x.status == "OPEN"), None)
+    if not open_fy:
+        st.warning("進行中 (OPEN) の会計年度がありません。")
+        return
+
+    debit_accs = [
+        a
+        for a in all_accounts
+        if a.type
+        in (
+            AccountType.CURRENT_ASSET,
+            AccountType.FIXED_ASSET,
+            AccountType.DEFERRED_ASSET,
+        )
+    ]
+    credit_accs = [
+        a
+        for a in all_accounts
+        if a.type
+        in (
+            AccountType.CURRENT_LIABILITY,
+            AccountType.FIXED_LIABILITY,
+            AccountType.EQUITY,
+        )
+    ]
+
+    with st.form("opening_balance_form", border=True):
+        c_l, c_r = st.columns(2)
+        op_d: dict[str, str] = {}
+        op_c: dict[str, str] = {}
+        with c_l:
+            st.markdown("### 【 借方 : 資産の部 】")
+            for a in debit_accs:
+                v = st.number_input(
+                    f"{a.code}: {a.name}",
+                    min_value=0,
+                    value=0,
+                    step=10000,
+                    key=f"op_acc_{a.id}",
+                )
+                if a.id:
+                    op_d[str(a.id)] = str(v)
+        with c_r:
+            st.markdown("### 【 貸方 : 負債・純資産の部 】")
+            for a in credit_accs:
+                v = st.number_input(
+                    f"{a.code}: {a.name}",
+                    min_value=0,
+                    value=0,
+                    step=10000,
+                    key=f"op_acc_{a.id}",
+                )
+                if a.id:
+                    op_c[str(a.id)] = str(v)
+
+        total_d = sum(int(v) for v in op_d.values())
+        total_c = sum(int(v) for v in op_c.values())
+        diff = total_d - total_c
+        st.divider()
+        m1, m2, m3 = st.columns(3)
+        m1.metric("資産合計 (借方)", f"¥{total_d:,}")
+        m2.metric("負債・純資産合計 (貸方)", f"¥{total_c:,}")
+        m3.metric(
+            "貸借バランス(差額)",
+            "一致" if diff == 0 and total_d > 0 else f"¥{diff:,}",
+        )
+
+        fy_start = open_fy.start_date
+        existing_open = call_journal(
+            lambda s: s.get_entries(start_date=fy_start, end_date=fy_start)
+        )
+        has_opening_entry = any(
+            tx.description in ("期首残高", "前期繰越") for tx in existing_open
+        )
+        if has_opening_entry:
+            st.info(
+                "当該会計年度の期首残高または前期繰越は既に登録済みです（不変原則に基づきロック中）。"
+                "訂正が必要な場合は、振替仕訳画面より赤伝（反対仕訳）を起票してください。"
+            )
+
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            op_submitted = st.form_submit_button(
+                "登録",
+                type="primary",
+                width="content",
+                disabled=has_opening_entry,
+            )
+        if op_submitted:
+            if diff != 0 or total_d == 0:
+                st.error("貸借合計を一致させ、0より大きい金額を入力してください。")
+            else:
+                try:
+                    call_journal(
+                        lambda s: s.register_opening_balance(fy_start, op_d, op_c)
+                    )
+                    st.toast("期首残高を登録しました", icon=":material/check_circle:")
+                    st.rerun()
+                except ValueError as err:
+                    st.error(f"登録エラー: {err}")
+
+
+def _render_accounts_tab(accounts: list[Account]) -> None:
+    """Render chart of accounts master editor, creation popover, and batch delete."""
     col_acc_head, col_acc_add = st.columns([4, 1])
     with col_acc_head:
         st.subheader("勘定科目マスタ一括管理")
@@ -376,10 +443,9 @@ with tab_acc:
                 new_desc_in = st.text_input(
                     "説明・用途（任意）", placeholder="例: 出張等の仮渡金"
                 )
-                _, c_add_btn = st.columns([2, 1])
-                with c_add_btn:
+                with st.container(horizontal=True, horizontal_alignment="right"):
                     add_submitted = st.form_submit_button(
-                        "登録", type="primary", width="stretch"
+                        "登録", type="primary", width="content"
                     )
 
                 if add_submitted:
@@ -414,151 +480,7 @@ with tab_acc:
                         except Exception as err:
                             st.error(f"登録エラー: {err}")
 
-    acc_list = call_master(lambda s: s.get_accounts())
-    acc_df = pd.DataFrame(
-        [
-            {
-                "selected": False,
-                "id": a.id,
-                "code": a.code,
-                "name": a.name,
-                "type": a.type.label,
-                "description": a.description or "",
-            }
-            for a in sorted(
-                acc_list,
-                key=lambda x: (int(x.code) if x.code.isdigit() else 999999, x.code),
-            )
-        ],
-        columns=["selected", "id", "code", "name", "type", "description"],
-    )
-
-    def on_commit_accounts(
-        added: list[dict[str, Any]],
-        edited: dict[Any, dict[str, Any]],
-        deleted: list[Any],
-    ) -> bool:
-        async def do_commit() -> list[str]:
-            errors: list[str] = []
-            async with DI.get_master_service() as s:
-                for idx, r in enumerate(added):
-                    raw_code_val = r.get("code")
-                    raw_name_val = r.get("name")
-                    raw_type_val = r.get("type")
-                    clean_code = (
-                        ""
-                        if pd.isna(raw_code_val) or raw_code_val is None
-                        else str(raw_code_val).strip()
-                    )
-                    clean_name = (
-                        ""
-                        if pd.isna(raw_name_val) or raw_name_val is None
-                        else str(raw_name_val).strip()
-                    )
-                    if (
-                        not clean_code
-                        or not clean_name
-                        or pd.isna(raw_type_val)
-                        or not raw_type_val
-                    ):
-                        errors.append(
-                            f"追加行 {idx + 1}: 科目コード・科目名・勘定区分をすべて入力してください。"
-                        )
-                        continue
-                    try:
-                        acc_type = AccountType.from_any(raw_type_val)
-                    except ValueError as err:
-                        errors.append(
-                            f"勘定科目「{clean_name}」の勘定区分が不正です: {err}"
-                        )
-                        continue
-                    raw_desc = r.get("description")
-                    clean_desc = (
-                        None
-                        if (
-                            pd.isna(raw_desc)
-                            or raw_desc is None
-                            or str(raw_desc).strip() == ""
-                        )
-                        else str(raw_desc).strip()
-                    )
-                    try:
-                        await s.save_account(
-                            Account(
-                                code=clean_code,
-                                name=clean_name,
-                                type=acc_type,
-                                description=clean_desc,
-                            )
-                        )
-                    except Exception as err:
-                        errors.append(
-                            f"勘定科目「{clean_name}」の保存に失敗しました: {err}"
-                        )
-                for pk, chg in edited.items():
-                    cur = next((a for a in acc_list if a.id == pk), None)
-                    if cur:
-                        raw_type = chg.get("type", cur.type)
-                        try:
-                            acc_type = AccountType.from_any(raw_type)
-                        except ValueError as err:
-                            errors.append(
-                                f"勘定科目「{cur.name}」の勘定区分が不正です: {err}"
-                            )
-                            continue
-                        raw_code_val = chg.get("code", cur.code)
-                        raw_name_val = chg.get("name", cur.name)
-                        clean_code = (
-                            ""
-                            if pd.isna(raw_code_val) or raw_code_val is None
-                            else str(raw_code_val).strip()
-                        )
-                        clean_name = (
-                            ""
-                            if pd.isna(raw_name_val) or raw_name_val is None
-                            else str(raw_name_val).strip()
-                        )
-                        raw_desc = chg.get("description", cur.description)
-                        clean_desc = (
-                            None
-                            if (
-                                pd.isna(raw_desc)
-                                or raw_desc is None
-                                or str(raw_desc).strip() == ""
-                            )
-                            else str(raw_desc).strip()
-                        )
-                        try:
-                            await s.save_account(
-                                Account(
-                                    id=pk,
-                                    code=clean_code,
-                                    name=clean_name,
-                                    type=acc_type,
-                                    description=clean_desc,
-                                )
-                            )
-                        except Exception as err:
-                            errors.append(
-                                f"勘定科目「{cur.name}」の更新に失敗しました: {err}"
-                            )
-                for pk in deleted:
-                    try:
-                        await s.delete_account(pk)
-                    except ValueError as err:
-                        errors.append(
-                            f"勘定科目 (ID: {pk}) の削除に失敗しました: {err}"
-                        )
-
-            return errors
-
-        commit_errors = run_async(do_commit())
-        if commit_errors:
-            for err_msg in commit_errors:
-                st.error(f"{err_msg}")
-            return False
-        return True
-
+    acc_df = build_account_df(accounts)
     col_cfg_acc = {
         "selected": st.column_config.CheckboxColumn(
             "選択",
@@ -575,6 +497,19 @@ with tab_acc:
     }
     col_order_acc = ["selected", "code", "name", "type", "description"]
 
+    def on_commit_accounts(
+        added: list[dict[str, Any]],
+        edited: dict[Any, dict[str, Any]],
+        deleted: list[Any],
+    ) -> bool:
+        plan = build_account_commit_plan(added, edited, deleted, accounts)
+        return _execute_commit_plan(
+            plan,
+            lambda s, item: s.save_account(item),
+            lambda s, pk: s.delete_account(pk),
+            "勘定科目",
+        )
+
     edited_acc_df = render_accounting_editor(
         acc_df,
         pk_column="id",
@@ -585,216 +520,68 @@ with tab_acc:
         num_rows="add",
     )
 
-    selected_targets = (
-        edited_acc_df[edited_acc_df["selected"].astype(bool)]
-        if "selected" in edited_acc_df.columns
-        else pd.DataFrame()
-    )
+    acc_name_by_id = {a.id: a.name for a in accounts if a.id is not None}
 
-    if not selected_targets.empty:
-        col_del_info, col_del_btn = st.columns([4, 1])
-        with col_del_info:
-            st.warning(f"{len(selected_targets)} 件の勘定科目が選択されています。")
-        with col_del_btn:
-            st.html('<div class="sten-destructive-wrapper">')
-            do_delete = st.button(
-                "削除",
-                type="secondary",
-                icon=":material/delete:",
-                width="stretch",
-                key="btn_delete_selected_accounts",
+    async def delete_accounts_if_unused(
+        ms: MasterService, target_ids: list[int]
+    ) -> str | None:
+        blocked_names: list[str] = []
+        valid_ids: list[int] = []
+        for acc_id in target_ids:
+            if (
+                ms.ledger_repository
+                and await ms.ledger_repository.has_transactions_for_account(acc_id)
+            ):
+                blocked_names.append(acc_name_by_id.get(acc_id, str(acc_id)))
+            else:
+                valid_ids.append(acc_id)
+        if blocked_names:
+            return (
+                "以下の勘定科目は仕訳データで使用されているため削除できません:\n"
+                + "、".join(blocked_names)
             )
-            st.html("</div>")
-        if do_delete:
+        for target_id in valid_ids:
+            await ms.delete_account(target_id)
+        return None
 
-            async def execute_batch_delete() -> None:
-                async with DI.get_master_service() as ms:
-                    blocked_names: list[str] = []
-                    valid_delete_ids: list[int] = []
-
-                    for _, row in selected_targets.iterrows():
-                        raw_id = row.get("id")
-                        if pd.isna(raw_id) or raw_id is None:
-                            continue
-                        acc_id = int(raw_id)
-                        acc_name = str(row["name"])
-                        if (
-                            ms.ledger_repository
-                            and await ms.ledger_repository.has_transactions_for_account(
-                                acc_id
-                            )
-                        ):
-                            blocked_names.append(acc_name)
-                        else:
-                            valid_delete_ids.append(acc_id)
-
-                    if blocked_names:
-                        st.error(
-                            "以下の勘定科目は仕訳データで使用されているため削除できません:\n"
-                            + "、".join(blocked_names)
-                        )
-                        return
-
-                    for target_id in valid_delete_ids:
-                        await ms.delete_account(target_id)
-
-                    st.session_state["editor_accounts_version"] = (
-                        st.session_state.get("editor_accounts_version", 0) + 1
-                    )
-                    st.toast(
-                        f"{len(valid_delete_ids)} 件の勘定科目を正常に削除しました",
-                        icon=":material/delete:",
-                    )
-                    st.rerun()
-
-            run_async(execute_batch_delete())
-
-
-_format_counterparty_validation_error = format_counterparty_validation_error
-
-
-# 5. 取引先マスタ
-with tab_cp:
-    st.subheader("取引先マスタ一括管理")
-    accounts = call_master(lambda s: s.get_accounts())
-    sorted_accounts = sorted(
-        accounts, key=lambda a: int(a.code) if a.code.isdigit() else 9999
+    _render_batch_delete_bar(
+        edited_acc_df,
+        "勘定科目",
+        "editor_accounts_version",
+        "btn_delete_selected_accounts",
+        delete_accounts_if_unused,
     )
-    account_options = [""] + [f"{a.code}: {a.name}" for a in sorted_accounts]
-    acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
-    acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
 
+
+def _render_counterparties_tab(
+    account_options: list[str],
+    acc_id_to_label: dict[int | None, str],
+    acc_label_to_id: dict[str, int | None],
+) -> None:
+    """Render counterparty master editor and batch delete controls."""
+    st.subheader("取引先マスタ一括管理")
     st.caption(
         "インボイス番号は13桁の数字を入力すると「T」が自動付与されます（例: 1234567890123 → T1234567890123）。"
     )
     cps = call_master(lambda s: s.get_counterparties())
-    cp_df = pd.DataFrame(
-        [
-            {
-                "selected": False,
-                "id": c.id,
-                "name": c.name,
-                "name_kana": c.name_kana or "",
-                "trade_name": c.trade_name or "",
-                "invoice_number": c.invoice_number or "",
-                "debit_account": acc_id_to_label.get(c.debit_account_id, ""),
-                "credit_account": acc_id_to_label.get(c.credit_account_id, ""),
-                "description_template": c.description_template or "",
-            }
-            for c in cps
-        ],
-        columns=[
-            "selected",
-            "id",
-            "name",
-            "name_kana",
-            "trade_name",
-            "invoice_number",
-            "debit_account",
-            "credit_account",
-            "description_template",
-        ],
-    )
+    cp_df = build_counterparty_df(cps, acc_id_to_label)
 
     def on_commit_cps(
         added: list[dict[str, Any]],
         edited: dict[Any, dict[str, Any]],
         deleted: list[Any],
     ) -> bool:
-        async def do_commit() -> list[str]:
-            errors: list[str] = []
-            async with DI.get_master_service() as s:
-                for r in added:
-                    if r.get("name"):
-                        deb_label = r.get("debit_account")
-                        cred_label = r.get("credit_account")
-                        raw_inv = r.get("invoice_number")
-                        cp_name = str(r["name"])
-                        try:
-                            await s.save_counterparty(
-                                Counterparty(
-                                    name=cp_name,
-                                    name_kana=r.get("name_kana") or None,
-                                    trade_name=r.get("trade_name") or None,
-                                    invoice_number=raw_inv or None,
-                                    debit_account_id=acc_label_to_id.get(deb_label)
-                                    if deb_label
-                                    else None,
-                                    credit_account_id=acc_label_to_id.get(cred_label)
-                                    if cred_label
-                                    else None,
-                                    description_template=r.get("description_template")
-                                    or None,
-                                )
-                            )
-                        except (ValidationError, ValueError) as err:
-                            errors.append(
-                                _format_counterparty_validation_error(
-                                    err, cp_name, raw_inv
-                                )
-                            )
-                        except Exception as err:
-                            errors.append(
-                                f"取引先「{cp_name}」の保存に失敗しました: {err}"
-                            )
-                for pk, chg in edited.items():
-                    cur = next((c for c in cps if c.id == pk), None)
-                    if cur:
-                        deb_label = chg.get(
-                            "debit_account",
-                            acc_id_to_label.get(cur.debit_account_id, ""),
-                        )
-                        cred_label = chg.get(
-                            "credit_account",
-                            acc_id_to_label.get(cur.credit_account_id, ""),
-                        )
-                        raw_inv = chg.get("invoice_number", cur.invoice_number)
-                        cp_name = str(chg.get("name", cur.name))
-                        try:
-                            await s.save_counterparty(
-                                Counterparty(
-                                    id=pk,
-                                    name=cp_name,
-                                    name_kana=chg.get("name_kana", cur.name_kana),
-                                    trade_name=chg.get("trade_name", cur.trade_name),
-                                    invoice_number=raw_inv or None,
-                                    debit_account_id=acc_label_to_id.get(deb_label)
-                                    if deb_label
-                                    else None,
-                                    credit_account_id=acc_label_to_id.get(cred_label)
-                                    if cred_label
-                                    else None,
-                                    description_template=chg.get(
-                                        "description_template",
-                                        cur.description_template,
-                                    ),
-                                )
-                            )
-                        except (ValidationError, ValueError) as err:
-                            errors.append(
-                                _format_counterparty_validation_error(
-                                    err, cp_name, raw_inv
-                                )
-                            )
-                        except Exception as err:
-                            errors.append(
-                                f"取引先「{cp_name}」の更新に失敗しました: {err}"
-                            )
-                for pk in deleted:
-                    try:
-                        await s.delete_counterparty(pk)
-                    except Exception as err:
-                        errors.append(f"取引先 (ID: {pk}) の削除に失敗しました: {err}")
+        plan = build_counterparty_commit_plan(
+            added, edited, deleted, cps, acc_label_to_id, acc_id_to_label
+        )
+        return _execute_commit_plan(
+            plan,
+            lambda s, item: s.save_counterparty(item),
+            lambda s, pk: s.delete_counterparty(pk),
+            "取引先",
+        )
 
-            return errors
-
-        commit_errors = run_async(do_commit())
-        if commit_errors:
-            for err_msg in commit_errors:
-                st.error(f"{err_msg}")
-            return False
-        return True
-
+    cp_select_options = [""] + account_options
     col_cfg_cp = {
         "selected": st.column_config.CheckboxColumn(
             "選択",
@@ -817,12 +604,12 @@ with tab_cp:
         ),
         "debit_account": st.column_config.SelectboxColumn(
             "借方勘定科目",
-            options=account_options,
+            options=cp_select_options,
             help="AI OCR読取時に自動補完するデフォルト借方勘定科目",
         ),
         "credit_account": st.column_config.SelectboxColumn(
             "貸方勘定科目",
-            options=account_options,
+            options=cp_select_options,
             help="AI OCR読取時に自動補完するデフォルト貸方勘定科目",
         ),
         "description_template": st.column_config.TextColumn(
@@ -850,134 +637,44 @@ with tab_cp:
         num_rows="add",
     )
 
-    selected_cp_targets = (
-        edited_cp_df[edited_cp_df["selected"].astype(bool)]
-        if "selected" in edited_cp_df.columns
-        else pd.DataFrame()
+    async def delete_cps(ms: MasterService, target_ids: list[int]) -> str | None:
+        for target_id in target_ids:
+            await ms.delete_counterparty(target_id)
+        return None
+
+    _render_batch_delete_bar(
+        edited_cp_df,
+        "取引先",
+        "editor_counterparties_version",
+        "btn_delete_selected_counterparties",
+        delete_cps,
     )
 
-    if not selected_cp_targets.empty:
-        col_del_info, col_del_btn = st.columns([4, 1])
-        with col_del_info:
-            st.warning(f"{len(selected_cp_targets)} 件の取引先が選択されています。")
-        with col_del_btn:
-            st.html('<div class="sten-destructive-wrapper">')
-            do_delete_cp = st.button(
-                "削除",
-                type="secondary",
-                icon=":material/delete:",
-                width="stretch",
-                key="btn_delete_selected_counterparties",
-            )
-            st.html("</div>")
-        if do_delete_cp:
 
-            async def execute_batch_delete_cp() -> None:
-                async with DI.get_master_service() as ms:
-                    valid_delete_ids: list[int] = []
-                    for _, row in selected_cp_targets.iterrows():
-                        raw_id = row.get("id")
-                        if pd.isna(raw_id) or raw_id is None:
-                            continue
-                        valid_delete_ids.append(int(raw_id))
-
-                    for target_id in valid_delete_ids:
-                        await ms.delete_counterparty(target_id)
-
-                    st.session_state["editor_counterparties_version"] = (
-                        st.session_state.get("editor_counterparties_version", 0) + 1
-                    )
-                    st.toast(
-                        f"{len(valid_delete_ids)} 件の取引先を正常に削除しました",
-                        icon=":material/delete:",
-                    )
-                    st.rerun()
-
-            run_async(execute_batch_delete_cp())
-
-# 6. よく使う摘要マスタ
-with tab_abs:
+def _render_abstracts_tab(
+    account_options: list[str],
+    acc_id_to_label: dict[int | None, str],
+    acc_label_to_id: dict[str, int | None],
+) -> None:
+    """Render frequent transaction abstracts master editor and batch delete controls."""
     st.subheader("よく使う摘要マスタ一括管理")
-    accounts = call_master(lambda s: s.get_accounts())
-    sorted_accounts = sorted(
-        accounts, key=lambda a: int(a.code) if a.code.isdigit() else 9999
-    )
-    account_options = [f"{a.code}: {a.name}" for a in sorted_accounts]
-    acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
-    acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
-
     abs_list = call_master(lambda s: s.get_abstracts())
-    abs_df = pd.DataFrame(
-        [
-            {
-                "selected": False,
-                "id": a.id,
-                "text": a.text,
-                "account": acc_id_to_label.get(a.account_id, ""),
-            }
-            for a in abs_list
-        ],
-        columns=["selected", "id", "text", "account"],
-    )
+    abs_df = build_abstract_df(abs_list, acc_id_to_label)
 
     def on_commit_abs(
         added: list[dict[str, Any]],
         edited: dict[Any, dict[str, Any]],
         deleted: list[Any],
     ) -> bool:
-        async def do_commit() -> list[str]:
-            errors: list[str] = []
-            async with DI.get_master_service() as s:
-                for r in added:
-                    raw_text = str(r.get("text", "")).strip()
-                    acc_label = r.get("account")
-                    acc_id = acc_label_to_id.get(acc_label) if acc_label else None
-                    if raw_text and acc_id:
-                        try:
-                            await s.save_abstract(
-                                Abstract(text=raw_text, account_id=acc_id)
-                            )
-                        except Exception as err:
-                            errors.append(
-                                f"摘要「{raw_text}」の保存に失敗しました: {err}"
-                            )
-                for pk, chg in edited.items():
-                    cur = next((a for a in abs_list if a.id == pk), None)
-                    if cur:
-                        new_text = str(chg.get("text", cur.text)).strip()
-                        acc_label = chg.get("account")
-                        acc_id = (
-                            acc_label_to_id.get(acc_label)
-                            if acc_label
-                            else cur.account_id
-                        )
-                        if new_text and acc_id:
-                            try:
-                                await s.save_abstract(
-                                    Abstract(
-                                        id=pk,
-                                        text=new_text,
-                                        account_id=acc_id,
-                                    )
-                                )
-                            except Exception as err:
-                                errors.append(
-                                    f"摘要「{new_text}」の更新に失敗しました: {err}"
-                                )
-                for pk in deleted:
-                    try:
-                        await s.delete_abstract(pk)
-                    except Exception as err:
-                        errors.append(f"摘要 (ID: {pk}) の削除に失敗しました: {err}")
-
-            return errors
-
-        commit_errors = run_async(do_commit())
-        if commit_errors:
-            for err_msg in commit_errors:
-                st.error(f"{err_msg}")
-            return False
-        return True
+        plan = build_abstract_commit_plan(
+            added, edited, deleted, abs_list, acc_label_to_id
+        )
+        return _execute_commit_plan(
+            plan,
+            lambda s, item: s.save_abstract(item),
+            lambda s, pk: s.delete_abstract(pk),
+            "摘要",
+        )
 
     col_cfg_abs = {
         "selected": st.column_config.CheckboxColumn(
@@ -1008,53 +705,22 @@ with tab_abs:
         num_rows="add",
     )
 
-    selected_abs_targets = (
-        edited_abs_df[edited_abs_df["selected"].astype(bool)]
-        if "selected" in edited_abs_df.columns
-        else pd.DataFrame()
+    async def delete_abstracts(ms: MasterService, target_ids: list[int]) -> str | None:
+        for target_id in target_ids:
+            await ms.delete_abstract(target_id)
+        return None
+
+    _render_batch_delete_bar(
+        edited_abs_df,
+        "摘要",
+        "editor_abstracts_version",
+        "btn_delete_selected_abstracts",
+        delete_abstracts,
     )
 
-    if not selected_abs_targets.empty:
-        col_del_info, col_del_btn = st.columns([4, 1])
-        with col_del_info:
-            st.warning(f"{len(selected_abs_targets)} 件の摘要が選択されています。")
-        with col_del_btn:
-            st.html('<div class="sten-destructive-wrapper">')
-            do_delete_abs = st.button(
-                "削除",
-                type="secondary",
-                icon=":material/delete:",
-                width="stretch",
-                key="btn_delete_selected_abstracts",
-            )
-            st.html("</div>")
-        if do_delete_abs:
 
-            async def execute_batch_delete_abs() -> None:
-                async with DI.get_master_service() as ms:
-                    valid_delete_ids: list[int] = []
-                    for _, row in selected_abs_targets.iterrows():
-                        raw_id = row.get("id")
-                        if pd.isna(raw_id) or raw_id is None:
-                            continue
-                        valid_delete_ids.append(int(raw_id))
-
-                    for target_id in valid_delete_ids:
-                        await ms.delete_abstract(target_id)
-
-                    st.session_state["editor_abstracts_version"] = (
-                        st.session_state.get("editor_abstracts_version", 0) + 1
-                    )
-                    st.toast(
-                        f"{len(valid_delete_ids)} 件の摘要を正常に削除しました",
-                        icon=":material/delete:",
-                    )
-                    st.rerun()
-
-            run_async(execute_batch_delete_abs())
-
-# 7. AI・システム設定
-with tab_sys:
+def _render_system_tab() -> None:
+    """Render AI API key and system configuration form."""
     st.subheader("AI（Google Gemini）＆ システム設定")
     sys_conf = call_master(lambda s: s.get_system_settings())
     with st.form("sys_form", border=True):
@@ -1064,10 +730,9 @@ with tab_sys:
             type="password",
             help="Google AI Studio で発行された API キー",
         )
-        _, col_sys_btn = st.columns([4, 1])
-        with col_sys_btn:
+        with st.container(horizontal=True, horizontal_alignment="right"):
             sys_submitted = st.form_submit_button(
-                "保存", type="primary", width="stretch"
+                "保存", type="primary", width="content"
             )
         if sys_submitted:
             call_master(
@@ -1082,6 +747,44 @@ with tab_sys:
             st.toast("システム設定を保存しました", icon=":material/check_circle:")
             st.rerun()
 
-    st.divider()
-    st.subheader("システム診断")
-    render_system_diagnostic(settings.LOGS_DIR / "app.log")
+
+def main() -> None:
+    """Render master and system settings workspace tabs."""
+    st.header("マスタ・システム設定", divider="gray")
+
+    fys = call_master(lambda s: s.get_fiscal_years())
+    accounts = call_master(lambda s: s.get_accounts())
+    sorted_accounts = sorted(accounts, key=lambda a: account_code_sort_key(a.code))
+    account_options = [f"{a.code}: {a.name}" for a in sorted_accounts]
+    acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
+    acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
+
+    tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_sys = st.tabs(
+        [
+            "自社情報",
+            "会計年度・年度締め",
+            "期首残高設定",
+            "勘定科目",
+            "取引先",
+            "よく使う摘要",
+            "AI・システム設定",
+        ]
+    )
+
+    with tab_corp:
+        _render_corp_tab()
+    with tab_fy:
+        _render_fiscal_year_tab(fys)
+    with tab_op:
+        _render_opening_balance_tab(fys, sorted_accounts)
+    with tab_acc:
+        _render_accounts_tab(sorted_accounts)
+    with tab_cp:
+        _render_counterparties_tab(account_options, acc_id_to_label, acc_label_to_id)
+    with tab_abs:
+        _render_abstracts_tab(account_options, acc_id_to_label, acc_label_to_id)
+    with tab_sys:
+        _render_system_tab()
+
+
+main()
