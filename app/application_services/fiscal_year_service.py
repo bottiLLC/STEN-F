@@ -185,10 +185,11 @@ class FiscalYearService:
 
         tb_rows = await self.ledger_service.get_trial_balance(fiscal_year_id)
         net_income = _compute_net_income(tb_rows)
+        # Validate rollover feasibility before creating or mutating succeeding fiscal year records
+        lines = _build_rollover_lines(tb_rows, net_income)
         next_fy = await self._resolve_or_create_next_fiscal_year(
             current_fy, next_fy_name
         )
-        lines = _build_rollover_lines(tb_rows, net_income)
 
         if lines:
             await self.journal_service.add_journal_entry(

@@ -855,3 +855,49 @@ def compute_next_fiscal_year_dates(current_end: date) -> tuple[date, date]:
     except ValueError:
         target = next_start.replace(year=next_start.year + 1, month=2, day=28)
     return next_start, target - timedelta(days=1)
+
+
+def resolve_open_fiscal_year(fys: list[FiscalYear]) -> FiscalYear | None:
+    """Return the first active OPEN fiscal year from a fiscal year collection."""
+    return next((fy for fy in fys if fy.status == "OPEN"), None)
+
+
+def is_red_slip_transaction(tx: Transaction) -> bool:
+    """Return True when transaction is a reversing (red slip) journal entry."""
+    return tx.reversed_transaction_id is not None or (
+        bool(tx.description) and tx.description.startswith("[取消:")
+    )
+
+
+def identify_cancelled_transaction_ids(transactions: list[Transaction]) -> set[int]:
+    """Identify original transaction IDs cancelled by reversing entries, including legacy rows."""
+    cancelled_orig_ids: set[int] = {
+        tx.reversed_transaction_id
+        for tx in transactions
+        if tx.reversed_transaction_id is not None
+    }
+
+    for tx in transactions:
+        if (
+            tx.reversed_transaction_id is None
+            and tx.description
+            and tx.description.startswith("[取消:")
+        ):
+            target_desc = (
+                tx.description.split("]", 1)[-1].strip()
+                if "]" in tx.description
+                else ""
+            )
+            for cand in transactions:
+                if (
+                    cand.id is not None
+                    and tx.id is not None
+                    and cand.id < tx.id
+                    and cand.id not in cancelled_orig_ids
+                    and not is_red_slip_transaction(cand)
+                    and (cand.description or "").strip() == target_desc
+                ):
+                    cancelled_orig_ids.add(cand.id)
+                    break
+
+    return cancelled_orig_ids

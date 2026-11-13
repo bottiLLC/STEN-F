@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
+import concurrent.futures
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import logging
 from logging.handlers import RotatingFileHandler
@@ -55,14 +56,17 @@ _TRANS_MAP: Final[MappingProxyType[int, str | None]] = MappingProxyType(
 )
 
 
+_PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+
+
 class Settings(BaseSettings):
     """Immutable application settings anchored to filesystem location."""
 
-    PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
-    DATA_DIR: Path = Path(__file__).resolve().parent.parent / "data"
-    STORAGE_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "storage"
-    BACKUP_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "backups"
-    LOGS_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "logs"
+    PROJECT_ROOT: Path = _PROJECT_ROOT
+    DATA_DIR: Path = _PROJECT_ROOT / "data"
+    STORAGE_DIR: Path = _PROJECT_ROOT / "data" / "storage"
+    BACKUP_DIR: Path = _PROJECT_ROOT / "data" / "backups"
+    LOGS_DIR: Path = _PROJECT_ROOT / "data" / "logs"
 
     DB_NAME: str = "sten_f.db"
     DATABASE_URL: str | None = None
@@ -80,7 +84,7 @@ class Settings(BaseSettings):
     FONT_NAME: str = "HeiseiMin-W3"
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "data/.env"),
+        env_file=(_PROJECT_ROOT / ".env", _PROJECT_ROOT / "data" / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=True,
@@ -234,8 +238,6 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
         running_loop = None
 
     if running_loop is not None and running_loop.is_running():
-        import concurrent.futures
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
 

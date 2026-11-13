@@ -116,28 +116,35 @@ def _normalize_section(raw: Any, default_title: str) -> StatementSectionData:
     return StatementSectionData(title=default_title, rows=[], total=0)
 
 
+_SECTION_SPECS: tuple[tuple[str, str], ...] = (
+    ("current_assets", "流動資産"),
+    ("fixed_assets", "固定資産"),
+    ("deferred_assets", "繰延資産"),
+    ("current_liabilities", "流動負債"),
+    ("fixed_liabilities", "固定負債"),
+    ("equity", "純資産の部"),
+    ("revenue", "売上高"),
+    ("cost_of_sales", "売上原価"),
+    ("sga", "販売費及び一般管理費"),
+    ("non_op_income", "営業外収益"),
+    ("non_op_expense", "営業外費用"),
+    ("extra_income", "特別利益"),
+    ("extra_loss", "特別損失"),
+    ("taxes", "法人税等"),
+)
+
+
 def _normalize_report_data(
     data: FinancialReport | dict[str, Any],
 ) -> NormalizedFinancialReport:
     """Extract and normalize all balance sheet and income statement metrics."""
     if isinstance(data, FinancialReport):
+        sections = {
+            field_name: _normalize_section(getattr(data, field_name), default_title)
+            for field_name, default_title in _SECTION_SPECS
+        }
         return NormalizedFinancialReport(
-            current_assets=_normalize_section(data.current_assets, "流動資産"),
-            fixed_assets=_normalize_section(data.fixed_assets, "固定資産"),
-            deferred_assets=_normalize_section(data.deferred_assets, "繰延資産"),
-            current_liabilities=_normalize_section(
-                data.current_liabilities, "流動負債"
-            ),
-            fixed_liabilities=_normalize_section(data.fixed_liabilities, "固定負債"),
-            equity=_normalize_section(data.equity, "純資産の部"),
-            revenue=_normalize_section(data.revenue, "売上高"),
-            cost_of_sales=_normalize_section(data.cost_of_sales, "売上原価"),
-            sga=_normalize_section(data.sga, "販売費及び一般管理費"),
-            non_op_income=_normalize_section(data.non_op_income, "営業外収益"),
-            non_op_expense=_normalize_section(data.non_op_expense, "営業外費用"),
-            extra_income=_normalize_section(data.extra_income, "特別利益"),
-            extra_loss=_normalize_section(data.extra_loss, "特別損失"),
-            taxes=_normalize_section(data.taxes, "法人税等"),
+            **sections,
             total_assets=data.total_assets,
             total_liabilities=data.total_liabilities,
             total_equity=data.total_equity,
@@ -148,52 +155,57 @@ def _normalize_report_data(
             net_income=data.net_income,
         )
 
-    # Dictionary input processing
-    cur_a = _normalize_section(data.get("current_assets"), "流動資産")
-    fix_a = _normalize_section(data.get("fixed_assets"), "固定資産")
-    def_a = _normalize_section(data.get("deferred_assets"), "繰延資産")
-    cur_l = _normalize_section(data.get("current_liabilities"), "流動負債")
-    fix_l = _normalize_section(data.get("fixed_liabilities"), "固定負債")
-    eq = _normalize_section(data.get("equity"), "純資産の部")
-
-    rev = _normalize_section(data.get("revenue"), "売上高")
-    cos = _normalize_section(data.get("cost_of_sales"), "売上原価")
-    sga = _normalize_section(data.get("sga"), "販売費及び一般管理費")
-    no_inc = _normalize_section(data.get("non_op_income"), "営業外収益")
-    no_exp = _normalize_section(data.get("non_op_expense"), "営業外費用")
-    ex_inc = _normalize_section(data.get("extra_income"), "特別利益")
-    ex_loss = _normalize_section(data.get("extra_loss"), "特別損失")
-    tx_sec = _normalize_section(data.get("taxes"), "法人税等")
-
-    gross_profit = int(data.get("gross_profit", rev.total - cos.total))
-    operating_income = int(data.get("operating_income", gross_profit - sga.total))
+    sections = {
+        field_name: _normalize_section(data.get(field_name), default_title)
+        for field_name, default_title in _SECTION_SPECS
+    }
+    gross_profit = int(
+        data.get(
+            "gross_profit",
+            sections["revenue"].total - sections["cost_of_sales"].total,
+        )
+    )
+    operating_income = int(
+        data.get("operating_income", gross_profit - sections["sga"].total)
+    )
     ordinary_income = int(
-        data.get("ordinary_income", operating_income + no_inc.total - no_exp.total)
+        data.get(
+            "ordinary_income",
+            operating_income
+            + sections["non_op_income"].total
+            - sections["non_op_expense"].total,
+        )
     )
     income_before_tax = int(
-        data.get("income_before_tax", ordinary_income + ex_inc.total - ex_loss.total)
+        data.get(
+            "income_before_tax",
+            ordinary_income
+            + sections["extra_income"].total
+            - sections["extra_loss"].total,
+        )
     )
-    net_income = int(data.get("net_income", income_before_tax - tx_sec.total))
+    net_income = int(
+        data.get("net_income", income_before_tax - sections["taxes"].total)
+    )
 
-    tot_assets = int(data.get("total_assets", cur_a.total + fix_a.total + def_a.total))
-    tot_liabs = int(data.get("total_liabilities", cur_l.total + fix_l.total))
-    tot_equity = int(data.get("total_equity", eq.total + net_income))
+    tot_assets = int(
+        data.get(
+            "total_assets",
+            sections["current_assets"].total
+            + sections["fixed_assets"].total
+            + sections["deferred_assets"].total,
+        )
+    )
+    tot_liabs = int(
+        data.get(
+            "total_liabilities",
+            sections["current_liabilities"].total + sections["fixed_liabilities"].total,
+        )
+    )
+    tot_equity = int(data.get("total_equity", sections["equity"].total + net_income))
 
     return NormalizedFinancialReport(
-        current_assets=cur_a,
-        fixed_assets=fix_a,
-        deferred_assets=def_a,
-        current_liabilities=cur_l,
-        fixed_liabilities=fix_l,
-        equity=eq,
-        revenue=rev,
-        cost_of_sales=cos,
-        sga=sga,
-        non_op_income=no_inc,
-        non_op_expense=no_exp,
-        extra_income=ex_inc,
-        extra_loss=ex_loss,
-        taxes=tx_sec,
+        **sections,
         total_assets=tot_assets,
         total_liabilities=tot_liabs,
         total_equity=tot_equity,

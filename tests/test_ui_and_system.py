@@ -686,3 +686,95 @@ async def test_journal_history_cancellation_filtering_isolates_cancelled_pairs(
         assert len(filtered) == 1
         assert filtered[0].id == tx1
         assert filtered[0].description == "有効な売上"
+
+
+def test_ledger_view_renders_single_click_pdf_download_button() -> None:
+    """Verify ledger_view exposes a single-click PDF出力 download button instead of two-step PDF生成."""
+    from app.core_foundation import run_async
+    from app.ui.design_system import COLOR_SUCCESS
+
+    assert COLOR_SUCCESS == "#059669"
+
+    async def _seed_fy() -> None:
+        async with DI.get_master_service() as ms:
+            await seed_accounts_with_service(ms.repository)
+            if not await ms.get_fiscal_years():
+                await ms.save_fiscal_year(
+                    FiscalYear(
+                        name="令和8年度",
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 12, 31),
+                        status="OPEN",
+                        period_number=1,
+                    )
+                )
+
+    run_async(_seed_fy())
+
+    at = AppTest.from_file(
+        str(_REPO_ROOT / "app" / "ui" / "views" / "ledger_view.py"),
+        default_timeout=15,
+    )
+    at.run()
+    assert not at.exception
+    download_labels = [b.label for b in at.download_button]
+    button_labels = [b.label for b in at.button]
+    assert "PDF出力" in download_labels
+    assert "PDF生成" not in button_labels
+
+
+def test_master_batch_delete_requires_two_step_confirmation() -> None:
+    """Verify batch delete opens confirmation dialog before removing selected counterparty."""
+    from app.core_foundation import run_async
+
+    cp_name = "二段階削除テスト商事"
+
+    async def _seed_cp() -> int:
+        async with DI.get_master_service() as ms:
+            saved = await ms.save_counterparty(Counterparty(name=cp_name))
+            assert saved.id is not None
+            return saved.id
+
+    cp_id = run_async(_seed_cp())
+
+    at = AppTest.from_file(
+        str(_REPO_ROOT / "app" / "ui" / "views" / "master_view.py"),
+        default_timeout=15,
+    )
+    at.run()
+    at.segmented_control[0].set_value("取引先").run()
+
+    cp_df = at.dataframe[0].value
+    target_indices = cp_df.index[cp_df["id"] == cp_id].tolist()
+    assert len(target_indices) == 1
+
+    current_ver = at.session_state.get("editor_counterparties_version", 0)
+    at.session_state[f"editor_counterparties_v{current_ver}"] = {
+        "added_rows": [],
+        "edited_rows": {str(target_indices[0]): {"selected": True}},
+        "deleted_rows": [],
+    }
+    at.run()
+
+    del_btn = next(
+        b for b in at.button if b.key == "btn_delete_selected_counterparties"
+    )
+    del_btn.click().run()
+
+    async def _list_cps() -> list[Counterparty]:
+        async with DI.get_master_service() as ms:
+            return await ms.get_counterparties()
+
+    # Step 1 click must NOT delete immediately; modal confirmation buttons must be rendered
+    assert any(c.id == cp_id for c in run_async(_list_cps()))
+    confirm_btns = [
+        b for b in at.button if b.key == "btn_delete_selected_counterparties_confirm"
+    ]
+    cancel_btns = [
+        b for b in at.button if b.key == "btn_delete_selected_counterparties_cancel"
+    ]
+    assert len(confirm_btns) == 1
+    assert len(cancel_btns) == 1
+
+    confirm_btns[0].click().run()
+    assert not any(c.id == cp_id for c in run_async(_list_cps()))

@@ -9,48 +9,13 @@ from datetime import date
 import pandas as pd
 
 from app.core_foundation import normalize_amount
-from app.domain_contracts import ReceiptData, Transaction, TransactionLine
-
-
-def is_red_slip_transaction(tx: Transaction) -> bool:
-    """Return True when transaction is a reversing (red slip) journal entry."""
-    return tx.reversed_transaction_id is not None or (
-        bool(tx.description) and tx.description.startswith("[取消:")
-    )
-
-
-def identify_cancelled_transaction_ids(transactions: list[Transaction]) -> set[int]:
-    """Identify original transaction IDs cancelled by reversing entries, including legacy rows."""
-    cancelled_orig_ids: set[int] = {
-        tx.reversed_transaction_id
-        for tx in transactions
-        if tx.reversed_transaction_id is not None
-    }
-
-    for tx in transactions:
-        if (
-            tx.reversed_transaction_id is None
-            and tx.description
-            and tx.description.startswith("[取消:")
-        ):
-            target_desc = (
-                tx.description.split("]", 1)[-1].strip()
-                if "]" in tx.description
-                else ""
-            )
-            for cand in transactions:
-                if (
-                    cand.id is not None
-                    and tx.id is not None
-                    and cand.id < tx.id
-                    and cand.id not in cancelled_orig_ids
-                    and not is_red_slip_transaction(cand)
-                    and (cand.description or "").strip() == target_desc
-                ):
-                    cancelled_orig_ids.add(cand.id)
-                    break
-
-    return cancelled_orig_ids
+from app.domain_contracts import (
+    ReceiptData,
+    Transaction,
+    TransactionLine,
+    identify_cancelled_transaction_ids as identify_cancelled_transaction_ids,
+    is_red_slip_transaction as is_red_slip_transaction,
+)
 
 
 def filter_journal_entries(

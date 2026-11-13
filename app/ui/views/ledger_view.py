@@ -116,13 +116,12 @@ def render_general_ledger_section(selected_fy: FiscalYear) -> None:
             st.info(f"{selected_acc.name} の取引履歴はありません。")
         else:
             st.dataframe(
-                df_gl.style.format(
-                    {
-                        "借方": lambda x: f"¥{x:,}" if x > 0 else "-",
-                        "貸方": lambda x: f"¥{x:,}" if x > 0 else "-",
-                        "残高": lambda x: f"¥{x:,}",
-                    }
-                ),
+                df_gl,
+                column_config={
+                    "借方": st.column_config.NumberColumn("借方", format="¥%d"),
+                    "貸方": st.column_config.NumberColumn("貸方", format="¥%d"),
+                    "残高": st.column_config.NumberColumn("残高", format="¥%d"),
+                },
                 width="stretch",
                 hide_index=True,
             )
@@ -142,26 +141,17 @@ def render_financial_statements_section(selected_fy: FiscalYear) -> None:
 
     with col_btn:
         with st.container(horizontal=True, horizontal_alignment="right"):
-            generate_clicked = st.button(
-                "PDF生成",
+            st.download_button(
+                "PDF出力",
+                data=lambda: _build_annual_report_pdf(selected_fy),
+                file_name=f"report_{selected_fy.name}.pdf",
+                mime="application/pdf",
                 type="primary",
                 icon=":material/picture_as_pdf:",
+                on_click="ignore",
                 width="content",
+                key=f"btn_download_fs_pdf_{selected_fy.id}",
             )
-        if generate_clicked:
-            try:
-                pdf_bytes = _build_annual_report_pdf(selected_fy)
-                with st.container(horizontal=True, horizontal_alignment="right"):
-                    st.download_button(
-                        "PDF出力",
-                        data=pdf_bytes,
-                        file_name=f"report_{selected_fy.name}.pdf",
-                        mime="application/pdf",
-                        icon=":material/download:",
-                        width="content",
-                    )
-            except Exception as e:
-                st.error(f"PDF 生成エラー: {e}")
 
     report = call_ledger(lambda s: s.generate_financial_report(selected_fy.id or 0))
 

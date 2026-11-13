@@ -17,7 +17,12 @@ import streamlit as st
 
 from backup_manager import get_backup_dir, run_backup, set_backup_dir
 from app.core_foundation import DI, log, run_async, run_scoped, settings
-from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
+from app.domain_contracts import (
+    Corporation,
+    FiscalYear,
+    IMasterRepository,
+    resolve_open_fiscal_year,
+)
 from app.storage_repository import seed_accounts
 from app.ui.design_system import inject_global_design_system, render_system_diagnostic
 
@@ -35,7 +40,7 @@ def resolve_active_fiscal_year(fys: list[FiscalYear]) -> FiscalYear | None:
     Returns:
         Active open FiscalYear instance or None.
     """
-    return next((x for x in fys if x.status == "OPEN"), None)
+    return resolve_open_fiscal_year(fys)
 
 
 async def load_sidebar_metadata(

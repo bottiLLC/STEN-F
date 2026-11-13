@@ -23,6 +23,7 @@ COLOR_TEXT_MUTED: Final[str] = "#6B7280"
 COLOR_PRIMARY_ACTION: Final[str] = "#1E3A8A"
 COLOR_PRIMARY_ACTION_HOVER: Final[str] = "#2563EB"
 COLOR_DANGER: Final[str] = "#DC2626"
+COLOR_SUCCESS: Final[str] = "#059669"
 BORDER_RADIUS: Final[str] = "4px"
 
 GLOBAL_DESIGN_SYSTEM_CSS: Final[str] = f"""
@@ -147,6 +148,42 @@ div.sten-destructive-wrapper div[data-testid="stFormSubmitButton"] > button:hove
     border-color: {COLOR_DANGER} !important;
 }}
 
+/* Critical Confirmation Modal Destructive Button: Solid Danger Accent */
+[class*="st-key-sten_destructive_confirm_"] div[data-testid="stButton"] > button,
+[class*="st-key-sten_destructive_confirm_"] div[data-testid="stFormSubmitButton"] > button {{
+    background-color: {COLOR_DANGER} !important;
+    border: 1px solid {COLOR_DANGER} !important;
+    color: #FFFFFF !important;
+    border-radius: {BORDER_RADIUS} !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+}}
+[class*="st-key-sten_destructive_confirm_"] div[data-testid="stButton"] > button:hover,
+[class*="st-key-sten_destructive_confirm_"] div[data-testid="stFormSubmitButton"] > button:hover {{
+    background-color: #B91C1C !important;
+    border-color: #B91C1C !important;
+    color: #FFFFFF !important;
+}}
+
+/* Manual Review Danger Notice Banner */
+.sten-notice-danger {{
+    border: 1px solid {COLOR_DANGER};
+    border-radius: {BORDER_RADIUS};
+    padding: 12px;
+    margin-bottom: 16px;
+    background-color: {COLOR_SURFACE_BG};
+}}
+.sten-notice-danger-title {{
+    color: {COLOR_DANGER};
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 4px;
+}}
+.sten-notice-danger-body {{
+    color: {COLOR_TEXT_PRIMARY};
+    font-size: 0.9rem;
+}}
+
 /* Tabs: Minimal Industrial Navigation */
 button[data-baseweb="tab"] {{
     font-size: 0.90rem !important;
@@ -191,6 +228,11 @@ def inject_global_design_system() -> None:
 def destructive_button_container(key: str) -> DeltaGenerator:
     """Create a real Streamlit container targeted by destructive-button CSS rules."""
     return st.container(key=f"sten_destructive_{key}")
+
+
+def destructive_confirm_container(key: str) -> DeltaGenerator:
+    """Create a real Streamlit container targeted by solid-red modal confirmation CSS rules."""
+    return st.container(key=f"sten_destructive_confirm_{key}")
 
 
 def render_system_diagnostic(log_path: Path) -> None:

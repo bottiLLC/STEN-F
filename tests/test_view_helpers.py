@@ -481,3 +481,28 @@ def test_refactored_ui_and_domain_helpers() -> None:
     s1 = FinancialSection(title="A")
     s2 = FinancialSection(title="B")
     assert s1.rows is not s2.rows
+
+
+def test_build_abstract_commit_plan_collects_validation_errors() -> None:
+    """Verify build_abstract_commit_plan emits explicit errors on invalid rows and skips blanks."""
+    existing_abs = [Abstract(id=1, account_id=10, text="タクシー代")]
+    acc_map: dict[str, int | None] = {"1110: 現金": 10}
+    added = [
+        {"account": "", "text": ""},  # completely blank placeholder row -> ignored
+        {"account": "1110: 現金", "text": ""},  # missing text -> error
+        {"account": "9999: 不明科目", "text": "送料"},  # unresolved account -> error
+    ]
+    edited = {
+        1: {"text": "   "},  # clearing text on existing row -> error
+    }
+
+    plan = build_abstract_commit_plan(added, edited, [], existing_abs, acc_map)
+    assert plan.to_save == []
+    assert len(plan.errors) == 3
+    assert any("追加行 2" in e and "摘要と勘定科目" in e for e in plan.errors)
+    assert any("追加行 3" in e and "摘要と勘定科目" in e for e in plan.errors)
+    assert any("タクシー代" in e and "更新内容が不正" in e for e in plan.errors)
+    assert (
+        build_abstract_df(existing_abs, {10: "1110: 現金"}).iloc[0]["text"]
+        == "タクシー代"
+    )

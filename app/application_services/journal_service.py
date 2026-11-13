@@ -16,6 +16,8 @@ from app.domain_contracts import (
     IMasterRepository,
     Transaction,
     TransactionLine,
+    identify_cancelled_transaction_ids,
+    is_red_slip_transaction,
 )
 
 if TYPE_CHECKING:
@@ -195,14 +197,10 @@ class JournalService:
         if not orig:
             raise ValueError(f"仕訳ID {transaction_id} が見つかりません。")
 
-        if orig.description.startswith("[取消:"):
+        if is_red_slip_transaction(orig):
             raise ValueError("取消仕訳（赤伝）自体を再度取り消すことはできません。")
 
-        already_reversed_ids = {
-            t.reversed_transaction_id
-            for t in all_txs
-            if t.reversed_transaction_id is not None
-        }
+        already_reversed_ids = identify_cancelled_transaction_ids(all_txs)
         if transaction_id in already_reversed_ids:
             raise ValueError(
                 f"仕訳ID {transaction_id} は既に取消（赤伝）処理済みです。"
@@ -272,6 +270,8 @@ class JournalService:
         tx_date = transaction.occurred_at or transaction.date
         if not tx_date:
             raise ValueError("Transaction requires occurred_at or date")
+        # Validate open fiscal period before persisting evidence bytes to avoid orphaned files
+        await self._validate_transaction_date(tx_date)
         path = await file_service.save_evidence_for_transaction(
             file_bytes=file_bytes,
             transaction_id=None,

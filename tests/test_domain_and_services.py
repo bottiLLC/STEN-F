@@ -970,3 +970,162 @@ async def test_fiscal_year_closing_with_net_loss_records_debit_to_retained_earni
         )
         assert re_line.debit == 30000
         assert re_line.credit == 0
+
+
+@pytest.mark.asyncio
+async def test_fiscal_year_closing_fails_fast_without_creating_next_fy(
+    container: Container,
+) -> None:
+    """Verify close_fiscal_year validates retained earnings BEFORE creating next fiscal year."""
+    async with container.master_service_scope() as ms:
+        fys_initial = await ms.get_fiscal_years()
+        fy = await ms.save_fiscal_year(
+            FiscalYear(
+                name="前期未作成検証期",
+                start_date=date(2019, 1, 1),
+                end_date=date(2019, 12, 31),
+                status="OPEN",
+                period_number=19,
+            )
+        )
+        assert fy.id is not None
+
+    async with container.fiscal_year_service_scope() as fys:
+        fys.ledger_service.get_trial_balance = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        with pytest.raises(
+            ValueError,
+            match="期末処理に必要な必須勘定科目「繰越利益剰余金」が見つかりませんでした。",
+        ):
+            await fys.close_fiscal_year(fy.id)
+
+    async with container.master_service_scope() as ms:
+        fys_after = await ms.get_fiscal_years()
+        assert len(fys_after) == len(fys_initial) + 1
+        target_fy = next(f for f in fys_after if f.id == fy.id)
+        assert target_fy.status == "OPEN"
+
+
+@pytest.mark.asyncio
+async def test_journal_add_entry_with_evidence_fails_fast_without_orphan_file(
+    container: Container, tmp_path: Path
+) -> None:
+    """Verify invalid fiscal period date aborts BEFORE writing evidence file to disk."""
+    async with container.master_service_scope() as ms:
+        await seed_accounts_with_service(ms.repository)
+        accs = await ms.get_accounts()
+        cash = next(a for a in accs if a.code == "1110")
+        sales = next(a for a in accs if a.code == "4110")
+        assert cash.id is not None and sales.id is not None
+
+    file_service = LocalFileService(base_dir=tmp_path)
+    out_of_range_tx = Transaction(
+        occurred_at=date(2025, 12, 31),
+        description="期間外証憑テスト",
+        lines=[
+            TransactionLine(account_id=cash.id, debit=1000, credit=0),
+            TransactionLine(account_id=sales.id, debit=0, credit=1000),
+        ],
+    )
+
+    async with container.journal_service_scope() as js:
+        with pytest.raises(ValueError, match="現在「OPEN」な会計年度の範囲外です"):
+            await js.add_journal_entry_with_evidence(
+                out_of_range_tx, b"%PDF-1.4 dummy", file_service, ".pdf"
+            )
+
+    assert list(file_service.storage_dir.rglob("*")) == []
+
+
+@pytest.mark.asyncio
+async def test_reverse_journal_entry_blocks_double_reversal_on_legacy_red_slip_prefix(
+    container: Container,
+) -> None:
+    """Verify reverse_journal_entry rejects legacy red-slip prefix entries even without link ID."""
+    async with container.master_service_scope() as ms:
+        await seed_accounts_with_service(ms.repository)
+        accs = await ms.get_accounts()
+        cash = next(a for a in accs if a.code == "1110")
+        sales = next(a for a in accs if a.code == "4110")
+        assert cash.id is not None and sales.id is not None
+
+    async with container.journal_service_scope() as js:
+        red_id = await js.add_journal_entry(
+            Transaction(
+                occurred_at=date(2026, 2, 1),
+                description="[取消: 旧誤入力]",
+                lines=[
+                    TransactionLine(account_id=sales.id, debit=500, credit=0),
+                    TransactionLine(account_id=cash.id, debit=0, credit=500),
+                ],
+            )
+        )
+        with pytest.raises(ValueError, match="取消仕訳（赤伝）"):
+            await js.reverse_journal_entry(red_id, reason="二重取消試行")
+
+
+@pytest.mark.asyncio
+async def test_delete_fiscal_year_rejects_closed_or_populated_periods(
+    container: Container,
+) -> None:
+    """Verify delete_fiscal_year blocks CLOSED periods and OPEN periods containing transactions."""
+    async with container.master_service_scope() as ms:
+        await seed_accounts_with_service(ms.repository)
+        fy_closed = await ms.save_fiscal_year(
+            FiscalYear(
+                name="確定済期",
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 12, 31),
+                status="CLOSED",
+                period_number=1,
+            )
+        )
+        fy_open = await ms.save_fiscal_year(
+            FiscalYear(
+                name="仕訳あり期",
+                start_date=date(2025, 1, 1),
+                end_date=date(2025, 12, 31),
+                status="OPEN",
+                period_number=2,
+            )
+        )
+        fy_empty = await ms.save_fiscal_year(
+            FiscalYear(
+                name="空の期",
+                start_date=date(2027, 1, 1),
+                end_date=date(2027, 12, 31),
+                status="OPEN",
+                period_number=3,
+            )
+        )
+        assert (
+            fy_closed.id is not None
+            and fy_open.id is not None
+            and fy_empty.id is not None
+        )
+        accs = await ms.get_accounts()
+        cash = next(a for a in accs if a.code == "1110")
+        sales = next(a for a in accs if a.code == "4110")
+        assert cash.id is not None and sales.id is not None
+
+    async with container.journal_service_scope() as js:
+        await js.add_journal_entry(
+            Transaction(
+                occurred_at=date(2025, 5, 1),
+                description="削除ガード検証仕訳",
+                lines=[
+                    TransactionLine(account_id=cash.id, debit=2000, credit=0),
+                    TransactionLine(account_id=sales.id, debit=0, credit=2000),
+                ],
+            )
+        )
+
+    async with container.master_service_scope() as ms:
+        with pytest.raises(ValueError, match="締め済みの会計年度は削除できません"):
+            await ms.delete_fiscal_year(fy_closed.id)
+
+        with pytest.raises(ValueError, match="仕訳が存在する会計年度は削除できません"):
+            await ms.delete_fiscal_year(fy_open.id)
+
+        await ms.delete_fiscal_year(fy_empty.id)
+        remaining_ids = {fy.id for fy in await ms.get_fiscal_years()}
+        assert fy_empty.id not in remaining_ids

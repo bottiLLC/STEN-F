@@ -149,11 +149,26 @@ class MasterService:
         return await self.repository.save_fiscal_year(fy)
 
     async def delete_fiscal_year(self, fy_id: int) -> None:
-        """Remove fiscal year record.
+        """Remove unused open fiscal year record.
 
         Args:
             fy_id: Target fiscal year identifier.
+
+        Raises:
+            ValueError: If fiscal year is closed or contains journal entries.
         """
+        target_fy = await self.repository.get_fiscal_year(fy_id)
+        if target_fy:
+            if target_fy.status == "CLOSED":
+                raise ValueError("締め済みの会計年度は削除できません。")
+            if self.ledger_repository:
+                existing_txs = await self.ledger_repository.get_transactions(
+                    start_date=target_fy.start_date,
+                    end_date=target_fy.end_date,
+                    include_deleted=True,
+                )
+                if existing_txs:
+                    raise ValueError("仕訳が存在する会計年度は削除できません。")
         await self.repository.delete_fiscal_year(fy_id)
 
     async def get_accounts(self) -> list[Account]:

@@ -269,12 +269,16 @@ def build_abstract_commit_plan(
     to_save: list[Abstract] = []
     errors: list[str] = []
 
-    for row in added:
+    for idx, row in enumerate(added):
         raw_text = clean_editor_text(row.get("text"))
         acc_label = clean_editor_text(row.get("account"))
+        if not raw_text and not acc_label:
+            continue
         acc_id = acc_label_to_id.get(acc_label) if acc_label else None
-        if raw_text and acc_id:
-            to_save.append(Abstract(text=raw_text, account_id=acc_id))
+        if not raw_text or acc_id is None:
+            errors.append(f"追加行 {idx + 1}: 摘要と勘定科目をすべて入力してください。")
+            continue
+        to_save.append(Abstract(text=raw_text, account_id=acc_id))
 
     abs_by_id = {a.id: a for a in existing_abs if a.id is not None}
     for pk, chg in edited.items():
@@ -282,10 +286,17 @@ def build_abstract_commit_plan(
         if not cur:
             continue
         new_text = clean_editor_text(chg.get("text", cur.text))
-        acc_label = clean_editor_text(chg.get("account"))
-        acc_id = acc_label_to_id.get(acc_label) if acc_label else cur.account_id
-        if new_text and acc_id:
-            to_save.append(Abstract(id=pk, text=new_text, account_id=acc_id))
+        if "account" in chg:
+            acc_label = clean_editor_text(chg.get("account"))
+            acc_id = acc_label_to_id.get(acc_label) if acc_label else None
+        else:
+            acc_id = cur.account_id
+        if not new_text or acc_id is None:
+            errors.append(
+                f"摘要「{cur.text}」の更新内容が不正です（摘要と勘定科目は必須です）。"
+            )
+            continue
+        to_save.append(Abstract(id=pk, text=new_text, account_id=acc_id))
 
     return CommitPlan(
         to_save=to_save,
