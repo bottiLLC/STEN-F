@@ -26,6 +26,7 @@ from app.core_foundation import DI, call_journal, call_master, run_async
 from app.domain_contracts import (
     FiscalYear,
     Transaction,
+    TransactionLine,
     account_code_sort_key,
 )
 from app.ui.design_system import (
@@ -37,23 +38,22 @@ from app.ui.design_system import (
 from app.ui.journal_helpers import (
     build_detail_line_rows,
     build_journal_display_rows,
+    build_voucher_initial_df,
+    build_voucher_transaction,
     filter_journal_entries,
     is_red_slip_transaction,
     parse_voucher_editor_lines,
-    resolve_ocr_initial_accounts,
+    resolve_evidence_mime,
+    resolve_ocr_date,
 )
 
+_resolve_evidence_mime = resolve_evidence_mime
 
-def _resolve_evidence_mime(filename: str) -> str:
-    """Resolve MIME type string from evidence filename extension."""
-    lower_name = filename.lower()
-    if lower_name.endswith(".pdf"):
-        return "application/pdf"
-    if lower_name.endswith(".png"):
-        return "image/png"
-    if lower_name.endswith(".webp"):
-        return "image/webp"
-    return "image/jpeg"
+
+@st.cache_data(max_size=32, ttl=300)
+def _load_evidence_payload(resolved_path: str) -> bytes:
+    """Read stored evidence bytes with bounded cache to avoid redundant disk I/O."""
+    return Path(resolved_path).read_bytes()
 
 
 def _build_evidence_popup_html(b64_data: str, mime_type: str) -> str:
@@ -143,7 +143,7 @@ def _render_ocr_upload_step(form_ver: int) -> Any:
             width="stretch",
         )
 
-    with st.container(horizontal=True):
+    with st.container(horizontal=True, horizontal_alignment="right"):
         run_fast = st.button(
             "通常読取",
             key="btn_run_ocr_fast",
@@ -224,30 +224,11 @@ def _clear_voucher_form_state(form_ver: int) -> None:
     st.session_state["journal_tx_submitting"] = False
 
 
-def _render_voucher_entry_step(
-    form_ver: int,
-    uploaded_file: Any,
-    account_labels: list[str],
-    account_code_to_id: dict[str, int | None],
-    account_id_to_label: dict[int | None, str],
-    abstract_options: list[str],
-) -> None:
-    """Render double-entry transfer voucher editor and commit transaction."""
-    is_submitting = bool(st.session_state.get("journal_tx_submitting", False))
-    ocr = st.session_state.get("ocr_result")
-
-    st.divider()
-    st.subheader("Step 2: 振替伝票入力")
-    if ocr and ocr.needs_manual_review:
-        _render_manual_review_notice()
-
-    ocr_date = date.today()
-    if ocr and ocr.transaction_date:
-        try:
-            ocr_date = date.fromisoformat(ocr.transaction_date)
-        except ValueError:
-            pass
-
+def _render_voucher_header(
+    form_ver: int, ocr: Any, abstract_options: list[str]
+) -> tuple[date, str, str, str]:
+    """Render voucher metadata header inputs and return normalized widget values."""
+    ocr_date = resolve_ocr_date(ocr)
     col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 3, 2])
     with col_h1:
         tx_date = st.date_input(
@@ -280,21 +261,18 @@ def _render_voucher_entry_step(
             else "",
             key=f"tx_header_inv_{form_ver}",
         )
+    return tx_date, tx_desc, tx_cp, tx_inv
 
-    d_init, c_init, init_amt = resolve_ocr_initial_accounts(
-        ocr, account_id_to_label, account_labels
-    )
-    lines_df = pd.DataFrame(
-        [
-            {
-                "debit_account": d_init,
-                "debit_amount": init_amt,
-                "credit_account": c_init,
-                "credit_amount": init_amt,
-                "line_desc": ocr.description if ocr and ocr.description else "",
-            }
-        ]
-    )
+
+def _render_voucher_lines_editor(
+    form_ver: int,
+    ocr: Any,
+    account_labels: list[str],
+    account_code_to_id: dict[str, int | None],
+    account_id_to_label: dict[int | None, str],
+) -> tuple[list[TransactionLine], bool]:
+    """Render split journal lines editor with real-time debit/credit balance metrics."""
+    lines_df = build_voucher_initial_df(ocr, account_id_to_label, account_labels)
     col_cfg = {
         "debit_account": st.column_config.SelectboxColumn(
             "借方科目", options=account_labels
@@ -334,6 +312,61 @@ def _render_voucher_entry_step(
             "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
             border=True,
         )
+    return tx_lines, is_balanced
+
+
+def _submit_voucher_transaction(
+    form_ver: int,
+    new_tx: Transaction,
+    active_evidence_bytes: bytes | None,
+    active_evidence_name: str | None,
+) -> None:
+    """Persist balanced journal transaction with optional electronic evidence."""
+    try:
+        ext = Path(active_evidence_name).suffix if active_evidence_name else ".pdf"
+        call_journal(
+            lambda s: (
+                s.add_journal_entry_with_evidence(
+                    new_tx,
+                    active_evidence_bytes,
+                    DI.get_file_service(),
+                    extension=ext,
+                )
+                if active_evidence_bytes
+                else s.add_journal_entry(new_tx)
+            ),
+        )
+        _clear_voucher_form_state(form_ver)
+        st.toast("仕訳が正常に登録されました", icon=":material/check_circle:")
+        st.rerun()
+    except Exception as e:
+        st.session_state["journal_tx_submitting"] = False
+        st.error(f"仕訳登録エラー: {e}")
+
+
+def _render_voucher_entry_step(
+    form_ver: int,
+    uploaded_file: Any,
+    account_labels: list[str],
+    account_code_to_id: dict[str, int | None],
+    account_id_to_label: dict[int | None, str],
+    abstract_options: list[str],
+) -> None:
+    """Render double-entry transfer voucher editor and commit transaction."""
+    is_submitting = bool(st.session_state.get("journal_tx_submitting", False))
+    ocr = st.session_state.get("ocr_result")
+
+    st.divider()
+    st.subheader("Step 2: 振替伝票入力")
+    if ocr and ocr.needs_manual_review:
+        _render_manual_review_notice()
+
+    tx_date, tx_desc, tx_cp, tx_inv = _render_voucher_header(
+        form_ver, ocr, abstract_options
+    )
+    tx_lines, is_balanced = _render_voucher_lines_editor(
+        form_ver, ocr, account_labels, account_code_to_id, account_id_to_label
+    )
 
     active_evidence_bytes = (
         uploaded_file.getvalue() if uploaded_file else st.session_state.get("ocr_bytes")
@@ -358,33 +391,154 @@ def _render_voucher_entry_step(
 
     if do_submit_tx and not is_submitting:
         st.session_state["journal_tx_submitting"] = True
-        new_tx = Transaction(
-            occurred_at=tx_date,
-            description=tx_desc.strip() if tx_desc else "振替仕訳",
-            counterparty=tx_cp.strip() if tx_cp else None,
-            invoice_number=tx_inv.strip() if tx_inv else None,
-            lines=tx_lines,
+        new_tx = build_voucher_transaction(tx_date, tx_desc, tx_cp, tx_inv, tx_lines)
+        _submit_voucher_transaction(
+            form_ver, new_tx, active_evidence_bytes, active_evidence_name
         )
-        try:
-            ext = Path(active_evidence_name).suffix if active_evidence_name else ".pdf"
-            call_journal(
-                lambda s: (
-                    s.add_journal_entry_with_evidence(
-                        new_tx,
-                        active_evidence_bytes,
-                        DI.get_file_service(),
-                        extension=ext,
-                    )
-                    if active_evidence_bytes
-                    else s.add_journal_entry(new_tx)
-                ),
+
+
+def _render_detail_header_and_lines(
+    selected_tx: Transaction, account_id_to_label: dict[int | None, str]
+) -> None:
+    """Render read-only header fields, split lines table, and balance metrics."""
+    st.caption(
+        f"仕訳ID: {selected_tx.id} | 記録日時: {selected_tx.recorded_at.strftime('%Y-%m-%d %H:%M:%S UTC') if selected_tx.recorded_at else '-'}"
+    )
+    col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 3, 2])
+    with col_h1:
+        st.date_input(
+            "取引日",
+            value=selected_tx.occurred_at,
+            disabled=True,
+            key=f"detail_tx_date_{selected_tx.id}",
+        )
+    with col_h2:
+        st.text_input(
+            "伝票摘要 (取引内容)",
+            value=selected_tx.description or "",
+            disabled=True,
+            key=f"detail_tx_desc_{selected_tx.id}",
+        )
+    with col_h3:
+        st.text_input(
+            "取引先",
+            value=selected_tx.counterparty or "",
+            disabled=True,
+            key=f"detail_tx_cp_{selected_tx.id}",
+        )
+    with col_h4:
+        st.text_input(
+            "インボイス番号 (T+13桁)",
+            value=selected_tx.invoice_number or "",
+            disabled=True,
+            key=f"detail_tx_inv_{selected_tx.id}",
+        )
+
+    st.markdown("##### 【 振替伝票 明細行 】")
+    detail_rows = build_detail_line_rows(selected_tx, account_id_to_label)
+    detail_cfg = {
+        "借方金額 (¥)": st.column_config.NumberColumn("借方金額 (¥)", format="¥%d"),
+        "貸方金額 (¥)": st.column_config.NumberColumn("貸方金額 (¥)", format="¥%d"),
+    }
+    st.dataframe(
+        pd.DataFrame(detail_rows),
+        column_config=detail_cfg,
+        hide_index=True,
+        width="stretch",
+        key=f"detail_lines_df_{selected_tx.id}",
+    )
+
+    total_debit = sum(line.debit for line in selected_tx.lines)
+    total_credit = sum(line.credit for line in selected_tx.lines)
+    is_balanced = total_debit == total_credit > 0
+    with st.grid(3):
+        st.metric("借方合計", f"¥{total_debit:,}", border=True)
+        st.metric("貸方合計", f"¥{total_credit:,}", border=True)
+        st.metric(
+            "貸借バランス(差額)",
+            "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
+            border=True,
+        )
+
+
+def _render_evidence_actions(selected_tx: Transaction) -> None:
+    """Render attached evidence preview popup and download control."""
+    st.markdown("##### 証憑情報・操作")
+    if not selected_tx.evidence_path:
+        st.caption("※ この仕訳に添付された証憑はありません。")
+        return
+
+    resolved = DI.get_file_service().resolve_evidence_path(selected_tx.evidence_path)
+    if not resolved or not resolved.exists():
+        st.warning(
+            f"証憑ファイルがストレージ上に見つかりません: {selected_tx.evidence_path}"
+        )
+        return
+
+    evidence_bytes = _load_evidence_payload(str(resolved))
+    evidence_filename = resolved.name
+    mime_type = resolve_evidence_mime(evidence_filename)
+    st.info(f"添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)")
+    col_btn_view, col_btn_dl = st.columns(2)
+    with col_btn_view:
+        b64_evidence = base64.b64encode(evidence_bytes).decode("utf-8")
+        st.iframe(_build_evidence_popup_html(b64_evidence, mime_type), height=42)
+    with col_btn_dl:
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            st.download_button(
+                label="証憑出力",
+                data=evidence_bytes,
+                file_name=evidence_filename,
+                mime=mime_type,
+                icon=":material/download:",
+                width="content",
+                key=f"dl_evidence_{selected_tx.id}",
             )
-            _clear_voucher_form_state(form_ver)
-            st.toast("仕訳が正常に登録されました", icon=":material/check_circle:")
+
+
+def _render_reversal_panel(
+    selected_tx: Transaction, cancelled_orig_ids: set[int]
+) -> None:
+    """Render reversing entry (red-slip) controls under Rule 1 immutability."""
+    if selected_tx.id is None:
+        return
+    target_id: int = selected_tx.id
+    st.markdown("##### 赤伝起票（反対仕訳による取消）")
+    is_already_reversed = target_id in cancelled_orig_ids or is_red_slip_transaction(
+        selected_tx
+    )
+    if is_already_reversed:
+        st.info(
+            "※ この仕訳は既に取消（赤伝）処理済み、または赤伝仕訳のため再取消できません。"
+        )
+    rev_reason = st.text_input(
+        "取消理由",
+        value="入力誤謬による取消",
+        key=f"rev_reason_{target_id}",
+        disabled=is_already_reversed,
+    )
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        with destructive_button_container(f"rev_{target_id}"):
+            do_rev = st.button(
+                "赤伝発行",
+                type="secondary",
+                icon=":material/swap_horiz:",
+                width="content",
+                disabled=is_already_reversed,
+                key=f"rev_btn_{target_id}",
+            )
+    if do_rev and not is_already_reversed:
+        try:
+            rev_id = call_journal(
+                lambda s: s.reverse_journal_entry(target_id, reason=rev_reason)
+            )
+            st.toast(
+                f"赤伝を発行しました (新仕訳ID: {rev_id})",
+                icon=":material/check:",
+            )
             st.rerun()
-        except Exception as e:
-            st.session_state["journal_tx_submitting"] = False
-            st.error(f"仕訳登録エラー: {e}")
+        except Exception as ex:
+            st.error(f"赤伝起票エラー: {ex}")
 
 
 def _render_transaction_detail_card(
@@ -394,144 +548,12 @@ def _render_transaction_detail_card(
 ) -> None:
     """Render single selected transaction detail card with evidence popup and red-slip reversal."""
     with st.container(border=True):
-        st.caption(
-            f"仕訳ID: {selected_tx.id} | 記録日時: {selected_tx.recorded_at.strftime('%Y-%m-%d %H:%M:%S UTC') if selected_tx.recorded_at else '-'}"
-        )
-        col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 3, 2])
-        with col_h1:
-            st.date_input(
-                "取引日",
-                value=selected_tx.occurred_at,
-                disabled=True,
-                key=f"detail_tx_date_{selected_tx.id}",
-            )
-        with col_h2:
-            st.text_input(
-                "伝票摘要 (取引内容)",
-                value=selected_tx.description or "",
-                disabled=True,
-                key=f"detail_tx_desc_{selected_tx.id}",
-            )
-        with col_h3:
-            st.text_input(
-                "取引先",
-                value=selected_tx.counterparty or "",
-                disabled=True,
-                key=f"detail_tx_cp_{selected_tx.id}",
-            )
-        with col_h4:
-            st.text_input(
-                "インボイス番号 (T+13桁)",
-                value=selected_tx.invoice_number or "",
-                disabled=True,
-                key=f"detail_tx_inv_{selected_tx.id}",
-            )
-
-        st.markdown("##### 【 振替伝票 明細行 】")
-        detail_rows = build_detail_line_rows(selected_tx, account_id_to_label)
-        detail_cfg = {
-            "借方金額 (¥)": st.column_config.NumberColumn("借方金額 (¥)", format="¥%d"),
-            "貸方金額 (¥)": st.column_config.NumberColumn("貸方金額 (¥)", format="¥%d"),
-        }
-        st.dataframe(
-            pd.DataFrame(detail_rows),
-            column_config=detail_cfg,
-            hide_index=True,
-            width="stretch",
-            key=f"detail_lines_df_{selected_tx.id}",
-        )
-
-        total_debit = sum(line.debit for line in selected_tx.lines)
-        total_credit = sum(line.credit for line in selected_tx.lines)
-        is_balanced = total_debit == total_credit > 0
-        with st.grid(3):
-            st.metric("借方合計", f"¥{total_debit:,}", border=True)
-            st.metric("貸方合計", f"¥{total_credit:,}", border=True)
-            st.metric(
-                "貸借バランス(差額)",
-                "一致" if is_balanced else f"¥{total_debit - total_credit:,}",
-                border=True,
-            )
-
+        _render_detail_header_and_lines(selected_tx, account_id_to_label)
         col_d_left, col_d_right = st.columns([3, 2])
         with col_d_left:
-            st.markdown("##### 証憑情報・操作")
-            if selected_tx.evidence_path:
-                resolved = DI.get_file_service().resolve_evidence_path(
-                    selected_tx.evidence_path
-                )
-                if resolved and resolved.exists():
-                    evidence_bytes = resolved.read_bytes()
-                    evidence_filename = resolved.name
-                    mime_type = _resolve_evidence_mime(evidence_filename)
-                    st.info(
-                        f"添付証憑: **{evidence_filename}** ({len(evidence_bytes) / 1024:.1f} KB)"
-                    )
-                    col_btn_view, col_btn_dl = st.columns(2)
-                    with col_btn_view:
-                        b64_evidence = base64.b64encode(evidence_bytes).decode("utf-8")
-                        st.iframe(
-                            _build_evidence_popup_html(b64_evidence, mime_type),
-                            height=42,
-                        )
-                    with col_btn_dl:
-                        st.download_button(
-                            label="証憑出力",
-                            data=evidence_bytes,
-                            file_name=evidence_filename,
-                            mime=mime_type,
-                            icon=":material/download:",
-                            width="content",
-                            key=f"dl_evidence_{selected_tx.id}",
-                        )
-                else:
-                    st.warning(
-                        f"証憑ファイルがストレージ上に見つかりません: {selected_tx.evidence_path}"
-                    )
-            else:
-                st.caption("※ この仕訳に添付された証憑はありません。")
-
+            _render_evidence_actions(selected_tx)
         with col_d_right:
-            if selected_tx.id is not None:
-                target_id: int = selected_tx.id
-                st.markdown("##### 赤伝起票（反対仕訳による取消）")
-                is_already_reversed = (
-                    target_id in cancelled_orig_ids
-                    or is_red_slip_transaction(selected_tx)
-                )
-                if is_already_reversed:
-                    st.info(
-                        "※ この仕訳は既に取消（赤伝）処理済み、または赤伝仕訳のため再取消できません。"
-                    )
-                rev_reason = st.text_input(
-                    "取消理由",
-                    value="入力誤謬による取消",
-                    key=f"rev_reason_{target_id}",
-                    disabled=is_already_reversed,
-                )
-                with destructive_button_container(f"rev_{target_id}"):
-                    do_rev = st.button(
-                        "赤伝発行",
-                        type="secondary",
-                        icon=":material/swap_horiz:",
-                        width="content",
-                        disabled=is_already_reversed,
-                        key=f"rev_btn_{target_id}",
-                    )
-                if do_rev and not is_already_reversed:
-                    try:
-                        rev_id = call_journal(
-                            lambda s: s.reverse_journal_entry(
-                                target_id, reason=rev_reason
-                            )
-                        )
-                        st.toast(
-                            f"赤伝を発行しました (新仕訳ID: {rev_id})",
-                            icon=":material/check:",
-                        )
-                        st.rerun()
-                    except Exception as ex:
-                        st.error(f"赤伝起票エラー: {ex}")
+            _render_reversal_panel(selected_tx, cancelled_orig_ids)
 
 
 @st.fragment
@@ -670,4 +692,5 @@ def main() -> None:
         render_journal_history_section(open_fy, account_id_to_label)
 
 
-main()
+if __name__ == "__main__":
+    main()

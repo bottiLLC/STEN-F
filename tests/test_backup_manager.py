@@ -386,14 +386,15 @@ def test_render_sidebar_backup_update_destination_success() -> None:
                 "message": "バックアップ先を設定しました: /new/custom/path",
             },
         ) as mock_set,
-        patch("streamlit.success") as mock_success,
+        patch("streamlit.toast") as mock_toast,
         patch("streamlit.rerun") as mock_rerun,
     ):
         _render_sidebar_backup()
 
         mock_set.assert_called_once_with("/new/custom/path")
-        mock_success.assert_called_once_with(
-            "バックアップ先を設定しました: /new/custom/path"
+        mock_toast.assert_called_once_with(
+            "バックアップ先を設定しました: /new/custom/path",
+            icon=":material/check_circle:",
         )
         mock_rerun.assert_called_once()
 
@@ -446,14 +447,15 @@ def test_render_sidebar_backup_run_backup_success() -> None:
                 "destination": "/app/backups/app_backup_20260926_120000.zip",
             },
         ) as mock_run,
-        patch("streamlit.success") as mock_success,
+        patch("streamlit.toast") as mock_toast,
         patch("streamlit.caption") as mock_caption,
     ):
         _render_sidebar_backup()
 
         mock_run.assert_called_once_with(app_name="app")
-        mock_success.assert_called_once_with(
-            "バックアップ完了: app_backup_20260926_120000.zip (10.00 KB)"
+        mock_toast.assert_called_once_with(
+            "バックアップ完了: app_backup_20260926_120000.zip (10.00 KB)",
+            icon=":material/check_circle:",
         )
         mock_caption.assert_any_call("完了日時: 2026-09-26 12:00:00")
         mock_caption.assert_any_call(

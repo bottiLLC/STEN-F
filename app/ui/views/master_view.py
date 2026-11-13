@@ -34,8 +34,19 @@ from app.ui.master_sections import (
 __all__ = ["compute_next_fiscal_year_dates", "main"]
 
 
+_MASTER_SECTIONS: tuple[str, ...] = (
+    "自社情報",
+    "会計年度・年度締め",
+    "期首残高設定",
+    "勘定科目",
+    "取引先",
+    "よく使う摘要",
+    "AI・システム設定",
+)
+
+
 def main() -> None:
-    """Render master and system settings workspace tabs."""
+    """Render master and system settings workspace using segmented section selector."""
     st.header("マスタ・システム設定", divider="gray")
 
     fys = call_master(lambda s: s.get_fiscal_years())
@@ -45,32 +56,31 @@ def main() -> None:
     acc_id_to_label = {a.id: f"{a.code}: {a.name}" for a in accounts}
     acc_label_to_id = {f"{a.code}: {a.name}": a.id for a in accounts}
 
-    tab_corp, tab_fy, tab_op, tab_acc, tab_cp, tab_abs, tab_sys = st.tabs(
-        [
-            "自社情報",
-            "会計年度・年度締め",
-            "期首残高設定",
-            "勘定科目",
-            "取引先",
-            "よく使う摘要",
-            "AI・システム設定",
-        ]
+    selected_section = st.segmented_control(
+        "設定項目",
+        options=list(_MASTER_SECTIONS),
+        default=_MASTER_SECTIONS[0],
+        selection_mode="single",
+        key="master_section_selector",
+        label_visibility="collapsed",
     )
 
-    with tab_corp:
+    section = selected_section or _MASTER_SECTIONS[0]
+    if section == "自社情報":
         render_corp_section()
-    with tab_fy:
+    elif section == "会計年度・年度締め":
         render_fiscal_year_section(fys)
-    with tab_op:
+    elif section == "期首残高設定":
         render_opening_balance_section(fys, sorted_accounts)
-    with tab_acc:
+    elif section == "勘定科目":
         render_accounts_section(sorted_accounts)
-    with tab_cp:
+    elif section == "取引先":
         render_counterparties_section(account_options, acc_id_to_label, acc_label_to_id)
-    with tab_abs:
+    elif section == "よく使う摘要":
         render_abstracts_section(account_options, acc_id_to_label, acc_label_to_id)
-    with tab_sys:
+    elif section == "AI・システム設定":
         render_system_section()
 
 
-main()
+if __name__ == "__main__":
+    main()

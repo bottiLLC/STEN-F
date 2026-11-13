@@ -15,6 +15,7 @@ from app.domain_contracts import (
     Account,
     AccountType,
     Counterparty,
+    FiscalYear,
     account_code_sort_key,
 )
 from app.ui.editor import clean_editor_text, format_counterparty_validation_error
@@ -304,3 +305,37 @@ def extract_selected_pk_ids(df: pd.DataFrame) -> list[int]:
         if raw_id is not None and not bool(pd.isna(raw_id)):
             ids.append(int(raw_id))
     return ids
+
+
+def partition_opening_balance_accounts(
+    all_accounts: list[Account],
+) -> tuple[list[Account], list[Account]]:
+    """Split accounts into balance-sheet debit (asset) and credit (liability/equity) lists."""
+    debit_types = {
+        AccountType.CURRENT_ASSET,
+        AccountType.FIXED_ASSET,
+        AccountType.DEFERRED_ASSET,
+    }
+    credit_types = {
+        AccountType.CURRENT_LIABILITY,
+        AccountType.FIXED_LIABILITY,
+        AccountType.EQUITY,
+    }
+    debit_accs = [a for a in all_accounts if a.type in debit_types]
+    credit_accs = [a for a in all_accounts if a.type in credit_types]
+    return debit_accs, credit_accs
+
+
+def build_fiscal_year_rows(fys: list[FiscalYear]) -> list[dict[str, object]]:
+    """Build sorted table rows for fiscal year overview DataFrame."""
+    return [
+        {
+            "ID": f.id,
+            "年度名称": f.name,
+            "期数": f"第{f.period_number}期" if f.period_number else "-",
+            "開始日": str(f.start_date),
+            "終了日": str(f.end_date),
+            "状態": "進行中 (OPEN)" if f.status == "OPEN" else "締切済 (CLOSED)",
+        }
+        for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
+    ]

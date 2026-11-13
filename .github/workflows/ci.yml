@@ -32,12 +32,13 @@ jobs:
 
     - name: Lint with ruff
       run: |
-        uv run ruff check app tests backup_manager.py
-        uv run ruff format --check app tests backup_manager.py
+        uv run ruff check app tests backup_manager.py app.py
+        uv run ruff format --check app tests backup_manager.py app.py
 
     - name: Type check with mypy
       run: |
         uv run mypy app tests backup_manager.py
+        uv run mypy app.py
 
     - name: Run tests with pytest
       env:

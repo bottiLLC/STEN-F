@@ -32,10 +32,14 @@ from app.ui.editor import clean_editor_text
 from app.ui.journal_helpers import (
     build_detail_line_rows,
     build_journal_display_rows,
+    build_voucher_initial_df,
+    build_voucher_transaction,
     filter_journal_entries,
     identify_cancelled_transaction_ids,
     is_red_slip_transaction,
     parse_voucher_editor_lines,
+    resolve_evidence_mime,
+    resolve_ocr_date,
     resolve_ocr_initial_accounts,
 )
 from app.ui.master_helpers import (
@@ -45,7 +49,9 @@ from app.ui.master_helpers import (
     build_account_df,
     build_counterparty_commit_plan,
     build_counterparty_df,
+    build_fiscal_year_rows,
     extract_selected_pk_ids,
+    partition_opening_balance_accounts,
 )
 
 
@@ -385,8 +391,93 @@ def test_pdf_service_liabilities_equity_total_baseline_aligned() -> None:
         )
 
     assert pdf_bytes.startswith(b"%PDF")
+    assets_total_y = next(y for y, txt in drawn_labels if txt == "資産合計")
     label_y = next(y for y, txt in drawn_labels if txt == "負債・純資産合計")
     amount_y = next(
         y for y, txt in drawn_amounts if txt == "1,000" and abs(y - label_y) < 1.0
     )
     assert label_y == pytest.approx(amount_y)
+    assert assets_total_y == pytest.approx(label_y)
+
+
+def test_refactored_ui_and_domain_helpers() -> None:
+    """Verify newly extracted journal/master pure helpers and domain defaults."""
+    assert resolve_evidence_mime("scan.PDF") == "application/pdf"
+    assert resolve_evidence_mime("photo.png") == "image/png"
+    assert resolve_evidence_mime("img.webp") == "image/webp"
+    assert resolve_evidence_mime("doc.jpg") == "image/jpeg"
+
+    fallback = date(2026, 4, 1)
+    assert resolve_ocr_date(
+        ReceiptData(transaction_date="2026-05-15"), fallback
+    ) == date(2026, 5, 15)
+    assert (
+        resolve_ocr_date(ReceiptData(transaction_date="invalid"), fallback) == fallback
+    )
+    assert resolve_ocr_date(None, fallback) == fallback
+
+    ocr = ReceiptData(
+        total_amount_incl_tax=1500,
+        inferred_debit_account_id="1",
+        inferred_credit_account_id="2",
+        description="会議費",
+    )
+    df_init = build_voucher_initial_df(
+        ocr,
+        {1: "6180: 接待交際費", 2: "1110: 現金"},
+        ["", "1110: 現金", "6180: 接待交際費"],
+    )
+    assert df_init.iloc[0]["debit_amount"] == 1500
+    assert df_init.iloc[0]["debit_account"] == "6180: 接待交際費"
+
+    tx = build_voucher_transaction(
+        date(2026, 5, 15),
+        " 会議費 ",
+        " テストカフェ ",
+        "1234567890123",
+        [
+            TransactionLine(account_id=1, debit=1500, credit=0),
+            TransactionLine(account_id=2, debit=0, credit=1500),
+        ],
+    )
+    assert tx.description == "会議費"
+    assert tx.counterparty == "テストカフェ"
+    assert tx.invoice_number == "T1234567890123"
+
+    accounts = [
+        Account(id=1, code="1110", name="現金", type=AccountType.CURRENT_ASSET),
+        Account(id=2, code="2110", name="買掛金", type=AccountType.CURRENT_LIABILITY),
+        Account(id=3, code="4110", name="売上高", type=AccountType.REVENUE),
+    ]
+    d_accs, c_accs = partition_opening_balance_accounts(accounts)
+    assert [a.code for a in d_accs] == ["1110"]
+    assert [a.code for a in c_accs] == ["2110"]
+
+    fy_rows = build_fiscal_year_rows(
+        [
+            FiscalYear(
+                id=1,
+                name="FY2025",
+                start_date=date(2025, 1, 1),
+                end_date=date(2025, 12, 31),
+                status="CLOSED",
+                period_number=1,
+            ),
+            FiscalYear(
+                id=2,
+                name="FY2026",
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 12, 31),
+                status="OPEN",
+                period_number=2,
+            ),
+        ]
+    )
+    assert [r["年度名称"] for r in fy_rows] == ["FY2026", "FY2025"]
+    assert fy_rows[0]["状態"] == "進行中 (OPEN)"
+
+    corp = Corporation(name="テスト", invoice_number=" 1234567890123 ")
+    assert corp.invoice_number == "T1234567890123"
+    s1 = FinancialSection(title="A")
+    s2 = FinancialSection(title="B")
+    assert s1.rows is not s2.rows

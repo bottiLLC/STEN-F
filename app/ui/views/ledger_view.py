@@ -24,10 +24,25 @@ from app.domain_contracts import (
     FiscalYear,
     account_code_sort_key,
 )
+from app.external_services import PDFService
 from app.ui.financial_statements import (
     render_balance_sheet,
     render_profit_and_loss,
 )
+
+
+def _build_annual_report_pdf(fy: FiscalYear) -> bytes:
+    """Fetch corporate metadata and compile annual financial statement PDF bytes."""
+
+    async def _generate() -> bytes:
+        async with DI.get_master_service() as ms, DI.get_ledger_service() as ls:
+            corp = await ms.get_corporation() or Corporation()
+            report = await ls.generate_financial_report(fy.id or 0)
+            return PDFService.generate_annual_report(
+                corp, report, fy, date.today(), date.today()
+            )
+
+    return run_async(_generate())
 
 
 @st.fragment
@@ -70,7 +85,7 @@ def render_trial_balance_section(selected_fy: FiscalYear) -> None:
         st.metric("借方残高合計", f"¥{tot_db:,}", border=True)
         st.metric("貸方残高合計", f"¥{tot_cb:,}", border=True)
         if tot_db == tot_cb:
-            st.success("貸借一致 (バランス検証 OK)")
+            st.metric("貸借検証", "一致 (OK)", border=True)
         else:
             st.error(f"貸借不一致 (差額: ¥{abs(tot_db - tot_cb):,})")
 
@@ -134,19 +149,8 @@ def render_financial_statements_section(selected_fy: FiscalYear) -> None:
                 width="content",
             )
         if generate_clicked:
-
-            async def generate_pdf(fy: FiscalYear) -> bytes:
-                async with DI.get_master_service() as ms, DI.get_ledger_service() as ls:
-                    c = await ms.get_corporation() or Corporation()
-                    r = await ls.generate_financial_report(fy.id or 0)
-                    from app.external_services import PDFService
-
-                    return PDFService.generate_annual_report(
-                        c, r, fy, date.today(), date.today()
-                    )
-
             try:
-                pdf_bytes = run_async(generate_pdf(selected_fy))
+                pdf_bytes = _build_annual_report_pdf(selected_fy)
                 with st.container(horizontal=True, horizontal_alignment="right"):
                     st.download_button(
                         "PDF出力",
@@ -200,4 +204,5 @@ def main() -> None:
         render_financial_statements_section(selected_fy)
 
 
-main()
+if __name__ == "__main__":
+    main()

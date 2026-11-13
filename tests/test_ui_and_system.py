@@ -116,9 +116,12 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
 
     # Assert
     assert not at.exception, f"master_view.py raised exception: {at.exception}"
-    assert len(at.tabs) >= 1
+    assert len(at.segmented_control) == 1
+
     # Verify account master data editor retains all columns including selected
-    acc_editor = at.dataframe[1]
+    at.segmented_control[0].set_value("勘定科目").run()
+    assert not at.exception
+    acc_editor = at.dataframe[0]
     expected_acc_cols = [
         "selected",
         "id",
@@ -130,7 +133,9 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
     assert list(acc_editor.value.columns) == expected_acc_cols
 
     # Verify counterparty data editor retains all columns even when table has zero records
-    cp_editor = at.dataframe[2]
+    at.segmented_control[0].set_value("取引先").run()
+    assert not at.exception
+    cp_editor = at.dataframe[0]
     expected_cols = [
         "selected",
         "id",
@@ -145,7 +150,9 @@ def test_master_view_interactions_renders_essential_widgets() -> None:
     assert list(cp_editor.value.columns) == expected_cols
 
     # Verify frequent abstract data editor retains all columns even when table has zero records
-    abs_editor = at.dataframe[3]
+    at.segmented_control[0].set_value("よく使う摘要").run()
+    assert not at.exception
+    abs_editor = at.dataframe[0]
     expected_abs_cols = ["selected", "id", "text", "account"]
     assert list(abs_editor.value.columns) == expected_abs_cols
 
@@ -176,6 +183,7 @@ def test_master_view_counterparty_commit_persists_to_database() -> None:
         default_timeout=15,
     )
     at.run()
+    at.segmented_control[0].set_value("取引先").run()
 
     current_ver = at.session_state.get("editor_counterparties_version", 0)
     current_key = f"editor_counterparties_v{current_ver}"
@@ -231,8 +239,9 @@ def test_master_view_account_edit_and_add_commit_persists_to_database() -> None:
         default_timeout=15,
     )
     at.run()
+    at.segmented_control[0].set_value("勘定科目").run()
 
-    acc_df = at.dataframe[1].value
+    acc_df = at.dataframe[0].value
     row_indices = acc_df.index[acc_df["id"] == fixed_liab_acc.id].tolist()
     assert len(row_indices) == 1
     row_idx = str(row_indices[0])

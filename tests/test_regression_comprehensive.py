@@ -113,6 +113,7 @@ async def test_full_regression_accounting_cycle_all_48_accounts(
         saved_corp = await ms.get_corporation()
         assert saved_corp is not None
         assert saved_corp.name == "合同会社STEN-F検証"
+        assert saved_corp.invoice_number == "T1234567890123"
 
         # Step 3: Setup Counterparty for synthetic receipt PDF
         cp_arclink = Counterparty(
@@ -497,7 +498,7 @@ def test_all_ui_views_and_input_widgets_render_and_accept_values() -> None:
     assert len(at_ledger.tabs) >= 3
     assert len(at_ledger.selectbox) >= 1
 
-    # 4. Master View (All 7 Tabs, Forms, Data Editors, System Settings)
+    # 4. Master View (Segmented Section Selector, Forms, Data Editors)
     at_master = AppTest.from_file(
         str(_REPO_ROOT / "app" / "ui" / "views" / "master_view.py"),
         default_timeout=15,
@@ -505,9 +506,11 @@ def test_all_ui_views_and_input_widgets_render_and_accept_values() -> None:
     assert not at_master.exception, (
         f"master_view raised exception: {at_master.exception}"
     )
-    assert len(at_master.tabs) >= 7
-    # Assert data editors for Accounts, Counterparties, Abstracts
-    assert len(at_master.dataframe) >= 3
+    assert len(at_master.segmented_control) == 1
+    assert len(at_master.segmented_control[0].options) >= 7
+    at_master.segmented_control[0].set_value("勘定科目").run()
+    assert not at_master.exception
+    assert len(at_master.dataframe) >= 1
 
 
 # --- 4. Accounting Guardrails & Domain Auditing Tests ---

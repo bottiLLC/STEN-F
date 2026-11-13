@@ -228,9 +228,6 @@ def _draw_balance_sheet_page(
         yl = _draw_bs_section(
             c, rpt.deferred_assets, "繰延資産合計", rpt.deferred_assets.total, yl
         )
-    c.line(35 * mm, yl + 2, 100 * mm, yl + 2)
-    c.drawString(35 * mm, yl - 6 * mm, "資産合計")
-    c.drawRightString(100 * mm, yl - 6 * mm, f"{rpt.total_assets:,}")
 
     yr = _draw_bs_section(
         c,
@@ -262,12 +259,18 @@ def _draw_balance_sheet_page(
     c.line(115 * mm, yr, 180 * mm, yr)
     c.drawString(115 * mm, yr - 8 * mm, "純資産合計")
     c.drawRightString(180 * mm, yr - 8 * mm, f"{rpt.total_equity:,}")
-    yr -= 18 * mm
-    total_y = yr - 8 * mm
+
+    # Enforce bottom alignment (equal visual height) between Assets and Liabilities/Equity
+    grand_total_y = min(yl - 6 * mm, yr - 26 * mm)
+    rule_y = grand_total_y + 6 * mm
     c.setFont(settings.FONT_NAME, 11)
-    c.drawString(115 * mm, total_y, "負債・純資産合計")
+    c.line(35 * mm, rule_y, 100 * mm, rule_y)
+    c.drawString(35 * mm, grand_total_y, "資産合計")
+    c.drawRightString(100 * mm, grand_total_y, f"{rpt.total_assets:,}")
+    c.line(115 * mm, rule_y, 180 * mm, rule_y)
+    c.drawString(115 * mm, grand_total_y, "負債・純資産合計")
     c.drawRightString(
-        180 * mm, total_y, f"{rpt.total_liabilities + rpt.total_equity:,}"
+        180 * mm, grand_total_y, f"{rpt.total_liabilities + rpt.total_equity:,}"
     )
     c.showPage()
 

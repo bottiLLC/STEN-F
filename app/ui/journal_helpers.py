@@ -188,3 +188,65 @@ def parse_voucher_editor_lines(
             if aid := account_code_to_id.get(str(c_acc)):
                 tx_lines.append(TransactionLine(account_id=aid, debit=0, credit=c_amt))
     return tx_lines
+
+
+def resolve_evidence_mime(filename: str) -> str:
+    """Resolve MIME type string from evidence filename extension."""
+    lower_name = filename.lower()
+    if lower_name.endswith(".pdf"):
+        return "application/pdf"
+    if lower_name.endswith(".png"):
+        return "image/png"
+    if lower_name.endswith(".webp"):
+        return "image/webp"
+    return "image/jpeg"
+
+
+def resolve_ocr_date(ocr: ReceiptData | None, fallback: date | None = None) -> date:
+    """Resolve valid ISO date from OCR payload or return fallback date."""
+    default_date = fallback or date.today()
+    if ocr and ocr.transaction_date:
+        try:
+            return date.fromisoformat(ocr.transaction_date)
+        except ValueError:
+            return default_date
+    return default_date
+
+
+def build_voucher_initial_df(
+    ocr: ReceiptData | None,
+    account_id_to_label: dict[int | None, str],
+    account_labels: list[str],
+) -> pd.DataFrame:
+    """Build initial single-row voucher DataFrame seeded from OCR extraction."""
+    d_init, c_init, init_amt = resolve_ocr_initial_accounts(
+        ocr, account_id_to_label, account_labels
+    )
+    return pd.DataFrame(
+        [
+            {
+                "debit_account": d_init,
+                "debit_amount": init_amt,
+                "credit_account": c_init,
+                "credit_amount": init_amt,
+                "line_desc": ocr.description if ocr and ocr.description else "",
+            }
+        ]
+    )
+
+
+def build_voucher_transaction(
+    tx_date: date,
+    tx_desc: str,
+    tx_cp: str,
+    tx_inv: str,
+    tx_lines: list[TransactionLine],
+) -> Transaction:
+    """Construct validated Transaction domain object from voucher widget inputs."""
+    return Transaction(
+        occurred_at=tx_date,
+        description=tx_desc.strip() if tx_desc else "振替仕訳",
+        counterparty=tx_cp.strip() if tx_cp else None,
+        invoice_number=tx_inv.strip() if tx_inv else None,
+        lines=tx_lines,
+    )

@@ -62,6 +62,7 @@ class CorporationTable(Base):
     address: Mapped[str | None] = mapped_column(nullable=True)
     representative_title: Mapped[str | None] = mapped_column(nullable=True)
     representative_name: Mapped[str | None] = mapped_column(nullable=True)
+    invoice_number: Mapped[str | None] = mapped_column(nullable=True)
 
 
 class CounterpartyTable(Base):
@@ -171,6 +172,11 @@ _COLUMN_MIGRATIONS: Final[tuple[_ColumnMigration, ...]] = (
         table="system_config",
         column="backup_path",
         ddl="ALTER TABLE system_config ADD COLUMN backup_path TEXT",
+    ),
+    _ColumnMigration(
+        table="corporation",
+        column="invoice_number",
+        ddl="ALTER TABLE corporation ADD COLUMN invoice_number TEXT",
     ),
     _ColumnMigration(
         table="counterparties",

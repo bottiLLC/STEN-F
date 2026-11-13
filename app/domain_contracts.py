@@ -270,9 +270,15 @@ class Corporation(BaseModel):
     address: str | None = None
     representative_title: str | None = None
     representative_name: str | None = None
-    invoice_number: str | None = None
+    invoice_number: str | None = Field(None, pattern=r"^T[0-9]{13}$")
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    @field_validator("invoice_number", mode="before")
+    @classmethod
+    def clean_invoice_number(cls, v: object) -> str | None:
+        """Strip whitespace, normalize zenkaku, and auto-prepend 'T' if 13 digits."""
+        return _normalize_invoice_number(v)
 
 
 class Counterparty(BaseModel):
@@ -621,7 +627,7 @@ class FinancialSection(BaseModel):
     """Grouped financial categories in trial balance or financial reports."""
 
     title: str
-    rows: list[TrialBalanceRow] = []
+    rows: list[TrialBalanceRow] = Field(default_factory=list)
     total: int = 0
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 

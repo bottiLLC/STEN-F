@@ -145,6 +145,72 @@ _API_ERROR_RULES: Final[tuple[tuple[MatcherFunc, FormatterFunc], ...]] = (
 )
 
 
+_OCR_SYSTEM_INSTRUCTION: Final[str] = (
+    "You are an expert OCR assistant. Extract text accurately from the receipt or invoice image into the structured JSON schema.\n"
+    "Do not make any accounting inferences, assumptions, or translations.\n\n"
+    "Extract the following fields:\n"
+    "1. date: Transaction date formatted as YYYY-MM-DD. If illegible or missing, return null.\n"
+    "2. total_amount: Total paid amount including tax as an integer. If illegible, return null.\n"
+    "3. invoice_number: Japanese invoice registration number (T+13 digits or partial digits exactly as visible). Return raw string without alteration. If absent, null.\n"
+    "4. raw_company_name: Store, merchant, or company name exactly as visible on the receipt. If illegible, return null.\n"
+    "5. tel: Telephone number as printed on the receipt (with or without hyphens). If illegible, return null."
+)
+
+
+def _prepare_ocr_payload(file_bytes: bytes, file_type: str) -> tuple[bytes, str]:
+    """Rasterize PDF first page if needed and optimize image payload for OCR."""
+    fmt = normalize_receipt_file_format(file_type)
+    if fmt == "pdf":
+        try:
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            if len(doc) == 0:
+                raise ValueError("PDFファイルが空（0ページ）です。")
+            pix = doc.load_page(0).get_pixmap(dpi=200, alpha=False)
+            raw_bytes, mime_type = pix.tobytes("png"), "image/png"
+        except Exception as e:
+            raise ValueError(
+                f"PDFファイルの読み込み・レンダリングに失敗しました: {e!s}"
+            ) from e
+    else:
+        raw_bytes = file_bytes
+        mime_type = "image/jpeg" if fmt in ("jpg", "jpeg") else f"image/{fmt}"
+    return optimize_receipt_image(raw_bytes, mime_type)
+
+
+async def _load_vendor_master_records() -> list[VendorMasterRecord]:
+    """Load counterparty and account master data mapped for composite matching."""
+    from app.application_services import container
+
+    async with container.master_service_scope() as master_service:
+        cps = await master_service.get_counterparties()
+        accounts = await master_service.get_accounts()
+        acc_id_to_name: dict[str, str] = {
+            str(a.id): a.name for a in accounts if a.id is not None
+        }
+        return [
+            VendorMasterRecord(
+                vendor_id=cp.id or 0,
+                name=cp.name,
+                trade_name=cp.trade_name,
+                invoice_number=cp.invoice_number,
+                tel=cp.tel,
+                debit_account=(
+                    acc_id_to_name.get(str(cp.debit_account_id))
+                    if cp.debit_account_id
+                    else None
+                ),
+                credit_account=(
+                    acc_id_to_name.get(str(cp.credit_account_id))
+                    if cp.credit_account_id
+                    else None
+                ),
+                description_template=cp.description_template,
+                tax_rate=cp.tax_rate if cp.tax_rate is not None else Decimal("0.10"),
+            )
+            for cp in cps
+        ]
+
+
 class GeminiOCRService:
     """Multimodal OCR extraction engine utilizing Google Gemini models."""
 
@@ -185,81 +251,25 @@ class GeminiOCRService:
         if not file_bytes:
             raise ValueError("アップロードされたファイルが空です。")
 
-        fmt = normalize_receipt_file_format(file_type)
-        if fmt == "pdf":
-            try:
-                doc = fitz.open(stream=file_bytes, filetype="pdf")
-                if len(doc) == 0:
-                    raise ValueError("PDFファイルが空（0ページ）です。")
-                pix = doc.load_page(0).get_pixmap(dpi=200, alpha=False)
-                file_bytes, mime_type = pix.tobytes("png"), "image/png"
-            except Exception as e:
-                raise ValueError(
-                    f"PDFファイルの読み込み・レンダリングに失敗しました: {str(e)}"
-                ) from e
-        else:
-            mime_type = "image/jpeg" if fmt in ("jpg", "jpeg") else f"image/{fmt}"
-
-        opt_bytes, opt_mime = optimize_receipt_image(file_bytes, mime_type)
-        sys_instruct = (
-            "You are an expert OCR assistant. Extract text accurately from the receipt or invoice image into the structured JSON schema.\n"
-            "Do not make any accounting inferences, assumptions, or translations.\n\n"
-            "Extract the following fields:\n"
-            "1. date: Transaction date formatted as YYYY-MM-DD. If illegible or missing, return null.\n"
-            "2. total_amount: Total paid amount including tax as an integer. If illegible, return null.\n"
-            "3. invoice_number: Japanese invoice registration number (T+13 digits or partial digits exactly as visible). Return raw string without alteration. If absent, null.\n"
-            "4. raw_company_name: Store, merchant, or company name exactly as visible on the receipt. If illegible, return null.\n"
-            "5. tel: Telephone number as printed on the receipt (with or without hyphens). If illegible, return null."
-        )
-
+        opt_bytes, opt_mime = _prepare_ocr_payload(file_bytes, file_type)
         client = genai.Client(api_key=api_key)
         try:
             resp = await self._call_gemini_api(
-                client, sys_instruct, opt_bytes, opt_mime, model_id=model_id
+                client,
+                _OCR_SYSTEM_INSTRUCTION,
+                opt_bytes,
+                opt_mime,
+                model_id=model_id,
             )
             if not resp:
                 raise ValueError("Gemini APIから応答が得られませんでした。")
-
             try:
                 data = json.loads(clean_json_codeblock(resp))
             except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"AI解析結果のJSONパースに失敗しました: {str(e)}"
-                ) from e
+                raise ValueError(f"AI解析結果のJSONパースに失敗しました: {e!s}") from e
 
             raw_extracted = ReceiptRawExtractionSchema.model_validate(data)
-
-            async with container.master_service_scope() as master_service:
-                cps = await master_service.get_counterparties()
-                accounts = await master_service.get_accounts()
-                acc_id_to_name: dict[str, str] = {
-                    str(a.id): a.name for a in accounts if a.id is not None
-                }
-                master_records: list[VendorMasterRecord] = [
-                    VendorMasterRecord(
-                        vendor_id=cp.id or 0,
-                        name=cp.name,
-                        trade_name=cp.trade_name,
-                        invoice_number=cp.invoice_number,
-                        tel=cp.tel,
-                        debit_account=(
-                            acc_id_to_name.get(str(cp.debit_account_id))
-                            if cp.debit_account_id
-                            else None
-                        ),
-                        credit_account=(
-                            acc_id_to_name.get(str(cp.credit_account_id))
-                            if cp.credit_account_id
-                            else None
-                        ),
-                        description_template=cp.description_template,
-                        tax_rate=cp.tax_rate
-                        if cp.tax_rate is not None
-                        else Decimal("0.10"),
-                    )
-                    for cp in cps
-                ]
-
+            master_records = await _load_vendor_master_records()
             match_result = match_counterparty_master(raw_extracted, master_records)
             receipt = map_extraction_to_receipt_data(raw_extracted, match_result)
             return validate_receipt_structure(receipt)
@@ -274,7 +284,7 @@ class GeminiOCRService:
         except Exception as e:
             self.log.exception("ocr_unexpected_failure", error=str(e))
             raise ValueError(
-                f"AI証憑解析処理中に予期せぬエラーが発生しました: {str(e)}"
+                f"AI証憑解析処理中に予期せぬエラーが発生しました: {e!s}"
             ) from e
 
     @retry(

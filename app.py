@@ -6,7 +6,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 import asyncio
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 # Prepend script root to sys.path for deterministic module resolution
 _ROOT: Final[Path] = Path(__file__).resolve().parent
@@ -20,6 +20,9 @@ from app.core_foundation import DI, log, run_async, run_scoped, settings
 from app.domain_contracts import Corporation, FiscalYear, IMasterRepository
 from app.storage_repository import seed_accounts
 from app.ui.design_system import inject_global_design_system, render_system_diagnostic
+
+if TYPE_CHECKING:
+    from app.application_services import MasterService
 
 
 # --- 1. Pure Transformation Helpers ---
@@ -36,7 +39,7 @@ def resolve_active_fiscal_year(fys: list[FiscalYear]) -> FiscalYear | None:
 
 
 async def load_sidebar_metadata(
-    service: IMasterRepository,
+    service: MasterService | IMasterRepository,
 ) -> tuple[Corporation | None, list[FiscalYear]]:
     """Fetch corporate profile and fiscal periods asynchronously.
 
@@ -69,7 +72,7 @@ def _render_sidebar_backup() -> None:
         ):
             save_res = set_backup_dir(new_dir)
             if save_res["success"]:
-                st.success(save_res["message"])
+                st.toast(str(save_res["message"]), icon=":material/check_circle:")
                 st.rerun()
             else:
                 st.error(save_res["message"])
@@ -83,7 +86,7 @@ def _render_sidebar_backup() -> None:
         with st.spinner("圧縮・整合性検証中..."):
             res = run_backup(app_name="app")
         if res["success"]:
-            st.success(res["message"])
+            st.toast(str(res["message"]), icon=":material/check_circle:")
             st.caption(f"完了日時: {res['timestamp']}")
             st.caption(f"保存先: {res['destination']}")
         else:

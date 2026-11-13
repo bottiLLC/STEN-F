@@ -141,6 +141,7 @@ class SQLAlchemyMasterRepository(IMasterRepository):
         row.name, row.address = corp.name, corp.address
         row.representative_name = corp.representative_name
         row.representative_title = corp.representative_title
+        row.invoice_number = corp.invoice_number
         return Corporation.model_validate(await self._save_and_refresh(row))
 
     async def get_fiscal_years(self) -> list[FiscalYear]:

@@ -39,7 +39,9 @@ from app.ui.master_helpers import (
     build_account_df,
     build_counterparty_commit_plan,
     build_counterparty_df,
+    build_fiscal_year_rows,
     extract_selected_pk_ids,
+    partition_opening_balance_accounts,
 )
 
 
@@ -189,6 +191,11 @@ def render_corp_section() -> None:
             "代表者氏名",
             value=corp.representative_name if corp and corp.representative_name else "",
         )
+        corp_invoice = st.text_input(
+            "適格請求書発行事業者登録番号 (T+13桁・任意)",
+            value=corp.invoice_number if corp and corp.invoice_number else "",
+            placeholder="例: T1234567890123",
+        )
 
         with st.container(horizontal=True, horizontal_alignment="right"):
             corp_submitted = st.form_submit_button(
@@ -198,85 +205,63 @@ def render_corp_section() -> None:
             if not corp_name.strip():
                 st.error("法人名・屋号を入力してください。")
             else:
-                updated_corp = Corporation(
-                    id=corp.id if corp else None,
-                    name=corp_name.strip(),
-                    address=corp_addr.strip() if corp_addr else None,
-                    representative_title=corp_rep_title.strip() or None,
-                    representative_name=corp_rep_name.strip() or None,
-                )
-                call_master(lambda s: s.save_corporation(updated_corp))
-                st.toast("自社情報を保存しました", icon=":material/check_circle:")
-                st.rerun()
-
-
-def render_fiscal_year_section(fys: list[FiscalYear]) -> None:
-    """Render fiscal period setup, overview grid, and period-end closing rollover."""
-    if not fys:
-        st.subheader("第1期 初期セットアップ")
-        st.info("会計年度が未登録です。第1期の初期セットアップを行ってください。")
-        with st.form("initial_fy_setup_form", border=True):
-            c_p, c_n = st.columns([1, 2])
-            new_period = c_p.number_input("期数", min_value=1, value=1)
-            new_name = c_n.text_input(
-                "年度名称",
-                value=f"FY{date.today().year}",
-                help="西暦ベースの年度名称（例: FY2026）",
-            )
-            c_d1, c_d2 = st.columns(2)
-            new_start = c_d1.date_input("期首日", value=date(date.today().year, 1, 1))
-            new_end = c_d2.date_input("期末日", value=date(date.today().year, 12, 31))
-
-            with st.container(horizontal=True, horizontal_alignment="right"):
-                fy_submitted = st.form_submit_button(
-                    "第1期を作成", type="primary", width="content"
-                )
-            if fy_submitted:
-                if new_start >= new_end:
-                    st.error("期末日は期首日より後の日付を指定してください。")
-                elif not new_name.strip():
-                    st.error("年度名称を入力してください。")
-                else:
-                    new_fy = FiscalYear(
-                        name=new_name.strip(),
-                        period_number=int(new_period),
-                        start_date=new_start,
-                        end_date=new_end,
-                        status="OPEN",
+                try:
+                    updated_corp = Corporation(
+                        id=corp.id if corp else None,
+                        name=corp_name.strip(),
+                        address=corp_addr.strip() if corp_addr else None,
+                        representative_title=corp_rep_title.strip() or None,
+                        representative_name=corp_rep_name.strip() or None,
+                        invoice_number=corp_invoice.strip() or None,
                     )
-                    call_master(lambda s: s.save_fiscal_year(new_fy))
-                    st.toast(
-                        "第1期会計年度を作成しました", icon=":material/check_circle:"
-                    )
+                    call_master(lambda s: s.save_corporation(updated_corp))
+                    st.toast("自社情報を保存しました", icon=":material/check_circle:")
                     st.rerun()
-        return
+                except Exception as err:
+                    st.error(f"自社情報の保存エラー: {err}")
 
-    st.subheader("会計年度一覧")
-    open_fy = next((f for f in fys if f.status == "OPEN"), None)
-    if open_fy:
-        st.caption(
-            f"現在のアクティブ期: **{open_fy.name}** "
-            f"(第{open_fy.period_number}期: {open_fy.start_date} 〜 {open_fy.end_date})"
+
+def _render_initial_fy_form() -> None:
+    """Render initial first-period fiscal year setup form."""
+    st.subheader("第1期 初期セットアップ")
+    st.info("会計年度が未登録です。第1期の初期セットアップを行ってください。")
+    with st.form("initial_fy_setup_form", border=True):
+        c_p, c_n = st.columns([1, 2])
+        new_period = c_p.number_input("期数", min_value=1, value=1)
+        new_name = c_n.text_input(
+            "年度名称",
+            value=f"FY{date.today().year}",
+            help="西暦ベースの年度名称（例: FY2026）",
         )
+        c_d1, c_d2 = st.columns(2)
+        new_start = c_d1.date_input("期首日", value=date(date.today().year, 1, 1))
+        new_end = c_d2.date_input("期末日", value=date(date.today().year, 12, 31))
 
-    fy_rows = [
-        {
-            "ID": f.id,
-            "年度名称": f.name,
-            "期数": f"第{f.period_number}期" if f.period_number else "-",
-            "開始日": str(f.start_date),
-            "終了日": str(f.end_date),
-            "状態": "進行中 (OPEN)" if f.status == "OPEN" else "締切済 (CLOSED)",
-        }
-        for f in sorted(fys, key=lambda x: x.start_date, reverse=True)
-    ]
-    st.dataframe(pd.DataFrame(fy_rows), hide_index=True, width="stretch")
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            fy_submitted = st.form_submit_button(
+                "第1期を作成", type="primary", width="content"
+            )
+        if not fy_submitted:
+            return
+        if new_start >= new_end:
+            st.error("期末日は期首日より後の日付を指定してください。")
+        elif not new_name.strip():
+            st.error("年度名称を入力してください。")
+        else:
+            new_fy = FiscalYear(
+                name=new_name.strip(),
+                period_number=int(new_period),
+                start_date=new_start,
+                end_date=new_end,
+                status="OPEN",
+            )
+            call_master(lambda s: s.save_fiscal_year(new_fy))
+            st.toast("第1期会計年度を作成しました", icon=":material/check_circle:")
+            st.rerun()
 
-    if not open_fy:
-        st.warning("進行中 (OPEN) の会計年度がありません。")
-        return
 
-    st.divider()
+def _render_fy_rollover_expander(open_fy: FiscalYear) -> None:
+    """Render period-end closing and rollover confirmation expander."""
     with st.expander("年度締め・次期繰越処理", expanded=False):
         next_period = (open_fy.period_number or 0) + 1
         next_start, next_end = compute_next_fiscal_year_dates(open_fy.end_date)
@@ -311,24 +296,48 @@ def render_fiscal_year_section(fys: list[FiscalYear]) -> None:
                     type="primary",
                     width="content",
                 )
-            if close_submitted:
-                if not next_fy_name.strip():
-                    st.error("次期年度名称を入力してください。")
-                else:
-                    try:
-                        curr_fy_id = open_fy.id or 0
-                        call_fiscal_year(
-                            lambda s: s.close_fiscal_year(
-                                curr_fy_id, next_fy_name.strip()
-                            )
-                        )
-                        st.toast(
-                            "年度締め処理が完了し、次期へ繰り越されました",
-                            icon=":material/check_circle:",
-                        )
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"年度締めエラー: {e}")
+            if not close_submitted:
+                return
+            if not next_fy_name.strip():
+                st.error("次期年度名称を入力してください。")
+                return
+            try:
+                curr_fy_id = open_fy.id or 0
+                call_fiscal_year(
+                    lambda s: s.close_fiscal_year(curr_fy_id, next_fy_name.strip())
+                )
+                st.toast(
+                    "年度締め処理が完了し、次期へ繰り越されました",
+                    icon=":material/check_circle:",
+                )
+                st.rerun()
+            except Exception as e:
+                st.error(f"年度締めエラー: {e}")
+
+
+def render_fiscal_year_section(fys: list[FiscalYear]) -> None:
+    """Render fiscal period setup, overview grid, and period-end closing rollover."""
+    if not fys:
+        _render_initial_fy_form()
+        return
+
+    st.subheader("会計年度一覧")
+    open_fy = next((f for f in fys if f.status == "OPEN"), None)
+    if open_fy:
+        st.caption(
+            f"現在のアクティブ期: **{open_fy.name}** "
+            f"(第{open_fy.period_number}期: {open_fy.start_date} 〜 {open_fy.end_date})"
+        )
+
+    fy_rows = build_fiscal_year_rows(fys)
+    st.dataframe(pd.DataFrame(fy_rows), hide_index=True, width="stretch")
+
+    if not open_fy:
+        st.warning("進行中 (OPEN) の会計年度がありません。")
+        return
+
+    st.divider()
+    _render_fy_rollover_expander(open_fy)
 
 
 def render_opening_balance_section(
@@ -341,26 +350,7 @@ def render_opening_balance_section(
         st.warning("進行中 (OPEN) の会計年度がありません。")
         return
 
-    debit_accs = [
-        a
-        for a in all_accounts
-        if a.type
-        in (
-            AccountType.CURRENT_ASSET,
-            AccountType.FIXED_ASSET,
-            AccountType.DEFERRED_ASSET,
-        )
-    ]
-    credit_accs = [
-        a
-        for a in all_accounts
-        if a.type
-        in (
-            AccountType.CURRENT_LIABILITY,
-            AccountType.FIXED_LIABILITY,
-            AccountType.EQUITY,
-        )
-    ]
+    debit_accs, credit_accs = partition_opening_balance_accounts(all_accounts)
 
     with st.form("opening_balance_form", border=True):
         c_l, c_r = st.columns(2)
@@ -437,6 +427,62 @@ def render_opening_balance_section(
                     st.error(f"登録エラー: {err}")
 
 
+def _render_add_account_popover() -> None:
+    """Render popover form for registering a single new ledger account."""
+    with st.popover("新規科目追加", icon=":material/add:"):
+        st.markdown("**新規勘定科目の登録**")
+        with st.form("form_create_account", border=False):
+            c_code, c_type = st.columns([1, 2])
+            new_code_in = c_code.text_input(
+                "科目コード", placeholder="例: 1195", max_chars=10
+            )
+            new_type_label = c_type.selectbox(
+                "勘定区分", options=[t.label for t in AccountType]
+            )
+            new_name_in = st.text_input("科目名", placeholder="例: 仮払金")
+            new_desc_in = st.text_input(
+                "説明・用途（任意）", placeholder="例: 出張等の仮渡金"
+            )
+            with st.container(horizontal=True, horizontal_alignment="right"):
+                add_submitted = st.form_submit_button(
+                    "登録", type="primary", width="content"
+                )
+
+            if not add_submitted:
+                return
+            clean_code = new_code_in.strip()
+            clean_name = new_name_in.strip()
+            clean_desc = new_desc_in.strip() or None
+            if not clean_code:
+                st.error("科目コードを入力してください。")
+                return
+            if not clean_name:
+                st.error("科目名を入力してください。")
+                return
+            try:
+                target_type = AccountType.from_any(new_type_label)
+                call_master(
+                    lambda s: s.save_account(
+                        Account(
+                            code=clean_code,
+                            name=clean_name,
+                            type=target_type,
+                            description=clean_desc,
+                        )
+                    )
+                )
+                st.session_state["editor_accounts_version"] = (
+                    st.session_state.get("editor_accounts_version", 0) + 1
+                )
+                st.toast(
+                    f"勘定科目「{clean_name}」を登録しました",
+                    icon=":material/check:",
+                )
+                st.rerun()
+            except Exception as err:
+                st.error(f"登録エラー: {err}")
+
+
 def render_accounts_section(accounts: list[Account]) -> None:
     """Render chart of accounts master editor, creation popover, and batch delete."""
     col_acc_head, col_acc_add = st.columns([4, 1])
@@ -444,56 +490,7 @@ def render_accounts_section(accounts: list[Account]) -> None:
         st.subheader("勘定科目マスタ一括管理")
         st.caption("勘定科目の登録、編集、および一括削除を管理します。")
     with col_acc_add:
-        with st.popover("新規科目追加", icon=":material/add:"):
-            st.markdown("**新規勘定科目の登録**")
-            with st.form("form_create_account", border=False):
-                c_code, c_type = st.columns([1, 2])
-                new_code_in = c_code.text_input(
-                    "科目コード", placeholder="例: 1195", max_chars=10
-                )
-                new_type_label = c_type.selectbox(
-                    "勘定区分", options=[t.label for t in AccountType]
-                )
-                new_name_in = st.text_input("科目名", placeholder="例: 仮払金")
-                new_desc_in = st.text_input(
-                    "説明・用途（任意）", placeholder="例: 出張等の仮渡金"
-                )
-                with st.container(horizontal=True, horizontal_alignment="right"):
-                    add_submitted = st.form_submit_button(
-                        "登録", type="primary", width="content"
-                    )
-
-                if add_submitted:
-                    clean_code = new_code_in.strip()
-                    clean_name = new_name_in.strip()
-                    clean_desc = new_desc_in.strip() or None
-                    if not clean_code:
-                        st.error("科目コードを入力してください。")
-                    elif not clean_name:
-                        st.error("科目名を入力してください。")
-                    else:
-                        try:
-                            target_type = AccountType.from_any(new_type_label)
-                            call_master(
-                                lambda s: s.save_account(
-                                    Account(
-                                        code=clean_code,
-                                        name=clean_name,
-                                        type=target_type,
-                                        description=clean_desc,
-                                    )
-                                )
-                            )
-                            st.session_state["editor_accounts_version"] = (
-                                st.session_state.get("editor_accounts_version", 0) + 1
-                            )
-                            st.toast(
-                                f"勘定科目「{clean_name}」を登録しました",
-                                icon=":material/check:",
-                            )
-                            st.rerun()
-                        except Exception as err:
-                            st.error(f"登録エラー: {err}")
+        _render_add_account_popover()
 
     acc_df = build_account_df(accounts)
     col_cfg_acc = {

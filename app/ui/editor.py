@@ -30,6 +30,100 @@ def clean_editor_text(value: object) -> str | None:
     return text if text else None
 
 
+def _extract_editor_deltas(
+    df: pd.DataFrame,
+    pk_column: str,
+    current_key: str,
+    pending_key: str,
+) -> tuple[list[dict[str, Any]], dict[Any, dict[str, Any]], list[Any]]:
+    """Extract added, edited, and deleted deltas mapped to primary keys."""
+    state = st.session_state.get(current_key, {})
+    raw_added: list[dict[str, Any]] = state.get("added_rows", [])
+    raw_edited: dict[str, dict[str, Any]] = state.get("edited_rows", {})
+    raw_deleted: list[int] = state.get("deleted_rows", [])
+
+    has_pk = pk_column in df.columns
+    pk_edited_map: dict[Any, dict[str, Any]] = (
+        {
+            df.iloc[int(i)][pk_column]: {k: v for k, v in c.items() if k != "selected"}
+            for i, c in raw_edited.items()
+            if int(i) < len(df) and any(k != "selected" for k in c)
+        }
+        if has_pk
+        else {}
+    )
+    pk_deleted_list: list[Any] = (
+        [df.iloc[i][pk_column] for i in raw_deleted if i < len(df)] if has_pk else []
+    )
+    added_list = [{k: v for k, v in r.items() if k != "selected"} for r in raw_added]
+
+    if added_list or pk_edited_map or pk_deleted_list:
+        st.session_state[pending_key] = {
+            "added": added_list,
+            "edited": pk_edited_map,
+            "deleted": pk_deleted_list,
+        }
+    elif pending_key in st.session_state:
+        pending = st.session_state[pending_key]
+        added_list = pending.get("added", [])
+        pk_edited_map = pending.get("edited", {})
+        pk_deleted_list = pending.get("deleted", [])
+
+    return added_list, pk_edited_map, pk_deleted_list
+
+
+def _render_editor_action_bar(
+    current_key: str,
+    version_key: str,
+    pending_key: str,
+    added_list: list[dict[str, Any]],
+    pk_edited_map: dict[Any, dict[str, Any]],
+    pk_deleted_list: list[Any],
+    on_commit: Callable[
+        [list[dict[str, Any]], dict[Any, dict[str, Any]], list[Any]], Any
+    ],
+) -> None:
+    """Render change summary and Cancel/Save buttons for pending editor deltas."""
+    col_info, col_actions = st.columns([5, 4])
+    with col_info:
+        st.info(
+            f"変更が検出されました（追加: {len(added_list)}件, "
+            f"更新: {len(pk_edited_map)}件, 削除: {len(pk_deleted_list)}件）"
+        )
+    with col_actions:
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            if st.button(
+                "取消",
+                key=f"btn_cancel_{current_key}",
+                icon=":material/close:",
+                width="content",
+                help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
+            ):
+                st.session_state.pop(pending_key, None)
+                st.session_state[version_key] += 1
+                st.toast("編集内容を取り消しました", icon=":material/undo:")
+                st.rerun()
+            if st.button(
+                "保存",
+                type="primary",
+                key=f"btn_commit_{current_key}",
+                icon=":material/save:",
+                width="content",
+            ):
+                try:
+                    commit_ok = on_commit(added_list, pk_edited_map, pk_deleted_list)
+                    if commit_ok is False:
+                        return
+                except Exception as err:
+                    st.error(f"変更の保存に失敗しました: {err}")
+                    return
+
+                st.session_state.pop(pending_key, None)
+                st.session_state[version_key] += 1
+                st.toast("変更を保存しました", icon=":material/check:")
+                st.rerun()
+
+
 def render_accounting_editor(
     df: pd.DataFrame,
     pk_column: str = "id",
@@ -78,81 +172,19 @@ def render_accounting_editor(
         key=current_key,
     )
 
-    state = st.session_state.get(current_key, {})
-    raw_added: list[dict[str, Any]] = state.get("added_rows", [])
-    raw_edited: dict[str, dict[str, Any]] = state.get("edited_rows", {})
-    raw_deleted: list[int] = state.get("deleted_rows", [])
-
-    has_pk = pk_column in df.columns
-    pk_edited_map: dict[Any, dict[str, Any]] = (
-        {
-            df.iloc[int(i)][pk_column]: {k: v for k, v in c.items() if k != "selected"}
-            for i, c in raw_edited.items()
-            if int(i) < len(df) and any(k != "selected" for k in c)
-        }
-        if has_pk
-        else {}
+    added_list, pk_edited_map, pk_deleted_list = _extract_editor_deltas(
+        df, pk_column, current_key, pending_key
     )
-    pk_deleted_list: list[Any] = (
-        [df.iloc[i][pk_column] for i in raw_deleted if i < len(df)] if has_pk else []
-    )
-    added_list = [{k: v for k, v in r.items() if k != "selected"} for r in raw_added]
-
-    editor_has_changes = bool(added_list or pk_edited_map or pk_deleted_list)
-    if editor_has_changes:
-        st.session_state[pending_key] = {
-            "added": added_list,
-            "edited": pk_edited_map,
-            "deleted": pk_deleted_list,
-        }
-    elif pending_key in st.session_state:
-        pending = st.session_state[pending_key]
-        added_list = pending.get("added", [])
-        pk_edited_map = pending.get("edited", {})
-        pk_deleted_list = pending.get("deleted", [])
-
-    has_changes = bool(added_list or pk_edited_map or pk_deleted_list)
-    if not (on_commit and has_changes):
-        return edited_df
-
-    col_info, col_actions = st.columns([5, 4])
-    with col_info:
-        st.info(
-            f"変更が検出されました（追加: {len(added_list)}件, "
-            f"更新: {len(pk_edited_map)}件, 削除: {len(pk_deleted_list)}件）"
+    if on_commit and (added_list or pk_edited_map or pk_deleted_list):
+        _render_editor_action_bar(
+            current_key,
+            version_key,
+            pending_key,
+            added_list,
+            pk_edited_map,
+            pk_deleted_list,
+            on_commit,
         )
-    with col_actions:
-        with st.container(horizontal=True, horizontal_alignment="right"):
-            if st.button(
-                "取消",
-                key=f"btn_cancel_{current_key}",
-                icon=":material/close:",
-                width="content",
-                help="保存されていない追加・編集・削除を破棄して元の状態に戻します",
-            ):
-                st.session_state.pop(pending_key, None)
-                st.session_state[version_key] += 1
-                st.toast("編集内容を取り消しました", icon=":material/undo:")
-                st.rerun()
-            if st.button(
-                "保存",
-                type="primary",
-                key=f"btn_commit_{current_key}",
-                icon=":material/save:",
-                width="content",
-            ):
-                try:
-                    commit_ok = on_commit(added_list, pk_edited_map, pk_deleted_list)
-                    if commit_ok is False:
-                        return edited_df
-                except Exception as err:
-                    st.error(f"変更の保存に失敗しました: {err}")
-                    return edited_df
-
-                st.session_state.pop(pending_key, None)
-                st.session_state[version_key] += 1
-                st.toast("変更を保存しました", icon=":material/check:")
-                st.rerun()
 
     return edited_df
 
